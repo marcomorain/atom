@@ -30,11 +30,18 @@ struct Token
 			printf("Token TOKEN_NUMBER %lg\n", data.number);
 			break;
 
+		case TOKEN_IDENTIFIER:
+			printf("Token TOKEN_IDENTIFIER \"%s\"\n", data.identifier);
+			break;
+
+		case TOKEN_STRING:
+			printf("Token TOKEN_STRING \"%s\"\n", data.string);
+			break;
+
 #define PRINT_CASE(id) case id: printf("Token %s\n", #id); break
-		PRINT_CASE(TOKEN_IDENTIFIER);
+
 		PRINT_CASE(TOKEN_BOOLEAN);
 		PRINT_CASE(TOKEN_CHARACTER);
-		PRINT_CASE(TOKEN_STRING);
 		PRINT_CASE(TOKEN_LIST_START);
 		PRINT_CASE(TOKEN_LIST_END);
 		PRINT_CASE(TOKEN_HASH_LIST_START);
@@ -73,7 +80,32 @@ private:
 		next++;
 	}
 
+	char* buffer_copy_and_reset(void)
+	{
+		char* dup = (char*)malloc(buffer_position + 1);
+		memcpy(dup, buffer_data, buffer_position);
+		dup[buffer_position] = 0; // null terminate
+		buffer_position = 0;
+		return dup;
+	}
+
 public:
+
+	void buffer_push(char c)
+	{
+		if (buffer_position == buffer_length)
+		{
+			buffer_length *= 2;
+			buffer_data = (char*)realloc(buffer_data, buffer_length);
+		}
+		buffer_data[buffer_position] = c;
+		buffer_position++;
+	}
+
+	char*  buffer_data;
+	size_t buffer_length;
+	size_t buffer_position;
+
 	Token*	tokens;
 	int		next;
 	int		length;
@@ -105,20 +137,18 @@ public:
 		add_basic(Token::TOKEN_DOT);
 	}
 
-	void add_identifier(const char* value)
+	void add_identifier(void)
 	{
-		// todo: dynamic string allocation
 		tokens[next].type = Token::TOKEN_IDENTIFIER;
-		tokens[next].data.identifier = value;
+		tokens[next].data.identifier = buffer_copy_and_reset();
 		tokens[next].print();
 		next++;
 	}
 
-	void add_string(const char* value)
+	void add_string(void)
 	{
-		// todo: dynamic string allocation
 		tokens[next].type = Token::TOKEN_STRING;
-		tokens[next].data.string = value;
+		tokens[next].data.string = buffer_copy_and_reset();
 		tokens[next].print();
 		next++;
 	}
@@ -152,11 +182,18 @@ public:
 		next   = 0;
 		length = size;
 		tokens = (Token*)malloc(size*sizeof(Token));
+
+		buffer_position = 0;
+		buffer_length	= 64;
+		buffer_data = (char*)malloc(buffer_length);
+		
+
 	}
 
 	void destroy()
 	{
 		free(tokens);
+		free(buffer_data);
 	}
 };
 
@@ -377,18 +414,25 @@ void read_string(Input& input)
 
 		if (c == '"'){
 			input.next();
-			input.tokens->add_string("some string");
+			input.tokens->add_string();
 			return;
 		}
 
 		if (c == '\\'){
 			c = input.next();
-			if (c == '"') continue;
-			if (c == '\\') continue;
+			if (c == '"' || c == '\\')
+			{
+				input.tokens->buffer_push(c);
+				continue;
+			}
 			exit(-1); // malformed string.
 		}
 
-		if (isprint(c)) continue;
+		if (isprint(c))
+		{
+			input.tokens->buffer_push(c);
+			continue;
+		}
 
 		exit(-1); // strange character in string
 	}
@@ -402,32 +446,36 @@ bool is_peculiar_identifier(char c)
 
 void read_identifier(Input& input)
 {
-	if (is_initial(input.get()))
+	char c = input.get();
+	if (is_initial(c))
 	{
+		input.tokens->buffer_push(c);
 
 		for (;;)
 		{
-			char c = input.next();
+			c = input.next();
 			if (is_delimeter(c)) break;
 			if (!is_subsequent(c))
 			{
 				// malformed identifier
 				exit(-1);
 			}
+			input.tokens->buffer_push(c);
 		}
-
-		input.tokens->add_identifier("some ident");
-		return;
 	}
-	else if (is_peculiar_identifier(input.get()))
+	else if (is_peculiar_identifier(c))
 	{
+		input.tokens->buffer_push(c);
 		input.next();
-		input.tokens->add_identifier("some peculiar ident");
-		return;
+	}
+	else
+	{
+		// not at identifier.
+		exit(-1);
 	}
 
-	// not at identifier.
-	exit(-1);
+	input.tokens->add_identifier();
+
 }
 
 void read_token(Input& input)
