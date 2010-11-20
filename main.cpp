@@ -3,7 +3,6 @@
 #include <string>
 #include <cassert>
 
-
 struct Token
 {
 	enum Type
@@ -27,10 +26,13 @@ struct Token
 	{
 		switch(type)
 		{
+		case TOKEN_NUMBER:
+			printf("Token TOKEN_NUMBER %lg\n", data.number);
+			break;
+
 #define PRINT_CASE(id) case id: printf("Token %s\n", #id); break
 		PRINT_CASE(TOKEN_IDENTIFIER);
 		PRINT_CASE(TOKEN_BOOLEAN);
-		PRINT_CASE(TOKEN_NUMBER);
 		PRINT_CASE(TOKEN_CHARACTER);
 		PRINT_CASE(TOKEN_STRING);
 		PRINT_CASE(TOKEN_LIST_START);
@@ -45,8 +47,6 @@ struct Token
 		}
 
 	}
-
-
 
 	union Data
 	{
@@ -163,10 +163,17 @@ public:
 
 struct Input
 {
-	//unsigned line;
-	//unsigned column;
+	unsigned	line;
+	unsigned	column;
 	const char* data;
-	TokenList* tokens;
+	TokenList*	tokens;
+
+	void init(const char* d)
+	{
+		line	= 1;
+		column	= 1;
+		data	= d;
+	}
 	
 	char get(void)  const
 	{
@@ -176,6 +183,15 @@ struct Input
 	char next(void)
 	{
 		assert(*data);
+
+		column++;
+
+		if (*data == '\n')
+		{
+			column = 1;
+			line++;
+		}
+		
 		data++;
 		return get();
 	};
@@ -193,8 +209,9 @@ void skip_whitespace(Input& input)
 			continue;
 			
 			case ';':
-			for (char d = input.next(); d && d != '\n'; d = input.next())
+			for (char d = input.next(); d != '\n'; d = input.next())
 			{
+				if (!d) return;
 			}
 			input.next(); // skip the newline
 			break;
@@ -322,19 +339,29 @@ success:
 	exit(-1);
 }
 
+static double char_to_double(char c)
+{
+	assert(c >= '0' && c <= '9');
+	return c - '0';
+}
 void read_number(Input& input)
 {
+	char c = input.get();
+
+	double accum = char_to_double(c);
+
 	for (;;)
 	{
-		if (is_digit(input.get()))
+		c = input.next();
+
+		if (!is_digit(c))
 		{
-			input.next();
-		}
-		else
-		{
-			input.tokens->add_number(0);
+			input.tokens->add_number(accum);
 			return;
 		}
+		
+		accum *= 10;
+		accum += char_to_double(c);
 	}
 }
 
@@ -349,6 +376,7 @@ void read_string(Input& input)
 		char c = input.next();
 
 		if (c == '"'){
+			input.next();
 			input.tokens->add_string("some string");
 			return;
 		}
@@ -409,11 +437,11 @@ void read_token(Input& input)
 	char c = input.get();
 	
 	switch(c){
-		case '(':  input.next(); input.tokens->add_list_start(); return;
-		case ')':  input.next(); input.tokens->add_list_end();   return;
-		case '\'': input.next(); input.tokens->add_quote();      return;
-		case '`':  input.next(); input.tokens->add_backtick();   return;
-		case '.':  input.next(); input.tokens->add_dot();        return;
+		case '(':  input.next(); input.tokens->add_list_start(); break;
+		case ')':  input.next(); input.tokens->add_list_end();   break;
+		case '\'': input.next(); input.tokens->add_quote();      break;
+		case '`':  input.next(); input.tokens->add_backtick();   break;
+		case '.':  input.next(); input.tokens->add_dot();        break;
 
 		case '#':
 		{
@@ -421,16 +449,15 @@ void read_token(Input& input)
 			switch(c)
 			{
 				// @todo: check for next character here (should be a delimiter)
-				case 't':  input.next(); input.tokens->add_boolean(true);  return;
-				case 'f':  input.next(); input.tokens->add_boolean(false); return;
-				case '\\': input.next(); read_character(input); return;
+				case 't':  input.next(); input.tokens->add_boolean(true);  break;
+				case 'f':  input.next(); input.tokens->add_boolean(false); break;
+				case '\\': input.next(); read_character(input);			   break;
 			}
+
+			break;
 		}
 
-		case '"':
-		{
-			return read_string(input);
-		}
+		case '"': read_string(input); break;
 
 		case 0: break;
 		
@@ -438,18 +465,22 @@ void read_token(Input& input)
 		{
 			if (is_digit(c))
 			{
-				return read_number(input);
+				read_number(input);
+			}
+			else
+			{
+				read_identifier(input);
 			}
 
-			return read_identifier(input);
+			break;
 		}
 	}
 }
 
-void parse_program(const char* data)
+void lexer(const char* data)
 {
 	Input input;
-	input.data = data;
+	input.init(data);
 	TokenList tokens;
 	input.tokens = &tokens;
 
@@ -475,9 +506,10 @@ int main (int argc, char * const argv[])
 	size_t read = fread(buffer, 1, size, file);
 	buffer[read] = 0;
     fclose (file);
-
 	printf("%s\n", buffer);
-	parse_program(buffer);
+
+	lexer(buffer);
+
 	free(buffer);
 	system ("pause");
 	return 0;

@@ -1,8 +1,22 @@
-() ) ( 213 123 ; fom sdfjsd kjsdlf
-;s sdf s
-;sd fsd; ;; ;sdf 
+; http://www2.latech.edu/~acm/helloworld/scheme.html
 
-() () + + + 213123 
+; Scheme
 
- ; + ;
+(define hello-world
+  (lambda ()
+    (begin
+      (write 'Hello-World)
+      (newline)
+      (hello-world))))    
 
+; submitted by: indigo@owlnet.rice.edu (Scott Ruthfield)
+
+; Looping version
+(define hello-world
+  (lambda ()
+    (display "Hello, World!")
+    (newline)
+    (hello-world)))
+(hello-world)
+
+; submitted by: mcornick@d.umn.edu (Mandy Cornick)
