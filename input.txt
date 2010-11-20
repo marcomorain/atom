@@ -20,3 +20,9 @@
 (hello-world)
 
 ; submitted by: mcornick@d.umn.edu (Mandy Cornick)
+
+; Test below my Marc:
+
+(+ 1 2)
+(- 3 4)
+(- (a . b) (c.d))

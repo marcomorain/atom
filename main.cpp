@@ -3,25 +3,25 @@
 #include <string>
 #include <cassert>
 
+enum Type
+{
+	TOKEN_IDENTIFIER,
+	TOKEN_BOOLEAN,
+	TOKEN_NUMBER,
+	TOKEN_CHARACTER,
+	TOKEN_STRING,
+	TOKEN_LIST_START,
+	TOKEN_LIST_END,
+	TOKEN_HASH_LIST_START,
+	TOKEN_QUOTE,
+	TOKEN_BACKTICK,
+	TOKEN_COMMA,
+	TOKEN_COMMA_AT,
+	TOKEN_DOT
+};
+
 struct Token
 {
-	enum Type
-	{
-		TOKEN_IDENTIFIER,
-		TOKEN_BOOLEAN,
-		TOKEN_NUMBER,
-		TOKEN_CHARACTER,
-		TOKEN_STRING,
-		TOKEN_LIST_START,
-		TOKEN_LIST_END,
-		TOKEN_HASH_LIST_START,
-		TOKEN_QUOTE,
-		TOKEN_BACKTICK,
-		TOKEN_COMMA,
-		TOKEN_COMMA_AT,
-		TOKEN_DOT
-	};
-
 	void print(void) const
 	{
 		switch(type)
@@ -73,7 +73,7 @@ struct TokenList
 {
 private:
 
-	void add_basic(Token::Type t)
+	void add_basic(Type t)
 	{
 		tokens[next].type = t;
 		tokens[next].print();
@@ -110,36 +110,34 @@ public:
 	int		next;
 	int		length;
 
-
-
 	void add_backtick()
 	{
-		add_basic(Token::TOKEN_BACKTICK);
+		add_basic(TOKEN_BACKTICK);
 	}
 
 	void add_list_start()
 	{
-		add_basic(Token::TOKEN_LIST_START);
+		add_basic(TOKEN_LIST_START);
 	}
 
 	void add_list_end()
 	{
-		add_basic(Token::TOKEN_LIST_END);
+		add_basic(TOKEN_LIST_END);
 	}
 
 	void add_quote()
 	{
-		add_basic(Token::TOKEN_QUOTE);
+		add_basic(TOKEN_QUOTE);
 	}
 
 	void add_dot()
 	{
-		add_basic(Token::TOKEN_DOT);
+		add_basic(TOKEN_DOT);
 	}
 
 	void add_identifier(void)
 	{
-		tokens[next].type = Token::TOKEN_IDENTIFIER;
+		tokens[next].type = TOKEN_IDENTIFIER;
 		tokens[next].data.identifier = buffer_copy_and_reset();
 		tokens[next].print();
 		next++;
@@ -147,7 +145,7 @@ public:
 
 	void add_string(void)
 	{
-		tokens[next].type = Token::TOKEN_STRING;
+		tokens[next].type = TOKEN_STRING;
 		tokens[next].data.string = buffer_copy_and_reset();
 		tokens[next].print();
 		next++;
@@ -155,7 +153,7 @@ public:
 
 	void add_number(double number)
 	{
-		tokens[next].type = Token::TOKEN_NUMBER;
+		tokens[next].type = TOKEN_NUMBER;
 		tokens[next].data.number = number;
 		tokens[next].print();
 		next++;
@@ -163,7 +161,7 @@ public:
 	
 	void add_character(char value)
 	{
-		tokens[next].type = Token::TOKEN_CHARACTER;
+		tokens[next].type = TOKEN_CHARACTER;
 		tokens[next].data.character = value;
 		tokens[next].print();
 		next++;
@@ -171,7 +169,7 @@ public:
 
 	void add_boolean(bool value)
 	{
-		tokens[next].type = Token::TOKEN_BOOLEAN;
+		tokens[next].type = TOKEN_BOOLEAN;
 		tokens[next].data.boolean= value;
 		tokens[next].print();
 		next++;
@@ -525,6 +523,127 @@ void read_token(Input& input)
 	}
 }
 
+
+Token* parse_datum(Token* tokens);
+
+Token* parse_vector(Token* tokens)
+{
+	return 0;
+}
+
+Token* parse_abreviation(Token* tokens)
+{
+	if(tokens->type == TOKEN_QUOTE)
+	{
+		tokens++;
+		return parse_datum(tokens);
+	}
+
+	if (tokens->type == TOKEN_BACKTICK)
+	{
+		tokens++;
+		return parse_datum(tokens);
+	}
+
+	if(tokens->type == TOKEN_COMMA)
+	{
+		tokens++;
+		return parse_datum(tokens);
+	}
+
+	if (tokens->type == TOKEN_COMMA_AT)
+	{
+		tokens++;
+		return parse_datum(tokens);
+	}
+
+	return NULL;
+}
+
+Token* parse_list(Token* tokens)
+{
+	if (tokens->type != TOKEN_LIST_START)
+	{
+		return parse_abreviation(tokens);
+	}
+
+	tokens++;
+
+	for (;;)
+	{
+		if (tokens->type == TOKEN_DOT)
+		{
+			tokens++;
+			tokens = parse_datum(tokens);
+
+			if (tokens->type != TOKEN_LIST_END)
+			{
+				// error
+			}
+
+			tokens++;
+			break;
+		}
+		else if (tokens->type == TOKEN_LIST_END)
+		{
+			tokens++;
+			break; // success
+		}
+		
+		Token* t = parse_datum(tokens);
+
+		if (!t)
+		{
+			int x = 1; x++;
+			// error
+		}
+
+		tokens = t;
+	}
+
+	// success, allocate a list
+	return tokens;
+}
+
+Token* parse_compound_datum(Token* tokens)
+{
+	if (Token* t = parse_list(tokens))
+	{
+		return t;
+	}
+
+	return parse_vector(tokens);
+}
+
+Token* parse_simple_datum(Token* tokens)
+{
+	switch (tokens->type)
+	{
+		case TOKEN_NUMBER:
+		case TOKEN_IDENTIFIER:
+		case TOKEN_BOOLEAN:
+		case TOKEN_CHARACTER:
+		case TOKEN_STRING:
+		{
+			tokens++;
+			return tokens;
+		}
+
+		default:
+			return NULL;
+	}
+}
+
+Token* parse_datum(Token* tokens)
+{
+	if (Token* t = parse_simple_datum(tokens))
+	{
+		return t;
+	}
+	
+	return parse_compound_datum(tokens);
+}
+
 void lexer(const char* data)
 {
 	Input input;
@@ -538,6 +657,8 @@ void lexer(const char* data)
 	{
 		read_token(input);
 	}
+
+	parse_datum(tokens.tokens);
 
 	tokens.destroy();
 }
