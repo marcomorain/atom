@@ -8,7 +8,6 @@ struct Token
 {
 	enum Type
 	{
-		TOKEN_EOF,
 		TOKEN_IDENTIFIER,
 		TOKEN_BOOLEAN,
 		TOKEN_NUMBER,
@@ -29,7 +28,6 @@ struct Token
 		switch(type)
 		{
 #define PRINT_CASE(id) case id: printf("Token %s\n", #id); break
-		PRINT_CASE(TOKEN_EOF);
 		PRINT_CASE(TOKEN_IDENTIFIER);
 		PRINT_CASE(TOKEN_BOOLEAN);
 		PRINT_CASE(TOKEN_NUMBER);
@@ -47,13 +45,119 @@ struct Token
 		}
 
 	}
-	
-	Type type;
-	
-	Token(Type type) : type(type)
+
+
+
+	union Data
 	{
-		print();
+		double		number;
+		bool		boolean;
+		const char*	string;
+		const char*	identifier;
+		char		character;
 	};
+
+	Type type;
+	Data data;
+};
+
+
+struct TokenList
+{
+private:
+
+	void add_basic(Token::Type t)
+	{
+		tokens[next].type = t;
+		tokens[next].print();
+		next++;
+	}
+
+public:
+	Token*	tokens;
+	int		next;
+	int		length;
+
+
+
+	void add_backtick()
+	{
+		add_basic(Token::TOKEN_BACKTICK);
+	}
+
+	void add_list_start()
+	{
+		add_basic(Token::TOKEN_LIST_START);
+	}
+
+	void add_list_end()
+	{
+		add_basic(Token::TOKEN_LIST_END);
+	}
+
+	void add_quote()
+	{
+		add_basic(Token::TOKEN_QUOTE);
+	}
+
+	void add_dot()
+	{
+		add_basic(Token::TOKEN_DOT);
+	}
+
+	void add_identifier(const char* value)
+	{
+		// todo: dynamic string allocation
+		tokens[next].type = Token::TOKEN_IDENTIFIER;
+		tokens[next].data.identifier = value;
+		tokens[next].print();
+		next++;
+	}
+
+	void add_string(const char* value)
+	{
+		// todo: dynamic string allocation
+		tokens[next].type = Token::TOKEN_STRING;
+		tokens[next].data.string = value;
+		tokens[next].print();
+		next++;
+	}
+
+	void add_number(double number)
+	{
+		tokens[next].type = Token::TOKEN_NUMBER;
+		tokens[next].data.number = number;
+		tokens[next].print();
+		next++;
+	}
+	
+	void add_character(char value)
+	{
+		tokens[next].type = Token::TOKEN_CHARACTER;
+		tokens[next].data.character = value;
+		tokens[next].print();
+		next++;
+	}
+
+	void add_boolean(bool value)
+	{
+		tokens[next].type = Token::TOKEN_BOOLEAN;
+		tokens[next].data.boolean= value;
+		tokens[next].print();
+		next++;
+	}
+
+	void init(int size)
+	{
+		next   = 0;
+		length = size;
+		tokens = (Token*)malloc(size*sizeof(Token));
+	}
+
+	void destroy()
+	{
+		free(tokens);
+	}
 };
 
 
@@ -62,6 +166,7 @@ struct Input
 	//unsigned line;
 	//unsigned column;
 	const char* data;
+	TokenList* tokens;
 	
 	char get(void)  const
 	{
@@ -85,11 +190,9 @@ void skip_whitespace(Input& input)
 			case '\n':
 			case ' ':
 			case '\t':
-			printf("skipping space/tab/newlines\n");
 			continue;
 			
 			case ';':
-			printf("skipping comment\n");
 			for (char d = input.next(); d && d != '\n'; d = input.next())
 			{
 			}
@@ -178,7 +281,7 @@ bool is_subsequent(char c)
 }
 
 
-Token read_character(Input& input)
+void read_character(Input& input)
 {
 	char c = input.get();
 	switch(c)
@@ -188,7 +291,8 @@ Token read_character(Input& input)
 			if (input.next() != 'a') exit(-1);
 			if (input.next() != 'c') exit(-1);
 			if (input.next() != 'e') exit(-1);
-			return Token(Token::TOKEN_CHARACTER); // space
+			input.tokens->add_character(' ');
+			return;
 		}
 		else goto success;
 
@@ -199,7 +303,8 @@ Token read_character(Input& input)
 				if (input.next() != 'i') exit(-1);
 				if (input.next() != 'n') exit(-1);
 				if (input.next() != 'e') exit(-1);
-				return Token(Token::TOKEN_CHARACTER); // newline
+				input.tokens->add_character('\n'); // newline
+				return;
 			}
 			else goto success;
 
@@ -210,15 +315,14 @@ success:
 
 	if (is_delimeter(input.next()))
 	{
-		return Token(Token::TOKEN_CHARACTER); // character
+		input.tokens->add_character(c);
+		return;
 	}
-	else
-	{
-		exit(-1);
-	}
+	
+	exit(-1);
 }
 
-Token read_number(Input& input)
+void read_number(Input& input)
 {
 	for (;;)
 	{
@@ -228,14 +332,15 @@ Token read_number(Input& input)
 		}
 		else
 		{
-			return Token(Token::TOKEN_NUMBER);
+			input.tokens->add_number(0);
+			return;
 		}
 	}
 }
 
 
 
-Token read_string(Input& input)
+void read_string(Input& input)
 {
 	assert(input.get() == '"');
 
@@ -244,7 +349,8 @@ Token read_string(Input& input)
 		char c = input.next();
 
 		if (c == '"'){
-			return Token(Token::TOKEN_STRING);
+			input.tokens->add_string("some string");
+			return;
 		}
 
 		if (c == '\\'){
@@ -266,7 +372,7 @@ bool is_peculiar_identifier(char c)
 	return c == '+' || c == '-';
 }
 
-Token read_identifier(Input& input)
+void read_identifier(Input& input)
 {
 	if (is_initial(input.get()))
 	{
@@ -282,39 +388,42 @@ Token read_identifier(Input& input)
 			}
 		}
 
-		return Token(Token::TOKEN_IDENTIFIER);
+		input.tokens->add_identifier("some ident");
+		return;
 	}
 	else if (is_peculiar_identifier(input.get()))
 	{
 		input.next();
-		return Token(Token::TOKEN_IDENTIFIER);
+		input.tokens->add_identifier("some peculiar ident");
+		return;
 	}
 
 	// not at identifier.
 	exit(-1);
 }
 
-Token read_token(Input& input)
+void read_token(Input& input)
 {
 	skip_whitespace(input);
 	
 	char c = input.get();
 	
 	switch(c){
-		case '(':  input.next(); return Token(Token::TOKEN_LIST_START);
-		case ')':  input.next(); return Token(Token::TOKEN_LIST_END);
-		case '\'': input.next(); return Token(Token::TOKEN_QUOTE);
-		case '`':  input.next(); return Token(Token::TOKEN_BACKTICK);
-		case '.':  input.next(); return Token(Token::TOKEN_DOT);
+		case '(':  input.next(); input.tokens->add_list_start(); return;
+		case ')':  input.next(); input.tokens->add_list_end();   return;
+		case '\'': input.next(); input.tokens->add_quote();      return;
+		case '`':  input.next(); input.tokens->add_backtick();   return;
+		case '.':  input.next(); input.tokens->add_dot();        return;
 
 		case '#':
 		{
 			c = input.next();
 			switch(c)
 			{
-				case 't':  input.next(); return Token(Token::TOKEN_BOOLEAN);
-				case 'f':  input.next(); return Token(Token::TOKEN_BOOLEAN);
-				case '\\': input.next(); return read_character(input);
+				// @todo: check for next character here (should be a delimiter)
+				case 't':  input.next(); input.tokens->add_boolean(true);  return;
+				case 'f':  input.next(); input.tokens->add_boolean(false); return;
+				case '\\': input.next(); read_character(input); return;
 			}
 		}
 
@@ -335,41 +444,24 @@ Token read_token(Input& input)
 			return read_identifier(input);
 		}
 	}
-
-	return Token(Token::TOKEN_EOF);
 }
-
-const char* parse_boolean(const char* data, bool& value)
-{
-	if (*data != '#') return NULL;
-	data++;
-	
-	switch (*data)
-	{
-		case 'f':
-		case 't':
-		value = *data == 't';
-		return data;
-		
-		default:
-		return NULL;
-	}
-}
-
-
-using namespace std;
 
 void parse_program(const char* data)
 {
 	Input input;
 	input.data = data;
+	TokenList tokens;
+	input.tokens = &tokens;
+
+	tokens.init(1000);
 	
 	while (input.get())
 	{
-		Token token = read_token(input);
+		read_token(input);
 	}
-}
 
+	tokens.destroy();
+}
 
 int main (int argc, char * const argv[])
 {
