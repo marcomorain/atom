@@ -3,6 +3,39 @@
 #include <string>
 #include <cassert>
 
+enum
+{
+	TYPE_BOOLEAN,
+	TYPE_CHARACTER,
+	TYPE_NUMBER,
+	TYPE_STRING,
+	TYPE_LIST,
+	TYPE_VECTOR,
+	TYPE_SYMBOL
+};
+
+struct Cell
+{
+	struct List
+	{
+		Cell* car;
+		Cell* cdr;
+	};
+
+	union Data
+	{
+		bool   boolean;
+		char   character;
+		double number;
+		const char*  string;
+		List   list;
+		const char*  symbol;
+	};
+	
+	int  type;
+	Data data;
+};
+
 enum Type
 {
 	TOKEN_IDENTIFIER,
@@ -19,6 +52,69 @@ enum Type
 	TOKEN_COMMA_AT,
 	TOKEN_DOT
 };
+
+static void print_rec(const Cell* cell)
+{
+	if (!cell) return;
+
+	switch(cell->type)
+	{
+	case TYPE_BOOLEAN:
+		printf("#%c", (cell->data.boolean ? 't' : 'f'));
+		break;
+
+	case TYPE_NUMBER:
+		printf("%lg", cell->data.number);
+		break;
+
+	case TYPE_CHARACTER:
+		printf("%c", cell->data.character);
+		break;
+
+	case TYPE_STRING:
+		printf("\"%s\"", cell->data.string);
+		break;
+
+	case TYPE_SYMBOL:
+		printf("%s", cell->data.symbol);
+		break;
+
+	case TYPE_LIST:
+		printf("(");
+		print_rec(cell->data.list.car);
+		printf(" ");
+		print_rec(cell->data.list.cdr);
+		printf(")");
+		break;
+	}
+}
+
+static void print(const Cell* cell)
+{
+	print_rec(cell);
+	printf("\n");
+}
+
+static void set_car(Cell* list, Cell* car)
+{
+	assert(list->type == TYPE_LIST);
+	list->data.list.car = car;
+}
+
+static void set_cdr(Cell* list, Cell* cdr)
+{
+	assert(list->type == TYPE_LIST);
+	list->data.list.cdr = cdr;
+}
+
+static Cell* cons(Cell* car, Cell* cdr)
+{
+	Cell* cell = new Cell;
+	cell->type = TYPE_LIST;
+	set_car(cell, car);
+	set_cdr(cell, cdr);
+	return cell;
+}
 
 struct Token
 {
@@ -192,6 +288,20 @@ public:
 	{
 		free(tokens);
 		free(buffer_data);
+	}
+
+	const Token* peek(void) const
+	{
+		if (next < length)
+		{
+			return tokens + next;
+		}
+		return NULL;
+	}
+
+	void skip(void)
+	{
+		next++;
 	}
 };
 
@@ -524,109 +634,164 @@ void read_token(Input& input)
 }
 
 
-Token* parse_datum(Token* tokens);
+Cell* parse_datum(TokenList& tokens);
 
-Token* parse_vector(Token* tokens)
+Cell* parse_vector(TokenList& tokens)
 {
 	return 0;
 }
 
-Token* parse_abreviation(Token* tokens)
+Cell* parse_abreviation(TokenList& tokens)
 {
-	if(tokens->type == TOKEN_QUOTE)
+	const Token* t = tokens.peek();
+
+	if(t->type == TOKEN_QUOTE)
 	{
-		tokens++;
+		tokens.skip();
 		return parse_datum(tokens);
 	}
 
-	if (tokens->type == TOKEN_BACKTICK)
+	if (t->type == TOKEN_BACKTICK)
 	{
-		tokens++;
+		tokens.skip();
 		return parse_datum(tokens);
 	}
 
-	if(tokens->type == TOKEN_COMMA)
+	if(t->type == TOKEN_COMMA)
 	{
-		tokens++;
+		tokens.skip();
 		return parse_datum(tokens);
 	}
 
-	if (tokens->type == TOKEN_COMMA_AT)
+	if (t->type == TOKEN_COMMA_AT)
 	{
-		tokens++;
+		tokens.skip();
 		return parse_datum(tokens);
 	}
 
 	return NULL;
 }
 
-Token* parse_list(Token* tokens)
+Cell* parse_list(TokenList& tokens)
 {
-	if (tokens->type != TOKEN_LIST_START)
+	if (tokens.peek()->type != TOKEN_LIST_START)
 	{
 		return parse_abreviation(tokens);
 	}
 
-	tokens++;
+	// skip the start list token
+	tokens.skip();
+
+	Cell* list = cons(NULL, NULL);
+
+	Cell* head = list;
 
 	for (;;)
 	{
-		if (tokens->type == TOKEN_DOT)
+		if (tokens.peek()->type == TOKEN_DOT)
 		{
-			tokens++;
-			tokens = parse_datum(tokens);
+			tokens.skip();
+			Cell* cell = parse_datum(tokens);
 
-			if (tokens->type != TOKEN_LIST_END)
+			if (!cell)
 			{
 				// error
+				exit(-1);
 			}
 
-			tokens++;
+			set_cdr(list, cell);
+
+			if (tokens.peek()->type != TOKEN_LIST_END)
+			{
+				// error
+				exit(-1);
+			}
+
+			tokens.skip();
 			break;
 		}
-		else if (tokens->type == TOKEN_LIST_END)
+		else if (tokens.peek()->type == TOKEN_LIST_END)
 		{
-			tokens++;
+			tokens.skip();
 			break; // success
 		}
 		
-		Token* t = parse_datum(tokens);
+		Cell* car = parse_datum(tokens);
 
-		if (!t)
+		if (!car)
 		{
 			int x = 1; x++;
-			// error
+			exit(-1);
 		}
 
-		tokens = t;
+		Cell* rest = cons(car, NULL);
+		set_cdr(list, rest);
+		list = rest;
 	}
 
 	// success, allocate a list
-	return tokens;
+	return head;
 }
 
-Token* parse_compound_datum(Token* tokens)
+Cell* parse_compound_datum(TokenList& tokens)
 {
-	if (Token* t = parse_list(tokens))
+	if (Cell* cell = parse_list(tokens))
 	{
-		return t;
+		return cell;
 	}
 
 	return parse_vector(tokens);
 }
 
-Token* parse_simple_datum(Token* tokens)
+Cell* parse_simple_datum(TokenList& tokens)
 {
-	switch (tokens->type)
+	const Token* t = tokens.peek();
+
+	switch (t->type)
 	{
-		case TOKEN_NUMBER:
-		case TOKEN_IDENTIFIER:
 		case TOKEN_BOOLEAN:
+		{
+			Cell* cell = new Cell;
+			cell->type = TYPE_BOOLEAN;
+			cell->data.boolean = t->data.boolean;
+			tokens.skip();
+			return cell;
+		}
+
 		case TOKEN_CHARACTER:
+		{
+			Cell* cell = new Cell;
+			cell->type = TYPE_CHARACTER;
+			cell->data.character = t->data.character;
+			tokens.skip();
+			return cell;
+		}
+
+		case TOKEN_NUMBER:
+		{
+			Cell* cell = new Cell;
+			cell->type = TYPE_NUMBER;
+			cell->data.number = t->data.number;
+			tokens.skip();
+			return cell;
+		}
+
+		case TOKEN_IDENTIFIER:
+		{
+			Cell* cell = new Cell;
+			cell->type = TYPE_SYMBOL;
+			cell->data.symbol = t->data.identifier;
+			tokens.skip();
+			return cell;
+		}
+		
 		case TOKEN_STRING:
 		{
-			tokens++;
-			return tokens;
+			Cell* cell = new Cell;
+			cell->type = TYPE_STRING;
+			cell->data.string = t->data.string;
+			tokens.skip();
+			return cell;
 		}
 
 		default:
@@ -634,11 +799,11 @@ Token* parse_simple_datum(Token* tokens)
 	}
 }
 
-Token* parse_datum(Token* tokens)
+Cell* parse_datum(TokenList& tokens)
 {
-	if (Token* t = parse_simple_datum(tokens))
+	if (Cell* cell = parse_simple_datum(tokens))
 	{
-		return t;
+		return cell;
 	}
 	
 	return parse_compound_datum(tokens);
@@ -658,7 +823,18 @@ void lexer(const char* data)
 		read_token(input);
 	}
 
-	parse_datum(tokens.tokens);
+	tokens.next = 0;
+
+	for(;;)
+	{
+		Cell* cell = parse_datum(tokens);
+
+		if (!cell)
+		{
+			break;
+		}
+		print(cell);
+	}
 
 	tokens.destroy();
 }
