@@ -839,23 +839,26 @@ void lexer(const char* data)
 	tokens.destroy();
 }
 
-int main (int argc, char * const argv[])
+char* file_to_string(const char* filename)
 {
-
-	FILE* file = fopen("input.txt", "r");
+	FILE* file = fopen(filename, "r");
 	assert(file);
 	fseek (file, 0, SEEK_END);
-    size_t size = ftell (file);
+	size_t size = ftell (file);
 	rewind(file);
 	char* buffer = (char*) malloc(size+1);
 	size_t read = fread(buffer, 1, size, file);
 	buffer[read] = 0;
-    fclose (file);
-	printf("%s\n", buffer);
+	fclose (file);
+	return buffer;
+}
 
-	lexer(buffer);
-
-	free(buffer);
+int main (int argc, char * const argv[])
+{
+	char* input = file_to_string("input.txt");
+	printf("%s\n", input);
+	lexer(input);
+	free(input);
 	system ("pause");
 	return 0;
 }
