@@ -3,6 +3,15 @@
 #include <string>
 #include <cassert>
 
+#define DEBUG_LEXER (0)
+
+#if (DEBUG_LEXER)
+#define LEXER_TRACE(format, ...) printf(format, __VA_ARGS__)
+#else
+#define LEXER_TRACE(format, ...)
+#endif
+
+
 enum
 {
 	TYPE_BOOLEAN,
@@ -76,7 +85,7 @@ static void print_rec(const Cell* cell, int is_car)
 		break;
 
 	case TYPE_SYMBOL:
-		printf("%s [symbol]", cell->data.symbol);
+		printf("%s", cell->data.symbol);
 		break;
 
 	case TYPE_LIST:
@@ -123,18 +132,18 @@ struct Token
 		switch(type)
 		{
 		case TOKEN_NUMBER:
-			printf("Token TOKEN_NUMBER %lg\n", data.number);
+			LEXER_TRACE("Token TOKEN_NUMBER %lg\n", data.number);
 			break;
 
 		case TOKEN_IDENTIFIER:
-			printf("Token TOKEN_IDENTIFIER %s\n", data.identifier);
+			LEXER_TRACE("Token TOKEN_IDENTIFIER %s\n", data.identifier);
 			break;
 
 		case TOKEN_STRING:
-			printf("Token TOKEN_STRING \"%s\"\n", data.string);
+			LEXER_TRACE("Token TOKEN_STRING \"%s\"\n", data.string);
 			break;
 
-#define PRINT_CASE(id) case id: printf("Token %s\n", #id); break
+#define PRINT_CASE(id) case id: LEXER_TRACE("Token %s\n", #id); break
 
 		PRINT_CASE(TOKEN_BOOLEAN);
 		PRINT_CASE(TOKEN_CHARACTER);
