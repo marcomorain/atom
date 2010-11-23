@@ -68,7 +68,7 @@ static void print_rec(const Cell* cell, int is_car)
 		break;
 
 	case TYPE_CHARACTER:
-		printf("%c", cell->data.character);
+		printf("%c [character]", cell->data.character);
 		break;
 
 	case TYPE_STRING:
@@ -76,7 +76,7 @@ static void print_rec(const Cell* cell, int is_car)
 		break;
 
 	case TYPE_SYMBOL:
-		printf("%s", cell->data.symbol);
+		printf("%s [symbol]", cell->data.symbol);
 		break;
 
 	case TYPE_LIST:
@@ -205,6 +205,12 @@ public:
 	Token*	tokens;
 	int		next;
 	int		length;
+	
+	void start_parse()
+	{
+		length = next;
+		next = 0;
+	}
 
 	void add_backtick()
 	{
@@ -830,7 +836,7 @@ void lexer(const char* data)
 		read_token(input);
 	}
 
-	tokens.next = 0;
+	tokens.start_parse();
 
 	for(;;)
 	{
@@ -848,8 +854,9 @@ void lexer(const char* data)
 
 int main (int argc, char * const argv[])
 {
+	const char* filename = (argc == 1) ? "input.txt" : argv[1];
 
-	FILE* file = fopen("input.txt", "r");
+	FILE* file = fopen(filename, "r");
 	assert(file);
 	fseek (file, 0, SEEK_END);
     size_t size = ftell (file);
