@@ -53,7 +53,7 @@ enum Type
 	TOKEN_DOT
 };
 
-static void print_rec(const Cell* cell)
+static void print_rec(const Cell* cell, int is_car)
 {
 	if (!cell) return;
 
@@ -68,7 +68,7 @@ static void print_rec(const Cell* cell)
 		break;
 
 	case TYPE_CHARACTER:
-		printf("%c", cell->data.character);
+		printf("%c [character]", cell->data.character);
 		break;
 
 	case TYPE_STRING:
@@ -76,22 +76,22 @@ static void print_rec(const Cell* cell)
 		break;
 
 	case TYPE_SYMBOL:
-		printf("%s", cell->data.symbol);
+		printf("%s [symbol]", cell->data.symbol);
 		break;
 
 	case TYPE_LIST:
-		printf("(");
-		print_rec(cell->data.list.car);
+		if (is_car) printf("(");
+		print_rec(cell->data.list.car, 1);
 		printf(" ");
-		print_rec(cell->data.list.cdr);
-		printf(")");
+		print_rec(cell->data.list.cdr, 0);
+		if (is_car) printf(")");
 		break;
 	}
 }
 
 static void print(const Cell* cell)
 {
-	print_rec(cell);
+	print_rec(cell, 1);
 	printf("\n");
 }
 
@@ -127,7 +127,7 @@ struct Token
 			break;
 
 		case TOKEN_IDENTIFIER:
-			printf("Token TOKEN_IDENTIFIER \"%s\"\n", data.identifier);
+			printf("Token TOKEN_IDENTIFIER %s\n", data.identifier);
 			break;
 
 		case TOKEN_STRING:
@@ -205,6 +205,12 @@ public:
 	Token*	tokens;
 	int		next;
 	int		length;
+	
+	void start_parse()
+	{
+		length = next;
+		next = 0;
+	}
 
 	void add_backtick()
 	{
@@ -358,7 +364,6 @@ void skip_whitespace(Input& input)
 			{
 				if (!d) return;
 			}
-			input.next(); // skip the newline
 			break;
 			
 			default: return;
@@ -644,6 +649,8 @@ Cell* parse_vector(TokenList& tokens)
 Cell* parse_abreviation(TokenList& tokens)
 {
 	const Token* t = tokens.peek();
+	
+	if (!t) exit(-1);
 
 	if(t->type == TOKEN_QUOTE)
 	{
@@ -674,6 +681,8 @@ Cell* parse_abreviation(TokenList& tokens)
 
 Cell* parse_list(TokenList& tokens)
 {
+	if (!tokens.peek()) return NULL;
+	
 	if (tokens.peek()->type != TOKEN_LIST_START)
 	{
 		return parse_abreviation(tokens);
@@ -681,8 +690,10 @@ Cell* parse_list(TokenList& tokens)
 
 	// skip the start list token
 	tokens.skip();
-
-	Cell* list = cons(NULL, NULL);
+	
+	Cell* cell = parse_datum(tokens);
+	
+	Cell* list = cons(cell, NULL);
 
 	Cell* head = list;
 
@@ -695,7 +706,7 @@ Cell* parse_list(TokenList& tokens)
 
 			if (!cell)
 			{
-				// error
+				// error - expecting a datum after a dot
 				exit(-1);
 			}
 
@@ -703,7 +714,7 @@ Cell* parse_list(TokenList& tokens)
 
 			if (tokens.peek()->type != TOKEN_LIST_END)
 			{
-				// error
+				// error - expecting ')' after a datum after a .
 				exit(-1);
 			}
 
@@ -746,6 +757,8 @@ Cell* parse_compound_datum(TokenList& tokens)
 Cell* parse_simple_datum(TokenList& tokens)
 {
 	const Token* t = tokens.peek();
+	
+	if (!t) return NULL;
 
 	switch (t->type)
 	{
@@ -823,7 +836,7 @@ void lexer(const char* data)
 		read_token(input);
 	}
 
-	tokens.next = 0;
+	tokens.start_parse();
 
 	for(;;)
 	{
@@ -855,7 +868,9 @@ char* file_to_string(const char* filename)
 
 int main (int argc, char * const argv[])
 {
-	char* input = file_to_string("input.txt");
+	const char* filename = (argc == 1) ? "input.txt" : argv[1];
+
+	char* input = file_to_string(filename);
 	printf("%s\n", input);
 	lexer(input);
 	free(input);

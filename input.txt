@@ -1,3 +1,11 @@
+; Looping version
+(define hello-world
+  (lambda ()
+    (display "Hello, World!")
+    (newline)
+    (hello-world)))
+(hello-world)
+
 ; http://www2.latech.edu/~acm/helloworld/scheme.html
 
 ; Scheme
