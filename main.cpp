@@ -104,6 +104,18 @@ static void print(const Cell* cell)
 	printf("\n");
 }
 
+static Cell* car(const Cell* cell)
+{
+	assert(cell->type == TYPE_LIST);
+	return cell->data.list.car;
+}
+
+static Cell* cdr(const Cell* cell)
+{
+	assert(cell->type == TYPE_LIST);
+	return cell->data.list.cdr;
+}
+
 static void set_car(Cell* list, Cell* car)
 {
 	assert(list->type == TYPE_LIST);
@@ -424,14 +436,14 @@ bool is_delimeter(char c)
 {
 	switch (c)
 	{
-	case ' ':
-	case '\n':
-	case '\t':
-	case '"':
-	case '(':
-	case ')':
-	case ';':
-		return true;
+		case ' ':
+		case '\n':
+		case '\t':
+		case '"':
+		case '(':
+		case ')':
+		case ';':
+			return true;
 	}
 	return false;
 }
@@ -440,24 +452,24 @@ bool is_special_subsequent(char c)
 {
 	switch(c)
 	{
-	case '+':
-	case '-':
-	case '.':
-	case '@':
-		return true;
+		case '+':
+		case '-':
+		case '.':
+		case '@':
+			return true;
 	}
 
 	return false;
 }
 
 
-bool is_subsequent(char c)
+static bool is_subsequent(char c)
 {
 	return is_initial(c) || is_digit(c) || is_special_subsequent(c);
 }
 
 
-void read_character(Input& input)
+static void read_character(Input& input)
 {
 	char c = input.get();
 	switch(c)
@@ -498,11 +510,14 @@ success:
 	exit(-1);
 }
 
+// Convert an ascii digit, '0' to '9' into
+// a double 0.0 to 9.0
 static double char_to_double(char c)
 {
 	assert(c >= '0' && c <= '9');
 	return c - '0';
 }
+
 void read_number(Input& input)
 {
 	char c = input.get();
@@ -831,6 +846,170 @@ Cell* parse_datum(TokenList& tokens)
 	return parse_compound_datum(tokens);
 }
 
+
+//-----------------------------------------------------------------------------
+// MurmurHash2, by Austin Appleby
+
+// Note - This code makes a few assumptions about how your machine behaves -
+
+// 1. We can read a 4-byte value from any address without crashing
+// 2. sizeof(int) == 4
+
+// And it has a few limitations -
+
+// 1. It will not work incrementally.
+// 2. It will not produce the same results on little-endian and big-endian
+//    machines.
+
+static unsigned int MurmurHash2 ( const void * key, int len)
+{
+	const unsigned int seed = 0xdbc;
+
+	assert(sizeof(int) == 4);
+
+	// 'm' and 'r' are mixing constants generated offline.
+	// They're not really 'magic', they just happen to work well.
+
+	const unsigned int m = 0x5bd1e995;
+	const int r = 24;
+
+	// Initialize the hash to a 'random' value
+
+	unsigned int h = seed ^ len;
+
+	// Mix 4 bytes at a time into the hash
+
+	const unsigned char * data = (const unsigned char *)key;
+
+	while(len >= 4)
+	{
+		unsigned int k = *(unsigned int *)data;
+
+		k *= m; 
+		k ^= k >> r; 
+		k *= m; 
+
+		h *= m; 
+		h ^= k;
+
+		data += 4;
+		len -= 4;
+	}
+
+	// Handle the last few bytes of the input array
+
+	switch(len)
+	{
+	case 3: h ^= data[2] << 16;
+	case 2: h ^= data[1] << 8;
+	case 1: h ^= data[0];
+		h *= m;
+	};
+
+	// Do a few final mixes of the hash to ensure the last few
+	// bytes are well-incorporated.
+
+	h ^= h >> 13;
+	h *= m;
+	h ^= h >> 15;
+
+	return h;
+} 
+
+
+static bool power_of_two(int v)
+{
+	return v && !(v & (v - 1));
+}
+
+struct Environment
+{
+	struct Node
+	{
+		const char* symbol;
+		const Cell* value;
+		Node*		next;
+	};
+
+	Node**		data;
+	unsigned	mask;
+
+
+	void init(int size)
+	{
+		assert(power_of_two(size));
+		mask = size-1;
+		const size_t num_bytes = size * sizeof(Node*);
+		data = (Node**)malloc(num_bytes);
+		memset(data, 0, num_bytes);
+	}
+
+	const Cell* get(const Cell* symbol) const
+	{
+		assert(symbol->type == TYPE_SYMBOL);
+		const char* str = symbol->data.symbol;
+		unsigned hash = mask & MurmurHash2(str, strlen(str));
+
+		for (Node* node = data[hash]; node; node = node->next)
+		{
+			if (strcmp(str, node->symbol) == 0)
+			{
+				return node->value;
+			}
+		}
+
+		return NULL;
+	}
+
+	void set(const Cell* symbol, const Cell* value)
+	{
+		assert(symbol->type == TYPE_SYMBOL);
+		const char* str = symbol->data.symbol;
+		unsigned hash = mask & MurmurHash2(str, strlen(str));
+
+		for (Node* node = data[hash]; node; node = node->next)
+		{
+			if (strcmp(str, node->symbol) == 0)
+			{
+				node->value = value;
+				return;
+			}
+		}
+
+		Node* node = new Node;
+		node->symbol = str;
+		node->value  = value;
+		node->next   = data[hash];
+		data[hash] = node;
+	}
+
+};
+
+static const Cell* eval(const Cell* cell, Environment* env)
+{
+	assert(cell);
+
+	switch(cell->type)
+	{
+		// basic types will self evaluate
+		case TYPE_NUMBER:
+		case TYPE_STRING:
+		case TYPE_CHARACTER:
+			return cell;
+
+		case TYPE_LIST:
+		{
+			Cell* symbol = car(cell);
+			const Cell* function = env->get(symbol);
+			return 0;
+		}
+
+		default:
+			assert(false);
+			return 0;
+	}
+}
+
 void lexer(const char* data)
 {
 	Input input;
@@ -839,7 +1018,9 @@ void lexer(const char* data)
 	input.tokens = &tokens;
 
 	tokens.init(1000);
-	
+
+	Environment env;
+
 	while (input.get())
 	{
 		read_token(input);
@@ -856,6 +1037,7 @@ void lexer(const char* data)
 			break;
 		}
 		print(cell);
+		eval(cell, &env);
 	}
 
 	tokens.destroy();
