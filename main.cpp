@@ -2,6 +2,8 @@
 #include <iostream>
 #include <string>
 #include <cassert>
+#include <stdio.h>
+#include <stdarg.h>
 
 #define DEBUG_LEXER (0)
 
@@ -98,8 +100,13 @@ static void print_rec(const Cell* cell, int is_car)
 	case TYPE_LIST:
 		if (is_car) printf("(");
 		print_rec(cell->data.list.car, 1);
-		printf(" ");
-		print_rec(cell->data.list.cdr, 0);
+
+		if (cell->data.list.cdr)
+		{
+			printf(" ");
+			print_rec(cell->data.list.cdr, 0);
+		}
+
 		if (is_car) printf(")");
 		break;
 	}
@@ -109,6 +116,16 @@ static void print(const Cell* cell)
 {
 	print_rec(cell, 1);
 	printf("\n");
+}
+
+static void signal_error(const char* message, ...)
+{
+	va_list args;
+	va_start(args, message);
+	fprintf(stderr, "Error: ");
+	vfprintf(stderr, message, args);
+	va_end(args);
+	exit(-1);
 }
 
 static Cell* car(const Cell* cell)
@@ -483,9 +500,9 @@ static void read_character(Input& input)
 	{
 		case 's':
 		if (input.next() == 'p'){
-			if (input.next() != 'a') exit(-1);
-			if (input.next() != 'c') exit(-1);
-			if (input.next() != 'e') exit(-1);
+			if (input.next() != 'a') signal_error("space expected");
+			if (input.next() != 'c') signal_error("space expected");
+			if (input.next() != 'e') signal_error("space expected");
 			input.tokens->add_character(' ');
 			return;
 		}
@@ -493,11 +510,11 @@ static void read_character(Input& input)
 
 		case 'n':
 			if (input.next() == 'e'){
-				if (input.next() != 'w') exit(-1);
-				if (input.next() != 'l') exit(-1);
-				if (input.next() != 'i') exit(-1);
-				if (input.next() != 'n') exit(-1);
-				if (input.next() != 'e') exit(-1);
+				if (input.next() != 'w') signal_error("newline expected");
+				if (input.next() != 'l') signal_error("newline expected");
+				if (input.next() != 'i') signal_error("newline expected");
+				if (input.next() != 'n') signal_error("newline expected");
+				if (input.next() != 'e') signal_error("newline expected");
 				input.tokens->add_character('\n'); // newline
 				return;
 			}
@@ -513,8 +530,8 @@ success:
 		input.tokens->add_character(c);
 		return;
 	}
-	
-	exit(-1);
+
+	signal_error("delimeter expected");
 }
 
 // Convert an ascii digit, '0' to '9' into
@@ -569,7 +586,7 @@ void read_string(Input& input)
 				input.tokens->buffer_push(c);
 				continue;
 			}
-			exit(-1); // malformed string.
+			signal_error("malformed string");
 		}
 
 		if (isprint(c))
@@ -578,7 +595,7 @@ void read_string(Input& input)
 			continue;
 		}
 
-		exit(-1); // strange character in string
+		signal_error("unexpected character in string");
 	}
 }
 
@@ -601,8 +618,7 @@ void read_identifier(Input& input)
 			if (is_delimeter(c)) break;
 			if (!is_subsequent(c))
 			{
-				// malformed identifier
-				exit(-1);
+				signal_error("malformed identifier");
 			}
 			input.tokens->buffer_push(c);
 		}
@@ -614,8 +630,7 @@ void read_identifier(Input& input)
 	}
 	else
 	{
-		// not at identifier.
-		exit(-1);
+		signal_error("not at identifier");
 	}
 
 	input.tokens->add_identifier();
@@ -681,7 +696,7 @@ Cell* parse_abreviation(TokenList& tokens)
 {
 	const Token* t = tokens.peek();
 	
-	if (!t) exit(-1);
+	if (!t) signal_error("unexpected end of input");
 
 	if(t->type == TOKEN_QUOTE)
 	{
@@ -737,16 +752,14 @@ Cell* parse_list(TokenList& tokens)
 
 			if (!cell)
 			{
-				// error - expecting a datum after a dot
-				exit(-1);
+				signal_error("expecting a datum after a dot");
 			}
 
 			set_cdr(list, cell);
 
 			if (tokens.peek()->type != TOKEN_LIST_END)
 			{
-				// error - expecting ')' after a datum after a .
-				exit(-1);
+				signal_error("expecting )");
 			}
 
 			tokens.skip();
@@ -762,8 +775,7 @@ Cell* parse_list(TokenList& tokens)
 
 		if (!car)
 		{
-			int x = 1; x++;
-			exit(-1);
+			signal_error("is this unexpected end of input? todo");
 		}
 
 		Cell* rest = cons(car, NULL);
@@ -934,7 +946,7 @@ struct Environment
 	struct Node
 	{
 		const char* symbol;
-		const Cell* value;
+		Cell*       value;
 		Node*		next;
 	};
 
@@ -951,7 +963,7 @@ struct Environment
 		memset(data, 0, num_bytes);
 	}
 
-	const Cell* get(const Cell* symbol) const
+	Cell* get(const Cell* symbol) const
 	{
 		assert(symbol->type == TYPE_SYMBOL);
 		const char* str = symbol->data.symbol;
@@ -968,7 +980,7 @@ struct Environment
 		return NULL;
 	}
 
-	void set(const char* symbol, const Cell* value)
+	void set(const char* symbol, Cell* value)
 	{
 		unsigned hash = mask & MurmurHash2(symbol, strlen(symbol));
 
@@ -990,7 +1002,7 @@ struct Environment
 
 };
 
-static const Cell* eval(Environment* env, const Cell* cell);
+static Cell* eval(Environment* env, Cell* cell);
 
 static Cell* atom_define(Environment* env, Cell* params)
 {
@@ -998,8 +1010,7 @@ static Cell* atom_define(Environment* env, Cell* params)
 
 	if (first->type != TYPE_SYMBOL)
 	{
-		// symbol expected instead of ...
-		exit(-1);
+		signal_error("symbol expected instead of ...");
 	}
 
 	Cell* second = car(cdr(params));
@@ -1007,20 +1018,52 @@ static Cell* atom_define(Environment* env, Cell* params)
 	return NULL;
 }
 
-static Environment* create_environment(const Cell* function)
+static Cell* atom_cons(Environment* env, Cell* params)
+{
+	Cell* first  = eval(env, car(params));
+	Cell* second = eval(env, car(cdr(params)));
+	return cons(first, second);
+}
+
+static Cell* atom_car(Environment* env, Cell* params)
+{
+	Cell* list = eval(env, car(params));
+
+	if (list->type != TYPE_LIST)
+	{
+		signal_error("list expected in call to car");
+	}
+
+	return car(list);
+}
+
+static Cell* atom_cdr(Environment* env, Cell* params)
+{
+	Cell* list = eval(env, car(params));
+
+	if (list->type != TYPE_LIST)
+	{
+		signal_error("list expected in call to cdr");
+	}
+
+	return cdr(list);
+}
+
+static Environment* create_environment(void)
 {
 	Environment* env = (Environment*)malloc(sizeof(Environment));
 	env->init(16);
 	return env;
 }
 
-static const Cell* eval(Environment* env, const Cell* cell)
+static Cell* eval(Environment* env, Cell* cell)
 {
 	assert(cell);
 
 	switch(cell->type)
 	{
 		// basic types will self evaluate
+		case TYPE_BOOLEAN:
 		case TYPE_NUMBER:
 		case TYPE_STRING:
 		case TYPE_CHARACTER:
@@ -1048,6 +1091,17 @@ static const Cell* eval(Environment* env, const Cell* cell)
 	}
 }
 
+static void add_builtin(Environment* env, const char* name, Procedure procedure)
+{
+	assert(env);
+	assert(name);
+	assert(procedure);
+	Cell* cell = new Cell;
+	cell->type = TYPE_PROCEDURE;
+	cell->data.procedure = procedure;
+	env->set(name, cell);
+}
+
 void lexer(const char* data)
 {
 	Input input;
@@ -1057,14 +1111,12 @@ void lexer(const char* data)
 
 	tokens.init(1000);
 
-	Environment env;
+	Environment* env = create_environment();
 
-	env.init(16);
-
-	Cell* define_cell = new Cell;
-	define_cell->type = TYPE_PROCEDURE;
-	define_cell->data.procedure = atom_define;
-	env.set("define", define_cell);
+	add_builtin(env, "define", atom_define);
+	add_builtin(env, "cons",   atom_cons);
+	add_builtin(env, "car",    atom_car);
+	add_builtin(env, "cdr",    atom_cdr);
 
 	while (input.get())
 	{
@@ -1083,13 +1135,14 @@ void lexer(const char* data)
 		}
 		printf("Running: ");
 		print(cell);
-		const Cell* result = eval(&env, cell);
+		const Cell* result = eval(env, cell);
 
 		printf("Result: ");
 		print(result);
 	}
 
 	tokens.destroy();
+	free(env);
 }
 
 char* file_to_string(const char* filename)
@@ -1111,7 +1164,7 @@ int main (int argc, char * const argv[])
 	const char* filename = (argc == 1) ? "awy.scheme" : argv[1];
 
 	char* input = file_to_string(filename);
-	printf("%s\n", input);
+	//printf("%s\n", input);
 	lexer(input);
 	free(input);
 	system ("pause");

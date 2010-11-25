@@ -3,3 +3,22 @@
 
 ; Then see what awy is
 awy
+
+(cons 1 2)
+
+(define marc (cons 3 4))
+
+marc
+
+(car marc)
+(cdr marc)
+
+(define finnegan #f)
+finnegan
+
+(define true #t)
+
+(define bools (cons true finnegan))
+(car bools)
+(cdr bools)
+
