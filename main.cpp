@@ -20,8 +20,14 @@ enum
 	TYPE_STRING,
 	TYPE_LIST,
 	TYPE_VECTOR,
-	TYPE_SYMBOL
+	TYPE_SYMBOL,
+	TYPE_PROCEDURE,
 };
+
+struct Environment;
+struct Cell;
+
+typedef Cell* (*Procedure) (Environment* env, Cell* params);
 
 struct Cell
 {
@@ -39,6 +45,7 @@ struct Cell
 		const char*  string;
 		List   list;
 		const char*  symbol;
+		Procedure procedure;
 	};
 	
 	int  type;
@@ -961,15 +968,13 @@ struct Environment
 		return NULL;
 	}
 
-	void set(const Cell* symbol, const Cell* value)
+	void set(const char* symbol, const Cell* value)
 	{
-		assert(symbol->type == TYPE_SYMBOL);
-		const char* str = symbol->data.symbol;
-		unsigned hash = mask & MurmurHash2(str, strlen(str));
+		unsigned hash = mask & MurmurHash2(symbol, strlen(symbol));
 
 		for (Node* node = data[hash]; node; node = node->next)
 		{
-			if (strcmp(str, node->symbol) == 0)
+			if (strcmp(symbol, node->symbol) == 0)
 			{
 				node->value = value;
 				return;
@@ -977,7 +982,7 @@ struct Environment
 		}
 
 		Node* node = new Node;
-		node->symbol = str;
+		node->symbol = symbol;
 		node->value  = value;
 		node->next   = data[hash];
 		data[hash] = node;
@@ -985,7 +990,31 @@ struct Environment
 
 };
 
-static const Cell* eval(const Cell* cell, Environment* env)
+static const Cell* eval(Environment* env, const Cell* cell);
+
+static Cell* atom_define(Environment* env, Cell* params)
+{
+	Cell* first  = car(params);
+
+	if (first->type != TYPE_SYMBOL)
+	{
+		// symbol expected instead of ...
+		exit(-1);
+	}
+
+	Cell* second = car(cdr(params));
+	env->set(first->data.symbol, eval(env, second));
+	return NULL;
+}
+
+static Environment* create_environment(const Cell* function)
+{
+	Environment* env = (Environment*)malloc(sizeof(Environment));
+	env->init(16);
+	return env;
+}
+
+static const Cell* eval(Environment* env, const Cell* cell)
 {
 	assert(cell);
 
@@ -997,12 +1026,21 @@ static const Cell* eval(const Cell* cell, Environment* env)
 		case TYPE_CHARACTER:
 			return cell;
 
+		case TYPE_SYMBOL:
+			return env->get(cell);
+
 		case TYPE_LIST:
 		{
 			Cell* symbol = car(cell);
 			const Cell* function = env->get(symbol);
+
+			if (function->type == TYPE_PROCEDURE)
+			{
+				return function->data.procedure(env, cdr(cell));
+			}
 			return 0;
 		}
+
 
 		default:
 			assert(false);
@@ -1021,6 +1059,13 @@ void lexer(const char* data)
 
 	Environment env;
 
+	env.init(16);
+
+	Cell* define_cell = new Cell;
+	define_cell->type = TYPE_PROCEDURE;
+	define_cell->data.procedure = atom_define;
+	env.set("define", define_cell);
+
 	while (input.get())
 	{
 		read_token(input);
@@ -1036,8 +1081,12 @@ void lexer(const char* data)
 		{
 			break;
 		}
+		printf("Running: ");
 		print(cell);
-		eval(cell, &env);
+		const Cell* result = eval(&env, cell);
+
+		printf("Result: ");
+		print(result);
 	}
 
 	tokens.destroy();
@@ -1059,7 +1108,7 @@ char* file_to_string(const char* filename)
 
 int main (int argc, char * const argv[])
 {
-	const char* filename = (argc == 1) ? "input.txt" : argv[1];
+	const char* filename = (argc == 1) ? "awy.scheme" : argv[1];
 
 	char* input = file_to_string(filename);
 	printf("%s\n", input);

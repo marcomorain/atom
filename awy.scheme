@@ -1,0 +1,5 @@
+; Set awy to one
+(define awy 1)
+
+; Then see what awy is
+awy
