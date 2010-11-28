@@ -645,7 +645,7 @@ void read_identifier(Input& input)
 			if (is_delimeter(c)) break;
 			if (!is_subsequent(c))
 			{
-				signal_error("malformed identifier");
+				signal_error("malformed identifier at line %d column %d", input.line, input.column);
 			}
 			input.tokens->buffer_push(c);
 		}
@@ -1051,37 +1051,6 @@ static Cell* atom_define(Environment* env, Cell* params)
 	return NULL;
 }
 
-static Cell* atom_cons(Environment* env, Cell* params)
-{
-	Cell* first  = eval(env, car(params));
-	Cell* second = eval(env, car(cdr(params)));
-	return cons(first, second);
-}
-
-static Cell* atom_car(Environment* env, Cell* params)
-{
-	Cell* list = eval(env, car(params));
-
-	if (list->type != TYPE_PAIR)
-	{
-		signal_error("list expected in call to car");
-	}
-
-	return car(list);
-}
-
-static Cell* atom_cdr(Environment* env, Cell* params)
-{
-	Cell* list = eval(env, car(params));
-
-	if (list->type != TYPE_PAIR)
-	{
-		signal_error("list expected in call to cdr");
-	}
-
-	return cdr(list);
-}
-
 static Cell* atom_eqv_q(Environment* env, Cell* params)
 {
 	Cell* obj1 = eval(env, car(params));
@@ -1168,6 +1137,72 @@ static Cell* atom_pair_q(Environment* env, Cell* params)
 	return type_q_helper(env, params, TYPE_PAIR);	
 }
 
+static Cell* atom_cons(Environment* env, Cell* params)
+{
+	Cell* first  = eval(env, car(params));
+	Cell* second = eval(env, car(cdr(params)));
+	return cons(first, second);
+}
+
+static Cell* atom_car(Environment* env, Cell* params)
+{
+	Cell* list = eval(env, car(params));
+
+	if (list->type != TYPE_PAIR)
+	{
+		signal_error("list expected in call to car");
+	}
+
+	return car(list);
+}
+
+static Cell* atom_cdr(Environment* env, Cell* params)
+{
+	Cell* list = eval(env, car(params));
+
+	if (list->type != TYPE_PAIR)
+	{
+		signal_error("list expected in call to cdr");
+	}
+
+	return cdr(list);
+}
+
+static Cell* set_car_cdr_helper(Environment* env, Cell* params, int is_car)
+{
+
+	// @todo: make an error here for constant lists
+	Cell* pair = eval(env, car(params));
+	Cell* obj  = eval(env, car(cdr(params)));
+	
+	if (pair->type != TYPE_PAIR)
+	{
+		signal_error("expected a pair in set-car!");
+	}
+	
+	if (is_car)
+	{
+		pair->data.pair.car = obj;
+	}
+	else
+	{
+		pair->data.pair.cdr = obj;	
+	}
+	
+	// return value here is unspecified
+	return pair;	
+}
+
+static Cell* atom_set_car_b(Environment* env, Cell* params)
+{
+	return set_car_cdr_helper(env, params, 1);
+}
+
+static Cell* atom_set_cdr_b(Environment* env, Cell* params)
+{
+	return set_car_cdr_helper(env, params, 0);
+}
+
 static Cell* always_false(Environment* env, Cell* params)
 {
 	return make_boolean(false);
@@ -1244,9 +1279,6 @@ void lexer(const char* data)
 	Environment* env = create_environment();
 
 	add_builtin(env, "define",    atom_define);
-	add_builtin(env, "cons",      atom_cons);
-	add_builtin(env, "car",       atom_car);
-	add_builtin(env, "cdr",       atom_cdr);
 	add_builtin(env, "eqv?",      atom_eqv_q);
 	add_builtin(env, "number?",   atom_number_q);
 	add_builtin(env, "complex?",  always_false);
@@ -1256,6 +1288,11 @@ void lexer(const char* data)
 	add_builtin(env, "not",		  atom_not);
 	add_builtin(env, "boolean?",  atom_boolean_q);
 	add_builtin(env, "pair?",     atom_pair_q);
+	add_builtin(env, "cons",      atom_cons);
+	add_builtin(env, "car",       atom_car);
+	add_builtin(env, "cdr",       atom_cdr);
+	add_builtin(env, "set-car!",  atom_set_car_b);
+	add_builtin(env, "set-cdr!",  atom_set_cdr_b);
 
 	while (input.get())
 	{

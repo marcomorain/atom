@@ -40,3 +40,9 @@ finnegan
 (pair? #\newline)
 (pair? bools)
 (pair? awy)
+
+
+bools
+(set-car! bools #f)
+(set-car! bools #t)
+bools
