@@ -471,12 +471,12 @@ bool is_special_initial(char c)
 	return false;
 }
 
-bool is_letter(char c)
+static bool is_letter(char c)
 {
 	return !!isalpha(c);
 }
 
-bool is_initial(char c)
+static bool is_initial(char c)
 {
 	return is_letter(c) || is_special_initial(c);
 }
@@ -485,6 +485,7 @@ bool is_delimeter(char c)
 {
 	switch (c)
 	{
+		case 0: // @todo: having null here is a bit of a hack - not in the spec.
 		case ' ':
 		case '\n':
 		case '\t':
@@ -1203,6 +1204,52 @@ static Cell* atom_set_cdr_b(Environment* env, Cell* params)
 	return set_car_cdr_helper(env, params, 0);
 }
 
+// Returns #t if obj is the empty list, otherwise returns #f.
+static Cell* atom_null_q(Environment* env, Cell* params)
+{
+	Cell* obj = eval(env, car(params));
+	return make_boolean(obj->type == TYPE_PAIR &&
+						obj->data.pair.car == NULL &&
+						obj->data.pair.cdr == NULL);
+}
+
+// (list? obj)	library procedure
+// Returns #t if obj is a list, otherwise returns #f. By definition, all
+// lists have finite length and are terminated by the empty list.
+static Cell* atom_list_q(Environment* env, Cell* params)
+{
+	Cell* obj = eval(env, car(params));
+	
+	if (obj->type == TYPE_PAIR)
+	{
+		if (Cell* rest = obj->data.pair.cdr)
+		{
+			// @todo: should this recurse O(N)
+			// to see it list terminates?
+			return make_boolean(rest->type == TYPE_PAIR);
+		}
+		
+		return make_boolean(true);
+	}
+	
+	return make_boolean(false);
+}
+
+static Cell* atom_list(Environment* env, Cell* params)
+{
+	// @todo: use an empty list type here.
+	Cell* result = cons(NULL, NULL);
+	
+	for (;;)
+	{
+		set_car(result, eval(env, car(params)));
+		set_cdr(result, cons(NULL, NULL));
+		params = cdr(params);
+	}
+	
+	return result;
+}
+
 static Cell* always_false(Environment* env, Cell* params)
 {
 	return make_boolean(false);
@@ -1293,6 +1340,9 @@ void lexer(const char* data)
 	add_builtin(env, "cdr",       atom_cdr);
 	add_builtin(env, "set-car!",  atom_set_car_b);
 	add_builtin(env, "set-cdr!",  atom_set_cdr_b);
+	add_builtin(env, "null?",     atom_null_q);
+	add_builtin(env, "list?",     atom_list_q);
+	add_builtin(env, "list",      atom_list);
 
 	while (input.get())
 	{

@@ -44,5 +44,9 @@ finnegan
 
 bools
 (set-car! bools #f)
-(set-car! bools #t)
+(set-cdr! bools #t)
 bools
+
+; (list? ’(a b c))  => #t
+; (list? ’())	      => #t
+; (list? ’(a . b))	=> #f
