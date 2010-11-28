@@ -145,10 +145,16 @@ static void signal_error(const char* message, ...)
 	exit(-1);
 }
 
-static Cell* make_boolean(bool value)
+static Cell* make_cell(int type)
 {
 	Cell* result = (Cell*)malloc(sizeof(Cell));
-	result->type = TYPE_BOOLEAN;
+	result->type = type;
+	return result;	
+}
+
+static Cell* make_boolean(bool value)
+{
+	Cell* result = make_cell(TYPE_BOOLEAN);
 	result->data.boolean = value;
 	return result;
 }
@@ -179,8 +185,7 @@ static void set_cdr(Cell* list, Cell* cdr)
 
 static Cell* cons(Cell* car, Cell* cdr)
 {
-	Cell* cell = new Cell;
-	cell->type = TYPE_PAIR;
+	Cell* cell = make_cell(TYPE_PAIR);
 	set_car(cell, car);
 	set_cdr(cell, cdr);
 	return cell;
@@ -835,8 +840,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 	{
 		case TOKEN_BOOLEAN:
 		{
-			Cell* cell = new Cell;
-			cell->type = TYPE_BOOLEAN;
+			Cell* cell = make_cell(TYPE_BOOLEAN);
 			cell->data.boolean = t->data.boolean;
 			tokens.skip();
 			return cell;
@@ -844,8 +848,8 @@ Cell* parse_simple_datum(TokenList& tokens)
 
 		case TOKEN_CHARACTER:
 		{
-			Cell* cell = new Cell;
-			cell->type = TYPE_CHARACTER;
+			
+			Cell* cell = make_cell(TYPE_CHARACTER);
 			cell->data.character = t->data.character;
 			tokens.skip();
 			return cell;
@@ -853,8 +857,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 
 		case TOKEN_NUMBER:
 		{
-			Cell* cell = new Cell;
-			cell->type = TYPE_NUMBER;
+			Cell* cell = make_cell(TYPE_NUMBER);
 			cell->data.number = t->data.number;
 			tokens.skip();
 			return cell;
@@ -862,8 +865,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 
 		case TOKEN_IDENTIFIER:
 		{
-			Cell* cell = new Cell;
-			cell->type = TYPE_SYMBOL;
+			Cell* cell = make_cell(TYPE_SYMBOL);
 			cell->data.symbol = t->data.identifier;
 			tokens.skip();
 			return cell;
@@ -871,8 +873,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 		
 		case TOKEN_STRING:
 		{
-			Cell* cell = new Cell;
-			cell->type = TYPE_STRING;
+			Cell* cell = make_cell(TYPE_STRING);
 			cell->data.string = t->data.string;
 			tokens.skip();
 			return cell;
@@ -1235,6 +1236,7 @@ static Cell* atom_list_q(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+// (list obj ...) Returns a newly allocated list of its arguments.
 static Cell* atom_list(Environment* env, Cell* params)
 {
 	// @todo: use an empty list type here.
@@ -1248,6 +1250,74 @@ static Cell* atom_list(Environment* env, Cell* params)
 	}
 	
 	return result;
+}
+
+// (length list) Returns the length of list.
+static Cell* atom_length(Environment* env, Cell* params)
+{	
+	int length = 1;
+
+	for (Cell* list = eval(env, car(params)); list; list = list->data.pair.cdr)
+	{
+		if (list->type != TYPE_PAIR)
+		{
+			signal_error("List expected");
+		}
+		length++;
+	}
+	
+	Cell* result = make_cell(TYPE_NUMBER);
+	result->data.number = (double)length;
+	return result;
+}
+
+// (append list ...)
+// Returns a list consisting of the elements of the first list followed by
+// the elements of the other lists.
+static Cell* atom_append(Environment* env, Cell* params)
+{
+	Cell* result = cons(NULL, NULL);
+	
+	// for each list
+	for (Cell* head = eval(env, car(params)); head; head = head->data.pair.cdr)
+	{
+		if (head->type != TYPE_PAIR)
+		{
+			signal_error("Expected a list");
+		}
+		
+		// append all of the items in the list
+		for (Cell* obj = head; obj; obj = cdr(obj))
+		{
+			set_car(result, car(obj));
+			set_cdr(result, cons(NULL, NULL));
+			result = cdr(result);
+		}
+	}
+	
+	return result;
+	
+}
+
+// a bunh of functions are missing here....
+
+// 6.3.3. Symbols
+
+// (symbol? obj)
+// Returns #t if obj is a symbol, otherwise returns #f.
+static Cell* atom_symbol_q(Environment* env, Cell* params)
+{
+	return type_q_helper(env, params, TYPE_SYMBOL);
+}
+
+
+// 6.4. Control features
+
+// (procedure? obj)
+// Returns #t if obj is a procedure, otherwise returns #f.
+static Cell* atom_procedure_q(Environment* env, Cell* params)
+{
+	return type_q_helper(env, params, TYPE_PROCEDURE);
 }
 
 static Cell* always_false(Environment* env, Cell* params)
@@ -1308,8 +1378,8 @@ static void add_builtin(Environment* env, const char* name, Procedure procedure)
 	assert(env);
 	assert(name);
 	assert(procedure);
-	Cell* cell = new Cell;
-	cell->type = TYPE_PROCEDURE;
+	
+	Cell* cell = make_cell(TYPE_PROCEDURE);
 	cell->data.procedure = procedure;
 	env->set(name, cell);
 }
@@ -1325,25 +1395,29 @@ void lexer(const char* data)
 
 	Environment* env = create_environment();
 
-	add_builtin(env, "define",    atom_define);
-	add_builtin(env, "eqv?",      atom_eqv_q);
-	add_builtin(env, "number?",   atom_number_q);
-	add_builtin(env, "complex?",  always_false);
-	add_builtin(env, "real?",     atom_number_q);
-	add_builtin(env, "rational?", always_false);
-	add_builtin(env, "integer?",  atom_integer_q);
-	add_builtin(env, "not",		  atom_not);
-	add_builtin(env, "boolean?",  atom_boolean_q);
-	add_builtin(env, "pair?",     atom_pair_q);
-	add_builtin(env, "cons",      atom_cons);
-	add_builtin(env, "car",       atom_car);
-	add_builtin(env, "cdr",       atom_cdr);
-	add_builtin(env, "set-car!",  atom_set_car_b);
-	add_builtin(env, "set-cdr!",  atom_set_cdr_b);
-	add_builtin(env, "null?",     atom_null_q);
-	add_builtin(env, "list?",     atom_list_q);
-	add_builtin(env, "list",      atom_list);
-
+	add_builtin(env, "define",     atom_define);
+	add_builtin(env, "eqv?",       atom_eqv_q);
+	add_builtin(env, "number?",    atom_number_q);
+	add_builtin(env, "complex?",   always_false);
+	add_builtin(env, "real?",      atom_number_q);
+	add_builtin(env, "rational?",  always_false);
+	add_builtin(env, "integer?",   atom_integer_q);
+	add_builtin(env, "not",		   atom_not);
+	add_builtin(env, "boolean?",   atom_boolean_q);
+	add_builtin(env, "pair?",      atom_pair_q);
+	add_builtin(env, "cons",       atom_cons);
+	add_builtin(env, "car",        atom_car);
+	add_builtin(env, "cdr",        atom_cdr);
+	add_builtin(env, "set-car!",   atom_set_car_b);
+	add_builtin(env, "set-cdr!",   atom_set_cdr_b);
+	add_builtin(env, "null?",      atom_null_q);
+	add_builtin(env, "list?",      atom_list_q);
+	add_builtin(env, "list",       atom_list);
+	add_builtin(env, "length",     atom_length);
+	add_builtin(env, "append",     atom_append);
+	add_builtin(env, "symbol?",    atom_symbol_q);
+	add_builtin(env, "procedure?", atom_procedure_q);
+	
 	while (input.get())
 	{
 		read_token(input);
