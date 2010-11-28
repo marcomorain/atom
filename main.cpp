@@ -20,7 +20,7 @@ enum
 	TYPE_CHARACTER,
 	TYPE_NUMBER,
 	TYPE_STRING,
-	TYPE_LIST,
+	TYPE_PAIR,
 	TYPE_VECTOR,
 	TYPE_SYMBOL,
 	TYPE_PROCEDURE,
@@ -33,7 +33,7 @@ typedef Cell* (*Procedure) (Environment* env, Cell* params);
 
 struct Cell
 {
-	struct List
+	struct Pair
 	{
 		Cell* car;
 		Cell* cdr;
@@ -41,13 +41,13 @@ struct Cell
 
 	union Data
 	{
-		bool   boolean;
-		char   character;
-		double number;
+		bool         boolean;
+		char         character;
+		double       number;
 		const char*  string;
-		List   list;
+		Pair         pair;
 		const char*  symbol;
-		Procedure procedure;
+		Procedure    procedure;
 	};
 	
 	int  type;
@@ -97,14 +97,14 @@ static void print_rec(const Cell* cell, int is_car)
 		printf("%s", cell->data.symbol);
 		break;
 
-	case TYPE_LIST:
+	case TYPE_PAIR:
 		if (is_car) printf("(");
-		print_rec(cell->data.list.car, 1);
+		print_rec(cell->data.pair.car, 1);
 
-		if (cell->data.list.cdr)
+		if (cell->data.pair.cdr)
 		{
 			printf(" ");
-			print_rec(cell->data.list.cdr, 0);
+			print_rec(cell->data.pair.cdr, 0);
 		}
 
 		if (is_car) printf(")");
@@ -128,34 +128,42 @@ static void signal_error(const char* message, ...)
 	exit(-1);
 }
 
+static Cell* make_boolean(bool value)
+{
+	Cell* result = (Cell*)malloc(sizeof(Cell));
+	result->type = TYPE_BOOLEAN;
+	result->data.boolean = value;
+	return result;
+}
+
 static Cell* car(const Cell* cell)
 {
-	assert(cell->type == TYPE_LIST);
-	return cell->data.list.car;
+	assert(cell->type == TYPE_PAIR);
+	return cell->data.pair.car;
 }
 
 static Cell* cdr(const Cell* cell)
 {
-	assert(cell->type == TYPE_LIST);
-	return cell->data.list.cdr;
+	assert(cell->type == TYPE_PAIR);
+	return cell->data.pair.cdr;
 }
 
 static void set_car(Cell* list, Cell* car)
 {
-	assert(list->type == TYPE_LIST);
-	list->data.list.car = car;
+	assert(list->type == TYPE_PAIR);
+	list->data.pair.car = car;
 }
 
 static void set_cdr(Cell* list, Cell* cdr)
 {
-	assert(list->type == TYPE_LIST);
-	list->data.list.cdr = cdr;
+	assert(list->type == TYPE_PAIR);
+	list->data.pair.cdr = cdr;
 }
 
 static Cell* cons(Cell* car, Cell* cdr)
 {
 	Cell* cell = new Cell;
-	cell->type = TYPE_LIST;
+	cell->type = TYPE_PAIR;
 	set_car(cell, car);
 	set_cdr(cell, cdr);
 	return cell;
@@ -1029,7 +1037,7 @@ static Cell* atom_car(Environment* env, Cell* params)
 {
 	Cell* list = eval(env, car(params));
 
-	if (list->type != TYPE_LIST)
+	if (list->type != TYPE_PAIR)
 	{
 		signal_error("list expected in call to car");
 	}
@@ -1041,13 +1049,82 @@ static Cell* atom_cdr(Environment* env, Cell* params)
 {
 	Cell* list = eval(env, car(params));
 
-	if (list->type != TYPE_LIST)
+	if (list->type != TYPE_PAIR)
 	{
 		signal_error("list expected in call to cdr");
 	}
 
 	return cdr(list);
 }
+
+static Cell* atom_eqv_q(Environment* env, Cell* params)
+{
+	Cell* obj1 = eval(env, car(params));
+	Cell* obj2 = eval(env, car(cdr(params)));
+	
+	bool result = false;
+	
+	const int type = obj1->type;
+	
+	if (type == obj2->type)
+	{
+		switch(type)
+		{
+			case TYPE_BOOLEAN:
+			result = obj1->data.boolean == obj2->data.boolean;
+			break;
+			
+			case TYPE_CHARACTER:
+			result = obj1->data.character == obj2->data.character;
+			break;
+			
+			case TYPE_SYMBOL:
+			// @todo: intern symbols, use pointer equality
+			result = 0 == strcmp(obj1->data.symbol, obj2->data.symbol);
+			break;
+			
+			case TYPE_NUMBER:
+			result = obj1->data.number == obj2->data.number;
+			break;
+			
+			case TYPE_PAIR:
+			case TYPE_VECTOR:
+			case TYPE_STRING:
+			result = obj1 == obj2;
+			break;
+			
+			default:
+			// unhandled case
+			assert(0);
+			break;
+		}
+	}
+	
+	return make_boolean(result);
+}
+
+
+static Cell* atom_number_q(Environment* env, Cell* params)
+{
+	Cell* obj = eval(env, car(params));
+	return make_boolean(obj->type == TYPE_NUMBER);
+}
+
+static Cell* atom_integer_q(Environment* env, Cell* params)
+{
+	Cell* obj = eval(env, car(params));
+	
+	bool integer =	obj->type == TYPE_NUMBER &&
+					obj->data.number == (int)obj->data.number;
+	
+	return make_boolean(integer);
+}
+
+static Cell* always_false(Environment* env, Cell* params)
+{
+	return make_boolean(false);
+}
+
 
 static Environment* create_environment(void)
 {
@@ -1072,7 +1149,7 @@ static Cell* eval(Environment* env, Cell* cell)
 		case TYPE_SYMBOL:
 			return env->get(cell);
 
-		case TYPE_LIST:
+		case TYPE_PAIR:
 		{
 			Cell* symbol = car(cell);
 			const Cell* function = env->get(symbol);
@@ -1113,10 +1190,16 @@ void lexer(const char* data)
 
 	Environment* env = create_environment();
 
-	add_builtin(env, "define", atom_define);
-	add_builtin(env, "cons",   atom_cons);
-	add_builtin(env, "car",    atom_car);
-	add_builtin(env, "cdr",    atom_cdr);
+	add_builtin(env, "define",    atom_define);
+	add_builtin(env, "cons",      atom_cons);
+	add_builtin(env, "car",       atom_car);
+	add_builtin(env, "cdr",       atom_cdr);
+	add_builtin(env, "eqv?",      atom_eqv_q);
+	add_builtin(env, "number?",   atom_number_q);
+	add_builtin(env, "complex?",  always_false);
+	add_builtin(env, "real?",     atom_number_q);
+	add_builtin(env, "rational?", always_false);
+	add_builtin(env, "integer?",  atom_integer_q);
 
 	while (input.get())
 	{

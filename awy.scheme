@@ -22,3 +22,8 @@ finnegan
 (car bools)
 (cdr bools)
 
+(number? 1)
+(number? awy)
+(number #t)
+(number #f)
+(number #\space)
