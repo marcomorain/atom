@@ -86,8 +86,24 @@ static void print_rec(const Cell* cell, int is_car)
 		break;
 
 	case TYPE_CHARACTER:
-		printf("%c [character]", cell->data.character);
-		break;
+		{
+			char c = cell->data.character;
+			switch(c)
+			{
+				case ' ':
+				printf("#\\space");
+				break;
+				
+				case '\n':
+				printf("#\\newline");
+				break;
+				
+				default:
+				printf("#\\%c", c);
+				break;
+			}
+			break;
+		}
 
 	case TYPE_STRING:
 		printf("\"%s\"", cell->data.string);
@@ -124,6 +140,7 @@ static void signal_error(const char* message, ...)
 	va_start(args, message);
 	fprintf(stderr, "Error: ");
 	vfprintf(stderr, message, args);
+	fprintf(stderr, "\n");
 	va_end(args);
 	exit(-1);
 }
@@ -511,6 +528,7 @@ static void read_character(Input& input)
 			if (input.next() != 'a') signal_error("space expected");
 			if (input.next() != 'c') signal_error("space expected");
 			if (input.next() != 'e') signal_error("space expected");
+			if (!is_delimeter(input.next())) signal_error("space expected");
 			input.tokens->add_character(' ');
 			return;
 		}
@@ -523,6 +541,7 @@ static void read_character(Input& input)
 				if (input.next() != 'i') signal_error("newline expected");
 				if (input.next() != 'n') signal_error("newline expected");
 				if (input.next() != 'e') signal_error("newline expected");
+				if (!is_delimeter(input.next())) signal_error("newline expected");
 				input.tokens->add_character('\n'); // newline
 				return;
 			}
@@ -1012,6 +1031,12 @@ struct Environment
 
 static Cell* eval(Environment* env, Cell* cell);
 
+static Cell* type_q_helper(Environment* env, Cell* params, int type)
+{
+	Cell* obj = eval(env, car(params));
+	return make_boolean(obj->type == type);
+}
+
 static Cell* atom_define(Environment* env, Cell* params)
 {
 	Cell* first  = car(params);
@@ -1106,8 +1131,7 @@ static Cell* atom_eqv_q(Environment* env, Cell* params)
 
 static Cell* atom_number_q(Environment* env, Cell* params)
 {
-	Cell* obj = eval(env, car(params));
-	return make_boolean(obj->type == TYPE_NUMBER);
+	return type_q_helper(env, params, TYPE_NUMBER);
 }
 
 static Cell* atom_integer_q(Environment* env, Cell* params)
@@ -1118,6 +1142,30 @@ static Cell* atom_integer_q(Environment* env, Cell* params)
 					obj->data.number == (int)obj->data.number;
 	
 	return make_boolean(integer);
+}
+
+// 6.3
+
+// 6.3.1: Booleans
+
+static Cell* atom_boolean_q(Environment* env, Cell* params)
+{
+	return type_q_helper(env, params, TYPE_BOOLEAN);	
+}
+
+static Cell* atom_not(Environment* env, Cell* params)
+{
+	Cell* obj = eval(env, car(params));
+	bool is_truthy = obj->type != TYPE_BOOLEAN || obj->data.boolean;
+	return make_boolean(!is_truthy);
+}
+
+// 6.3.2 Pairs and lists
+
+
+static Cell* atom_pair_q(Environment* env, Cell* params)
+{
+	return type_q_helper(env, params, TYPE_PAIR);	
 }
 
 static Cell* always_false(Environment* env, Cell* params)
@@ -1153,6 +1201,11 @@ static Cell* eval(Environment* env, Cell* cell)
 		{
 			Cell* symbol = car(cell);
 			const Cell* function = env->get(symbol);
+			
+			if (!function)
+			{
+				signal_error("Undefined symbol");
+			}
 
 			if (function->type == TYPE_PROCEDURE)
 			{
@@ -1200,6 +1253,9 @@ void lexer(const char* data)
 	add_builtin(env, "real?",     atom_number_q);
 	add_builtin(env, "rational?", always_false);
 	add_builtin(env, "integer?",  atom_integer_q);
+	add_builtin(env, "not",		  atom_not);
+	add_builtin(env, "boolean?",  atom_boolean_q);
+	add_builtin(env, "pair?",     atom_pair_q);
 
 	while (input.get())
 	{
@@ -1216,11 +1272,10 @@ void lexer(const char* data)
 		{
 			break;
 		}
-		printf("Running: ");
+		printf("> ");
 		print(cell);
 		const Cell* result = eval(env, cell);
 
-		printf("Result: ");
 		print(result);
 	}
 
