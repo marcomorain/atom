@@ -29,7 +29,7 @@ enum
 struct Environment;
 struct Cell;
 
-typedef Cell* (*Procedure) (Environment* env, Cell* params);
+typedef Cell* (*Function) (Environment* env, Cell* params);
 
 struct Cell
 {
@@ -37,6 +37,15 @@ struct Cell
 	{
 		Cell* car;
 		Cell* cdr;
+	};
+	
+	struct Procedure
+	{
+		// If function is null, then the procedure
+		// is created scheme, otherwise it is a built-in
+		Function function;
+		Cell*    formals;
+		Cell*    body;
 	};
 
 	union Data
@@ -148,6 +157,7 @@ static void signal_error(const char* message, ...)
 static Cell* make_cell(int type)
 {
 	Cell* result = (Cell*)malloc(sizeof(Cell));
+	memset(result, 0, sizeof(Cell));
 	result->type = type;
 	return result;	
 }
@@ -979,17 +989,18 @@ struct Environment
 		Node*		next;
 	};
 
-	Node**		data;
-	unsigned	mask;
+	Environment* parent;
+	Node**		 data;
+	unsigned	 mask;
 
-
-	void init(int size)
+	void init(int size, Environment* parent_env)
 	{
 		assert(power_of_two(size));
 		mask = size-1;
 		const size_t num_bytes = size * sizeof(Node*);
 		data = (Node**)malloc(num_bytes);
 		memset(data, 0, num_bytes);
+		parent = parent_env;
 	}
 
 	Cell* get(const Cell* symbol) const
@@ -1004,6 +1015,11 @@ struct Environment
 			{
 				return node->value;
 			}
+		}
+		
+		if (parent)
+		{
+			return parent->get(symbol);
 		}
 
 		return NULL;
@@ -1022,6 +1038,7 @@ struct Environment
 			}
 		}
 
+		// @todo: make set different to define
 		Node* node = new Node;
 		node->symbol = symbol;
 		node->value  = value;
@@ -1051,6 +1068,14 @@ static Cell* atom_define(Environment* env, Cell* params)
 	Cell* second = car(cdr(params));
 	env->set(first->data.symbol, eval(env, second));
 	return NULL;
+}
+
+static Cell* atom_lambda(Environment* env, Cell* params)
+{
+	Cell* proc = make_cell(TYPE_PROCEDURE);
+	proc->data.procedure.formals = car(params);
+	proc->data.procedure.body    = cdr(params);
+	return proc;
 }
 
 static Cell* atom_eqv_q(Environment* env, Cell* params)
@@ -1320,21 +1345,56 @@ static Cell* atom_procedure_q(Environment* env, Cell* params)
 	return type_q_helper(env, params, TYPE_PROCEDURE);
 }
 
+// (display	obj)
+// (display obj port)
+// Writes a representation of obj to the given port. Strings that appear
+// in the written representation are not enclosed in doublequotes, and no
+// characters are escaped within those strings. Character objects appear
+// in the representation as if written by write-char instead of by write.
+// Display returns an unspecified value.
+// The port argument may be omitted, in which case it defaults to the
+// value returned by current-output-port.
+static Cell* atom_display(Environment* env, Cell* params)
+{
+	// @todo: handle port
+	Cell* obj = eval(env, car(params));
+	print(obj);
+	return obj; // unspecified
+}
+
+// (newline)
+// (newline port)
+// Writes an end of line to port.
+// Exactly how this is done differs from one operating system to another.
+// Returns an unspecified value.
+// The port argument may be omitted, in which case it defaults to the
+// value returned by current-output-port.
+static Cell* atom_newline(Environment* env, Cell* params)
+{
+	printf("\n");
+	return params; // unspecified
+}
+
+// This function always returns false.
+// It is used as a proxy for functions like complex? that are never true.
 static Cell* always_false(Environment* env, Cell* params)
 {
 	return make_boolean(false);
 }
 
 
-static Environment* create_environment(void)
+static Environment* create_environment(Environment* parent)
 {
 	Environment* env = (Environment*)malloc(sizeof(Environment));
-	env->init(16);
+	env->init(16, parent);
 	return env;
 }
 
 static Cell* eval(Environment* env, Cell* cell)
 {
+
+tailcall:
+
 	assert(cell);
 
 	switch(cell->type)
@@ -1352,20 +1412,66 @@ static Cell* eval(Environment* env, Cell* cell)
 		case TYPE_PAIR:
 		{
 			Cell* symbol = car(cell);
+			
+			if (symbol->type != TYPE_SYMBOL)
+			{
+				signal_error("should be a symbol");
+			}
+			
 			const Cell* function = env->get(symbol);
 			
 			if (!function)
 			{
-				signal_error("Undefined symbol");
+				signal_error("Undefined symbol '%s'", symbol->data.symbol);
 			}
 
-			if (function->type == TYPE_PROCEDURE)
+			if (function->type != TYPE_PROCEDURE)
 			{
-				return function->data.procedure(env, cdr(cell));
+				signal_error("%s is not a function", symbol->data.symbol);
 			}
-			return 0;
+			
+			const Cell::Procedure* proc = &function->data.procedure;
+			
+			if (Function f = proc->function)
+			{
+				return f(env, cdr(cell));
+			}
+			
+			Environment* new_env = create_environment(env);
+			
+			Cell* params = cdr(cell);
+			for (const Cell* formals = proc->formals; formals; formals = cdr(formals))
+			{
+				// @todo: formals should be NULL for (lambda () 'noop)
+				if (car(formals))
+				{
+					assert(car(formals)->type == TYPE_SYMBOL);
+					new_env->set(car(formals)->data.symbol, car(params));
+					params = cdr(params);
+				}
+			}
+			
+			Cell* last_result = NULL;
+			
+			for (const Cell* statement = proc->body; statement; statement = cdr(statement))
+			{
+				bool last = cdr(statement) == NULL;
+				
+				// tailcall optimization for the 
+				// last statement in the list.
+				if (last)
+				{
+					env  = new_env;
+					cell = car(statement);
+					goto tailcall;
+				}
+				
+				last_result = eval(new_env, car(statement));
+			}
+			
+			assert(false); // @todo - i don't think this can happen
+			return last_result;
 		}
-
 
 		default:
 			assert(false);
@@ -1373,14 +1479,14 @@ static Cell* eval(Environment* env, Cell* cell)
 	}
 }
 
-static void add_builtin(Environment* env, const char* name, Procedure procedure)
+static void add_builtin(Environment* env, const char* name, Function function)
 {
 	assert(env);
 	assert(name);
-	assert(procedure);
+	assert(function);
 	
 	Cell* cell = make_cell(TYPE_PROCEDURE);
-	cell->data.procedure = procedure;
+	cell->data.procedure.function = function;
 	env->set(name, cell);
 }
 
@@ -1393,7 +1499,7 @@ void lexer(const char* data)
 
 	tokens.init(1000);
 
-	Environment* env = create_environment();
+	Environment* env = create_environment(NULL);
 
 	add_builtin(env, "define",     atom_define);
 	add_builtin(env, "eqv?",       atom_eqv_q);
@@ -1417,6 +1523,9 @@ void lexer(const char* data)
 	add_builtin(env, "append",     atom_append);
 	add_builtin(env, "symbol?",    atom_symbol_q);
 	add_builtin(env, "procedure?", atom_procedure_q);
+	add_builtin(env, "lambda",     atom_lambda);
+	add_builtin(env, "display",	   atom_display);
+	add_builtin(env, "newline",	   atom_newline);
 	
 	while (input.get())
 	{
@@ -1460,7 +1569,7 @@ char* file_to_string(const char* filename)
 
 int main (int argc, char * const argv[])
 {
-	const char* filename = (argc == 1) ? "awy.scheme" : argv[1];
+	const char* filename = (argc == 1) ? "input.txt" : argv[1];
 
 	char* input = file_to_string(filename);
 	//printf("%s\n", input);
