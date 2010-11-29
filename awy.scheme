@@ -1,3 +1,5 @@
+'()
+
 ; Set awy to one
 (define awy 1)
 
@@ -47,6 +49,11 @@ bools
 (set-cdr! bools #t)
 bools
 
-; (list? ’(a b c))  => #t
-; (list? ’())	      => #t
-; (list? ’(a . b))	=> #f
+(list? (quote(a b c))) ; => #t
+(list? (quote()))	     ; => #t
+(list? (quote(a . b))) ; => #f
+(list? '(a b c))
+
+(+ 1 1 1 1)
+(* 1)
+(*)

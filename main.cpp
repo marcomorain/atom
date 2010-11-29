@@ -63,6 +63,9 @@ struct Cell
 	Data data;
 };
 
+static Cell cell_true  = { TYPE_BOOLEAN, {true } };
+static Cell cell_false = { TYPE_BOOLEAN, {false} };
+
 enum Type
 {
 	TOKEN_IDENTIFIER,
@@ -125,11 +128,12 @@ static void print_rec(const Cell* cell, int is_car)
 	case TYPE_PAIR:
 		if (is_car) printf("(");
 		print_rec(cell->data.pair.car, 1);
-
-		if (cell->data.pair.cdr)
+		
+		if (Cell* c = cell->data.pair.cdr)
 		{
 			printf(" ");
-			print_rec(cell->data.pair.cdr, 0);
+			if (c->type != TYPE_PAIR) printf(". ");
+			print_rec(c, 0);
 		}
 
 		if (is_car) printf(")");
@@ -164,9 +168,15 @@ static Cell* make_cell(int type)
 
 static Cell* make_boolean(bool value)
 {
-	Cell* result = make_cell(TYPE_BOOLEAN);
-	result->data.boolean = value;
+	Cell* result = value ? &cell_true : &cell_false;
 	return result;
+}
+
+static Cell* make_number(double value)
+{
+	Cell* number = make_cell(TYPE_NUMBER);
+	number->data.number = value;
+	return number;
 }
 
 static Cell* car(const Cell* cell)
@@ -533,7 +543,6 @@ static bool is_subsequent(char c)
 	return is_initial(c) || is_digit(c) || is_special_subsequent(c);
 }
 
-
 static void read_character(Input& input)
 {
 	char c = input.get();
@@ -605,8 +614,6 @@ void read_number(Input& input)
 		accum += char_to_double(c);
 	}
 }
-
-
 
 void read_string(Input& input)
 {
@@ -686,7 +693,8 @@ void read_token(Input& input)
 	
 	char c = input.get();
 	
-	switch(c){
+	switch(c)
+	{
 		case '(':  input.next(); input.tokens->add_list_start(); break;
 		case ')':  input.next(); input.tokens->add_list_end();   break;
 		case '\'': input.next(); input.tokens->add_quote();      break;
@@ -743,8 +751,12 @@ Cell* parse_abreviation(TokenList& tokens)
 
 	if(t->type == TOKEN_QUOTE)
 	{
+		Cell* quote        = make_cell(TYPE_SYMBOL);
+		quote->data.symbol = "quote";
 		tokens.skip();
-		return parse_datum(tokens);
+		return cons(quote,
+					cons(parse_datum(tokens),
+				         cons(NULL, NULL)));
 	}
 
 	if (t->type == TOKEN_BACKTICK)
@@ -788,6 +800,11 @@ Cell* parse_list(TokenList& tokens)
 
 	for (;;)
 	{
+		if (!tokens.peek())
+		{
+			signal_error("Unexpected end of input.");
+		}
+		
 		if (tokens.peek()->type == TOKEN_DOT)
 		{
 			tokens.skip();
@@ -867,8 +884,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 
 		case TOKEN_NUMBER:
 		{
-			Cell* cell = make_cell(TYPE_NUMBER);
-			cell->data.number = t->data.number;
+			Cell* cell = make_number(t->data.number);
 			tokens.skip();
 			return cell;
 		}
@@ -1056,6 +1072,17 @@ static Cell* type_q_helper(Environment* env, Cell* params, int type)
 	return make_boolean(obj->type == type);
 }
 
+// 4.1.2
+// Literal Expressions
+
+// (quote <datum>) evaluates to <datum>. <Datum> may be any external
+// representation of a Scheme object (see section 3.3). This notation is
+// used to include literal constants in Scheme code.
+static Cell* atom_quote(Environment* env, Cell* params)
+{
+	return car(params);
+}
+
 static Cell* atom_define(Environment* env, Cell* params)
 {
 	Cell* first  = car(params);
@@ -1122,6 +1149,52 @@ static Cell* atom_eqv_q(Environment* env, Cell* params)
 	}
 	
 	return make_boolean(result);
+}
+
+// 6.2.5 Numerical Operations
+
+
+static Cell* plus_mul_helper(Environment* env,
+							 Cell* params,
+							 bool is_add,
+							 double identity)
+{
+	double result = identity;
+	
+	for (Cell* z = params; z; z = cdr(z))
+	{
+		Cell* n = car(z);
+		if (n && n->type == TYPE_NUMBER)
+		{
+			if (is_add)
+			{
+				result += n->data.number;
+			}
+			else
+			{
+				result *= n->data.number;
+			}
+		}
+		else
+		{
+			signal_error("Number expected");
+		}
+	}
+	return make_number(result);
+}
+
+// (+ z1 ...)
+// Return the sum or product of the arguments.
+static Cell* atom_plus(Environment* env, Cell* params)
+{
+	return plus_mul_helper(env, params, true, 0);
+}
+
+// (* z1 ...)
+// Return the product of the arguments.
+static Cell* atom_mul(Environment* env, Cell* params)
+{
+	return plus_mul_helper(env, params, false, 1);
 }
 
 
@@ -1239,7 +1312,7 @@ static Cell* atom_null_q(Environment* env, Cell* params)
 						obj->data.pair.cdr == NULL);
 }
 
-// (list? obj)	library procedure
+// (list? obj)
 // Returns #t if obj is a list, otherwise returns #f. By definition, all
 // lists have finite length and are terminated by the empty list.
 static Cell* atom_list_q(Environment* env, Cell* params)
@@ -1261,7 +1334,8 @@ static Cell* atom_list_q(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
-// (list obj ...) Returns a newly allocated list of its arguments.
+// (list obj ...)
+// Returns a newly allocated list of its arguments.
 static Cell* atom_list(Environment* env, Cell* params)
 {
 	// @todo: use an empty list type here.
@@ -1291,9 +1365,7 @@ static Cell* atom_length(Environment* env, Cell* params)
 		length++;
 	}
 	
-	Cell* result = make_cell(TYPE_NUMBER);
-	result->data.number = (double)length;
-	return result;
+	return make_number((double)length);
 }
 
 // (append list ...)
@@ -1501,6 +1573,7 @@ void lexer(const char* data)
 
 	Environment* env = create_environment(NULL);
 
+	add_builtin(env, "quote",      atom_quote);
 	add_builtin(env, "define",     atom_define);
 	add_builtin(env, "eqv?",       atom_eqv_q);
 	add_builtin(env, "number?",    atom_number_q);
@@ -1508,6 +1581,8 @@ void lexer(const char* data)
 	add_builtin(env, "real?",      atom_number_q);
 	add_builtin(env, "rational?",  always_false);
 	add_builtin(env, "integer?",   atom_integer_q);
+	add_builtin(env, "+",		   atom_plus);
+	add_builtin(env, "*",		   atom_mul);
 	add_builtin(env, "not",		   atom_not);
 	add_builtin(env, "boolean?",   atom_boolean_q);
 	add_builtin(env, "pair?",      atom_pair_q);
@@ -1526,7 +1601,7 @@ void lexer(const char* data)
 	add_builtin(env, "lambda",     atom_lambda);
 	add_builtin(env, "display",	   atom_display);
 	add_builtin(env, "newline",	   atom_newline);
-	
+
 	while (input.get())
 	{
 		read_token(input);
