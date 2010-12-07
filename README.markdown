@@ -6,7 +6,6 @@
 * Syntax:
     * case
     * cond
-    * if 
 * Macros
 * Garbage collector
 * Debug data on each Cell (file and line and column were it was created).
