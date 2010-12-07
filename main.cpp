@@ -1126,7 +1126,6 @@ static Cell* atom_if(Environment* env, Cell* params)
 {
 	Cell* condition = eval(env, car(params));
 	
-	
 	if (condition->type == TYPE_BOOLEAN &&
 		condition->data.boolean == false)
 	{
@@ -1135,11 +1134,9 @@ static Cell* atom_if(Environment* env, Cell* params)
 		{
 			return eval(env, car(else_case));
 		}
-		else
-		{
-			// undefined
-			return make_boolean(false);
-		}
+	
+		// undefined, this is false though.
+		return condition;
 	}
 	
 	return eval(env, car(cdr(params)));
