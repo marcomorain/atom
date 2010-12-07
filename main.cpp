@@ -26,6 +26,17 @@ enum
 	TYPE_PROCEDURE,
 };
 
+const static char* typenames [] = {
+	"boolean",
+	"character",
+	"number",
+	"string",
+	"pair",
+	"vector",
+	"symbol",
+	"procedure"
+};
+
 struct Environment;
 struct Cell;
 
@@ -48,12 +59,14 @@ struct Cell
 		Cell*    body;
 	};
 
+	// todo: add a const string type? or a flag?
+
 	union Data
 	{
 		bool         boolean;
 		char         character;
 		double       number;
-		const char*  string;
+		char*		 string;
 		Pair         pair;
 		const char*  symbol;
 		Procedure    procedure;
@@ -158,6 +171,14 @@ static void signal_error(const char* message, ...)
 	exit(-1);
 }
 
+static void type_check(int expected, int actual)
+{
+	if (actual != expected)
+	{
+		signal_error("%s expected, got %s", typenames[expected], typenames[actual]);
+	}
+}
+
 static Cell* make_cell(int type)
 {
 	Cell* result = (Cell*)malloc(sizeof(Cell));
@@ -177,6 +198,13 @@ static Cell* make_number(double value)
 	Cell* number = make_cell(TYPE_NUMBER);
 	number->data.number = value;
 	return number;
+}
+
+static Cell* make_character(char c)
+{
+	Cell* character = make_cell(TYPE_CHARACTER);
+	character->data.character = c;
+	return character;	
 }
 
 static Cell* car(const Cell* cell)
@@ -250,7 +278,7 @@ struct Token
 	{
 		double		number;
 		bool		boolean;
-		const char*	string;
+		char*		string;
 		const char*	identifier;
 		char		character;
 	};
@@ -680,7 +708,7 @@ void read_identifier(Input& input)
 	}
 	else
 	{
-		signal_error("not at identifier");
+		signal_error("malformed identifier at line %d column %d", input.line, input.column);
 	}
 
 	input.tokens->add_identifier();
@@ -1072,6 +1100,51 @@ static Cell* type_q_helper(Environment* env, Cell* params, int type)
 	return make_boolean(obj->type == type);
 }
 
+// Return the nth paramter to a function
+// If the type does not match, then an error is signaled.
+// n is indexed from 1 for the first parameter, 2 for the second.
+static inline Cell* nth_param(Environment* env, Cell* params, int n, int type)
+{
+	for (int i=1; i<=n; i++)
+	{
+		params = cdr(params);
+		
+		if (!params)
+		{
+			signal_error("Too few parameters passed (%d expected)", n);
+		}
+	}
+	
+	Cell* result = eval(env, car(params));
+	
+	// todo: this message should include 'n'
+	type_check(type, result->type);
+	return result;
+}
+
+static Cell* atom_if(Environment* env, Cell* params)
+{
+	Cell* condition = eval(env, car(params));
+	
+	
+	if (condition->type == TYPE_BOOLEAN &&
+		condition->data.boolean == false)
+	{
+		Cell* else_case = cdr(cdr(params));
+		if (else_case && car(else_case))
+		{
+			return eval(env, car(else_case));
+		}
+		else
+		{
+			// undefined
+			return make_boolean(false);
+		}
+	}
+	
+	return eval(env, car(cdr(params)));
+}
+
 // 4.1.2
 // Literal Expressions
 
@@ -1085,15 +1158,26 @@ static Cell* atom_quote(Environment* env, Cell* params)
 
 static Cell* atom_define(Environment* env, Cell* params)
 {
-	Cell* first  = car(params);
-
-	if (first->type != TYPE_SYMBOL)
-	{
-		signal_error("symbol expected instead of ...");
-	}
-
+	Cell* first  = car(params); // no eval
+	type_check(TYPE_SYMBOL, first->type);
 	Cell* second = car(cdr(params));
 	env->set(first->data.symbol, eval(env, second));
+	return NULL;
+}
+
+
+static Cell* atom_error(Environment* env, Cell* params)
+{
+	Cell* message = eval(env, car(params));
+	
+	const char* str = "Error";
+	
+	// todo: symantics here
+	if (message && message->type == TYPE_STRING)
+	{
+		str = message->data.string;
+	}
+	signal_error("%s", str);
 	return NULL;
 }
 
@@ -1151,6 +1235,24 @@ static Cell* atom_eqv_q(Environment* env, Cell* params)
 	return make_boolean(result);
 }
 
+// 4.2.3 Sequencing
+
+// (begin <expression1> <expression> ...)	library syntax
+// The <expression>s are evaluated sequentially from left to right, and
+// the value(s) of the last ⟨expression⟩ is(are) re- turned. This expression
+// type is used to sequence side ef- fects such as input and output.
+
+static Cell* atom_begin(Environment* env, Cell* params)
+{
+	Cell* last = NULL;
+	for (Cell* cell = params; cell; cell = cdr(cell))
+	{
+		// todo: tail recursion.
+		last = eval(env, car(cell));
+	}
+	return last;
+}
+
 // 6.2.5 Numerical Operations
 
 
@@ -1164,20 +1266,18 @@ static Cell* plus_mul_helper(Environment* env,
 	for (Cell* z = params; z; z = cdr(z))
 	{
 		Cell* n = car(z);
-		if (n && n->type == TYPE_NUMBER)
+		
+		assert(n); // todo: trigger this assert and test
+
+		type_check(TYPE_NUMBER, n->type);
+			
+		if (is_add)
 		{
-			if (is_add)
-			{
-				result += n->data.number;
-			}
-			else
-			{
-				result *= n->data.number;
-			}
+			result += n->data.number;
 		}
 		else
 		{
-			signal_error("Number expected");
+			result *= n->data.number;
 		}
 	}
 	return make_number(result);
@@ -1246,39 +1346,21 @@ static Cell* atom_cons(Environment* env, Cell* params)
 
 static Cell* atom_car(Environment* env, Cell* params)
 {
-	Cell* list = eval(env, car(params));
-
-	if (list->type != TYPE_PAIR)
-	{
-		signal_error("list expected in call to car");
-	}
-
+	Cell* list = nth_param(env, params, 1, TYPE_PAIR);
 	return car(list);
 }
 
 static Cell* atom_cdr(Environment* env, Cell* params)
 {
-	Cell* list = eval(env, car(params));
-
-	if (list->type != TYPE_PAIR)
-	{
-		signal_error("list expected in call to cdr");
-	}
-
+	Cell* list = nth_param(env, params, 1, TYPE_PAIR);
 	return cdr(list);
 }
 
 static Cell* set_car_cdr_helper(Environment* env, Cell* params, int is_car)
 {
-
-	// @todo: make an error here for constant lists
-	Cell* pair = eval(env, car(params));
+	// @todo: make an error here for constant lists	
+	Cell* pair = nth_param(env, params, 1, TYPE_PAIR);
 	Cell* obj  = eval(env, car(cdr(params)));
-	
-	if (pair->type != TYPE_PAIR)
-	{
-		signal_error("expected a pair in set-car!");
-	}
 	
 	if (is_car)
 	{
@@ -1358,10 +1440,7 @@ static Cell* atom_length(Environment* env, Cell* params)
 
 	for (Cell* list = eval(env, car(params)); list; list = list->data.pair.cdr)
 	{
-		if (list->type != TYPE_PAIR)
-		{
-			signal_error("List expected");
-		}
+		type_check(TYPE_PAIR, list->type);
 		length++;
 	}
 	
@@ -1378,10 +1457,7 @@ static Cell* atom_append(Environment* env, Cell* params)
 	// for each list
 	for (Cell* head = eval(env, car(params)); head; head = head->data.pair.cdr)
 	{
-		if (head->type != TYPE_PAIR)
-		{
-			signal_error("Expected a list");
-		}
+		type_check(TYPE_PAIR, head->type);
 		
 		// append all of the items in the list
 		for (Cell* obj = head; obj; obj = cdr(obj))
@@ -1407,7 +1483,104 @@ static Cell* atom_symbol_q(Environment* env, Cell* params)
 	return type_q_helper(env, params, TYPE_SYMBOL);
 }
 
+// 6.3.5 Strings
 
+// (string? obj)	procedure
+// Returns #t if obj is a string, otherwise returns #f.
+static Cell* atom_string_q(Environment* env, Cell* params)
+{
+	return type_q_helper(env, params, TYPE_STRING);
+}
+
+// (make-string k)      procedure
+// (make-string k char) procedure
+// Make-string returns a newly allocated string of length k. If char is
+// given, then all elements of the string are ini- tialized to char,
+// otherwise the contents of the string are unspecified.
+// ATOM: The contents are zero.
+static Cell* atom_make_string(Environment* env, Cell* params)
+{
+	Cell* k = nth_param(env, params, 1, TYPE_NUMBER);
+
+	char fill = 0;
+	
+	// todo: macro for getting the nth param
+	if (Cell* rest = cdr(params))
+	{
+		rest = eval(env, car(rest));
+		type_check(TYPE_CHARACTER, rest->type);
+		fill = rest->data.character;
+	}
+	
+	int length = (int)k->data.number;
+	
+	if (length < 0)
+	{
+		signal_error("positive integer length required");
+	}
+	
+	Cell* result = make_cell(TYPE_STRING);
+	result->data.string = (char*)malloc(length);
+	memset(result, fill, length);
+	return result;
+}
+
+
+
+// (string char ...) library procedure
+// Returns a newly allocated string composed of the arguments.
+// todo
+
+// (string-length string)	procedure
+// Returns the number of characters in the given string.
+static Cell* atom_string_length(Environment* env, Cell* params)
+{
+	Cell* string = nth_param(env, params, 1, TYPE_STRING);
+	return make_number(strlen(string->data.string));
+}
+
+// (string-ref string k)	procedure
+// k must be a valid index of string. String-ref returns character k of
+// string using zero-origin indexing.
+static Cell* atom_string_ref(Environment* env, Cell* params)
+{
+	Cell* string = nth_param(env, params, 1, TYPE_STRING);
+	Cell* k      = nth_param(env, params, 2, TYPE_NUMBER);
+	
+	// todo: assert k is an integer.
+	int index = (int)k->data.number;
+	
+	if (index < 0 || index < strlen(string->data.string))
+	{
+		signal_error("k is not a valid index of the given string");
+	}
+	
+	return make_character(string->data.string[index]);
+}
+
+
+// (string-set! string k char)	procedure
+// k must be a valid index of string.
+// String-set! stores char in element k of string and returns an
+// unspecified value.
+static Cell* atom_string_set(Environment* env, Cell* params)
+{
+	Cell* string = nth_param(env, params, 1, TYPE_STRING);
+	Cell* k      = nth_param(env, params, 2, TYPE_NUMBER);
+	Cell* c      = nth_param(env, params, 3, TYPE_CHARACTER);
+	
+	// todo: assert k is integer
+	int index = (int)k->data.number;
+	char* data = string->data.string;
+	
+	if (index < 0 || index >= strlen(data))
+	{
+		signal_error("invalid string index");
+	}
+	
+	data[index] = c->data.character;
+	return string;
+}
 // 6.4. Control features
 
 // (procedure? obj)
@@ -1415,6 +1588,24 @@ static Cell* atom_symbol_q(Environment* env, Cell* params)
 static Cell* atom_procedure_q(Environment* env, Cell* params)
 {
 	return type_q_helper(env, params, TYPE_PROCEDURE);
+}
+
+// (write obj) library procedure
+// (write obj port)	library procedure
+// Writes a written representation of obj to the given port. Strings that
+// appear in the written representation are en- closed in doublequotes,
+// and within those strings backslash and doublequote characters are
+// escaped by backslashes. Character objects are written using the #\
+// notation.
+// Write returns an unspecified value.
+// The port argument may be omitted, in which case it defaults to the value
+// returned by current-output-port.
+static Cell* atom_write(Environment* env, Cell* params)
+{
+	// todo: handle ports
+	Cell* obj = eval(env, car(params));
+	print(obj);
+	return obj; // unspecified
 }
 
 // (display	obj)
@@ -1429,6 +1620,8 @@ static Cell* atom_procedure_q(Environment* env, Cell* params)
 static Cell* atom_display(Environment* env, Cell* params)
 {
 	// @todo: handle port
+	// @todo: this should produce human readable output
+	// so no quotes on strings, etc.
 	Cell* obj = eval(env, car(params));
 	print(obj);
 	return obj; // unspecified
@@ -1485,10 +1678,7 @@ tailcall:
 		{
 			Cell* symbol = car(cell);
 			
-			if (symbol->type != TYPE_SYMBOL)
-			{
-				signal_error("should be a symbol");
-			}
+			type_check(TYPE_SYMBOL, symbol->type);
 			
 			const Cell* function = env->get(symbol);
 			
@@ -1573,9 +1763,11 @@ void lexer(const char* data)
 
 	Environment* env = create_environment(NULL);
 
+	add_builtin(env, "if",		   atom_if);
 	add_builtin(env, "quote",      atom_quote);
 	add_builtin(env, "define",     atom_define);
 	add_builtin(env, "eqv?",       atom_eqv_q);
+	add_builtin(env, "begin",      atom_begin);
 	add_builtin(env, "number?",    atom_number_q);
 	add_builtin(env, "complex?",   always_false);
 	add_builtin(env, "real?",      atom_number_q);
@@ -1585,6 +1777,11 @@ void lexer(const char* data)
 	add_builtin(env, "*",		   atom_mul);
 	add_builtin(env, "not",		   atom_not);
 	add_builtin(env, "boolean?",   atom_boolean_q);
+	add_builtin(env, "string?",	   		atom_string_q);
+	add_builtin(env, "make-string",		atom_make_string);
+	add_builtin(env, "string-length",	atom_string_length);
+	add_builtin(env, "string-ref",	   	atom_string_ref);
+	add_builtin(env, "string-set",	   	atom_string_set);
 	add_builtin(env, "pair?",      atom_pair_q);
 	add_builtin(env, "cons",       atom_cons);
 	add_builtin(env, "car",        atom_car);
@@ -1599,8 +1796,10 @@ void lexer(const char* data)
 	add_builtin(env, "symbol?",    atom_symbol_q);
 	add_builtin(env, "procedure?", atom_procedure_q);
 	add_builtin(env, "lambda",     atom_lambda);
+	add_builtin(env, "write",      atom_write);
 	add_builtin(env, "display",	   atom_display);
 	add_builtin(env, "newline",	   atom_newline);
+	add_builtin(env, "error",	   atom_error);
 
 	while (input.get())
 	{
