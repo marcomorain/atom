@@ -1105,14 +1105,17 @@ static Cell* type_q_helper(Environment* env, Cell* params, int type)
 // n is indexed from 1 for the first parameter, 2 for the second.
 static inline Cell* nth_param(Environment* env, Cell* params, int n, int type)
 {
-	for (int i=1; i<=n; i++)
+	for (int i=1; i<n; i++)
 	{
-		params = cdr(params);
-		
-		if (!params)
+		if (!(params = cdr(params)))
 		{
 			signal_error("Too few parameters passed (%d expected)", n);
 		}
+	}
+	
+	if (!params)
+	{
+		signal_error("Too few parameters passed (%d expected)", n);
 	}
 	
 	Cell* result = eval(env, car(params));
@@ -1120,26 +1123,6 @@ static inline Cell* nth_param(Environment* env, Cell* params, int n, int type)
 	// todo: this message should include 'n'
 	type_check(type, result->type);
 	return result;
-}
-
-static Cell* atom_if(Environment* env, Cell* params)
-{
-	Cell* condition = eval(env, car(params));
-	
-	if (condition->type == TYPE_BOOLEAN &&
-		condition->data.boolean == false)
-	{
-		Cell* else_case = cdr(cdr(params));
-		if (else_case && car(else_case))
-		{
-			return eval(env, car(else_case));
-		}
-	
-		// undefined, this is false though.
-		return condition;
-	}
-	
-	return eval(env, car(cdr(params)));
 }
 
 // 4.1.2
@@ -1151,6 +1134,130 @@ static Cell* atom_if(Environment* env, Cell* params)
 static Cell* atom_quote(Environment* env, Cell* params)
 {
 	return car(params);
+}
+
+// 4.1.5 Conditionals
+
+// (if <test> <consequent> <alternate>)  syntax
+// (if <test> <consequent>)              syntax
+// Syntax: ⟨Test⟩, ⟨consequent⟩, and ⟨alternate⟩ may be arbitrary
+// expressions.
+// Semantics: An if expression is evaluated as follows: first, ⟨test⟩ is
+// evaluated. If it yields a true value (see section 6.3.1), then
+// ⟨consequent⟩ is evaluated and its value(s) is(are) returned. Otherwise
+// ⟨alternate⟩ is evaluated and its value(s) is(are) returned.
+// If ⟨test⟩ yields a false value and no ⟨alternate⟩ is specified, then
+// the result of the expression is unspecified.
+static Cell* atom_if(Environment* env, Cell* params)
+{
+	Cell* test = eval(env, car(params));
+	
+	if (test->type == TYPE_BOOLEAN &&
+		test->data.boolean == false)
+	{
+		Cell* alternate = cdr(cdr(params));
+		if (alternate && car(alternate))
+		{
+			return eval(env, car(alternate));
+		}
+	
+		// undefined, this is false though.
+		return test;
+	}
+	
+	// else eval consequent
+	return eval(env, car(cdr(params)));
+}
+
+// 4.1.6. Assignments
+
+// (set! ⟨variable⟩ ⟨expression⟩)
+// ⟨Expression⟩ is evaluated, and the resulting value is stored in the
+// location to which ⟨variable⟩ is bound. ⟨Variable⟩ must be bound either
+// in some region enclosing the set! expression or at top level. The result
+// of the set! expression is unspecified.
+
+static Cell* atom_set_b(Environment* env, Cell* params)
+{
+	Cell* variable   = car(params);
+	type_check(TYPE_SYMBOL, variable->type);
+	Cell* expression = eval(env, car(cdr(params)));
+	
+	// @todo: seperate env->set and env->define
+	env->set(variable->data.symbol, expression);
+	return expression;
+}
+
+// 4.2.1. Conditionals
+// (cond <clause1> <clause2> ...) library syntax
+
+// Syntax: Each <clause> should be of the form
+// (⟨test⟩ ⟨expression1⟩ ...)
+// where <test> is any expression.
+// Alternatively, a <clause> may be of the form
+// (⟨test⟩ => ⟨expression⟩)
+// The last ⟨clause⟩ may be an “else clause,” which has the form
+// (else ⟨expression1⟩ ⟨expression2⟩ ...)
+
+// Semantics: A cond expression is evaluated by evaluating the <test>
+// expressions of successive ⟨clause⟩s in order until one of them evaluates
+// to a true value. When a ⟨test⟩ evaluates to a true value, then the
+// remaining ⟨expression⟩s in its ⟨clause⟩ are evaluated in order, and the
+// result(s) of the last ⟨expression⟩ in the ⟨clause⟩ is(are) returned as
+// the result(s) of the entire cond expression. If the selected ⟨clause⟩
+// contains only the ⟨test⟩ and no ⟨expression⟩s, then the value of the
+// ⟨test⟩ is returned as the result.
+
+// If the selected ⟨clause⟩ uses the => alternate form, then the
+// ⟨expression⟩ is evaluated. Its value must be a procedure that accepts
+// one argument; this procedure is then called on the value of the ⟨test⟩
+// and the value(s) returned by this procedure is(are) returned by the cond
+// expression. If all ⟨test⟩s evaluate to false values, and there is no
+// else clause, then the result of the conditional expression is
+// unspecified; if there is an else clause, then its ⟨expression⟩s are
+// evaluated, and the value(s) of the last one is(are) returned.
+
+static Cell* atom_cond(Environment* env, Cell* params)
+{
+	for(Cell* clause = params; clause; clause = cdr(clause))
+	{
+		Cell* test = car(clause);
+		
+		bool eval_and_return = false;
+		
+		// @todo: make sure all symbols are stored in lowercase
+		// @todo: assert that else is in the last place in the case
+		// statement.
+		Cell* t = car(test);
+		if (t->type == TYPE_SYMBOL &&
+			strcmp("else", t->data.string) == 0)
+		{
+			eval_and_return = true;
+		}
+		else
+		{
+			Cell* result = eval(env, t);
+			
+			if (result->type == TYPE_BOOLEAN &&
+				result->data.boolean == false)
+			{
+				continue;
+			}
+		}
+		
+		Cell* last_result = NULL;
+		
+		// @todo: assert there is at least one expression.
+		for (Cell* expr = cdr(test); expr; expr = cdr(expr))
+		{
+			last_result = eval(env, car(expr));
+		}
+		
+		return last_result;
+	}
+	
+	// undefined.
+	return make_boolean(false);
 }
 
 static Cell* atom_define(Environment* env, Cell* params)
@@ -1308,6 +1415,68 @@ static Cell* atom_integer_q(Environment* env, Cell* params)
 					obj->data.number == (int)obj->data.number;
 	
 	return make_boolean(integer);
+}
+
+template <typename Compare>
+static Cell* comparison_helper(Environment* env, Cell* params)
+{
+	int n = 2;
+
+	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
+	
+	for (;;)
+	{
+		params = cdr(params);
+		Cell* b = nth_param(env, params, 1, TYPE_NUMBER);
+	
+		double x = a->data.number;
+		double y = b->data.number;
+		if (!Compare::compare(x, y))
+		{
+			return make_boolean(false);
+		}
+	
+		a = b;
+		n++;
+	
+		if (!cdr(params))
+		{
+			break;
+		}
+	}
+
+	return make_boolean(true);
+};
+
+struct Equal		{ static bool compare(const double& a, const double& b) { return a == b; } };
+struct Less			{ static bool compare(const double& a, const double& b) { return a <  b; } };
+struct Greater		{ static bool compare(const double& a, const double& b) { return a >  b; } };
+struct LessEq		{ static bool compare(const double& a, const double& b) { return a <= b; } };
+struct GreaterEq	{ static bool compare(const double& a, const double& b) { return a >= b; } };
+
+static Cell* atom_comapre_equal(Environment* env, Cell* params)
+{
+	return comparison_helper<Greater>(env, params);
+}
+
+static Cell* atom_compare_less(Environment* env, Cell* params)
+{
+	return comparison_helper<Less>(env, params);
+}
+
+static Cell* atom_compare_greater(Environment* env, Cell* params)
+{
+	return comparison_helper<Greater>(env, params);
+}
+
+static Cell* atom_compare_less_equal(Environment* env, Cell* params)
+{
+	return comparison_helper<LessEq>(env, params);
+}
+
+static Cell* atom_compare_greater_equal(Environment* env, Cell* params)
+{
+	return comparison_helper<GreaterEq>(env, params);
 }
 
 // 6.3
@@ -1544,10 +1713,11 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 	Cell* string = nth_param(env, params, 1, TYPE_STRING);
 	Cell* k      = nth_param(env, params, 2, TYPE_NUMBER);
 	
-	// todo: assert k is an integer.
+	// todo: assert k is an integer - double to size_t
 	int index = (int)k->data.number;
 	
-	if (index < 0 || index < strlen(string->data.string))
+	// todo: watch this cast.
+	if (index < 0 || index < (int)strlen(string->data.string))
 	{
 		signal_error("k is not a valid index of the given string");
 	}
@@ -1566,11 +1736,12 @@ static Cell* atom_string_set(Environment* env, Cell* params)
 	Cell* k      = nth_param(env, params, 2, TYPE_NUMBER);
 	Cell* c      = nth_param(env, params, 3, TYPE_CHARACTER);
 	
-	// todo: assert k is integer
+	// todo: assert k is integer - double to size_t
 	int index = (int)k->data.number;
 	char* data = string->data.string;
 	
-	if (index < 0 || index >= strlen(data))
+	// todo: watch this case.
+	if (index < 0 || index >= (int)strlen(data))
 	{
 		signal_error("invalid string index");
 	}
@@ -1592,7 +1763,7 @@ static Cell* atom_procedure_q(Environment* env, Cell* params)
 // Writes a written representation of obj to the given port. Strings that
 // appear in the written representation are en- closed in doublequotes,
 // and within those strings backslash and doublequote characters are
-// escaped by backslashes. Character objects are written using the #\
+// escaped by backslashes. Character objects are written using the 'hash-slash'
 // notation.
 // Write returns an unspecified value.
 // The port argument may be omitted, in which case it defaults to the value
@@ -1760,20 +1931,27 @@ void lexer(const char* data)
 
 	Environment* env = create_environment(NULL);
 
-	add_builtin(env, "if",		   atom_if);
-	add_builtin(env, "quote",      atom_quote);
-	add_builtin(env, "define",     atom_define);
-	add_builtin(env, "eqv?",       atom_eqv_q);
-	add_builtin(env, "begin",      atom_begin);
-	add_builtin(env, "number?",    atom_number_q);
-	add_builtin(env, "complex?",   always_false);
-	add_builtin(env, "real?",      atom_number_q);
-	add_builtin(env, "rational?",  always_false);
-	add_builtin(env, "integer?",   atom_integer_q);
-	add_builtin(env, "+",		   atom_plus);
-	add_builtin(env, "*",		   atom_mul);
-	add_builtin(env, "not",		   atom_not);
-	add_builtin(env, "boolean?",   atom_boolean_q);
+	add_builtin(env, "if",			atom_if);
+	add_builtin(env, "quote",		atom_quote);
+	add_builtin(env, "define",		atom_define);
+	add_builtin(env, "set!",		atom_set_b);
+	add_builtin(env, "cond",		atom_cond);
+	add_builtin(env, "eqv?",		atom_eqv_q);
+	add_builtin(env, "begin",      	atom_begin);
+	add_builtin(env, "number?",    	atom_number_q);
+	add_builtin(env, "complex?",   	always_false);
+	add_builtin(env, "real?",      	atom_number_q);
+	add_builtin(env, "rational?",  	always_false);
+	add_builtin(env, "integer?",   	atom_integer_q);
+	add_builtin(env, "+",		   	atom_plus);
+	add_builtin(env, "*",		   	atom_mul);
+	add_builtin(env, "=",			atom_comapre_equal);
+	add_builtin(env, "<",			atom_compare_less);
+	add_builtin(env, ">",			atom_compare_greater);
+	add_builtin(env, "<=",			atom_compare_less_equal);
+	add_builtin(env, ">=",			atom_compare_greater_equal);
+	add_builtin(env, "not",		   	atom_not);
+	add_builtin(env, "boolean?",   	atom_boolean_q);
 	add_builtin(env, "string?",	   		atom_string_q);
 	add_builtin(env, "make-string",		atom_make_string);
 	add_builtin(env, "string-length",	atom_string_length);
@@ -1840,7 +2018,7 @@ char* file_to_string(const char* filename)
 
 int main (int argc, char * const argv[])
 {
-	const char* filename = (argc == 1) ? "input.txt" : argv[1];
+	const char* filename = (argc == 1) ? "test/test.scm" : argv[1];
 
 	char* input = file_to_string(filename);
 	//printf("%s\n", input);

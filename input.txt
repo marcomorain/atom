@@ -2,29 +2,6 @@
 
 ; Scheme
 
-; Test below my Marc:
-
-(+ 1 2)
-;(- 3 4)
-;(- (a . b) (c . d))
-
-(if #t 1)
-(if #f 1 2)
-(if #f 1)
-
-(define assert
-	(lambda (c)
-		(if (not c)
-			(error "assertion failed"))))
-
-(assert #t)
-
-(assert 1)
-
-(assert '())
-(assert cons(1 2))
-(assert () (error "some error"))
-
 (define hello-world
   (lambda ()
     (begin
