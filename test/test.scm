@@ -1,17 +1,16 @@
-; Test below my Marc:
+(define assert
+	(lambda (c)
+		(if (not c)
+			(error "assertion failed"))))
 
-(+ 1 2)
+(assert (= (+ 1 2) 4))
+
 ;(- 3 4)
 ;(- (a . b) (c . d))
 
 (if #t 1)
 (if #f 1 2)
 (if #f 1)
-
-(define assert
-	(lambda (c)
-		(if (not c)
-			(error "assertion failed"))))
 
 (assert #t)
 
@@ -98,3 +97,8 @@ bools
 ;(cond ((assv 'b '((a 1) (b 2))) => cadr)
 ;		(else #f))
 
+(= 1 2)
+(= 1 1 1)
+(= 1 1 1 4)
+(= 1 1 1 '())
+(assert #f)

@@ -189,8 +189,7 @@ static Cell* make_cell(int type)
 
 static Cell* make_boolean(bool value)
 {
-	Cell* result = value ? &cell_true : &cell_false;
-	return result;
+	return value ? &cell_true : &cell_false;
 }
 
 static Cell* make_number(double value)
@@ -493,7 +492,6 @@ void skip_whitespace(Input& input)
 		}
 	}
 }
-
 
 bool is_digit(char c)
 {
@@ -1222,22 +1220,15 @@ static Cell* atom_cond(Environment* env, Cell* params)
 	for(Cell* clause = params; clause; clause = cdr(clause))
 	{
 		Cell* test = car(clause);
-		
-		bool eval_and_return = false;
-		
+
 		// @todo: make sure all symbols are stored in lowercase
 		// @todo: assert that else is in the last place in the case
 		// statement.
 		Cell* t = car(test);
-		if (t->type == TYPE_SYMBOL &&
-			strcmp("else", t->data.string) == 0)
+		if (t->type != TYPE_SYMBOL ||
+			strcmp("else", t->data.string) != 0)
 		{
-			eval_and_return = true;
-		}
-		else
-		{
-			Cell* result = eval(env, t);
-			
+			Cell* result = eval(env, t);	
 			if (result->type == TYPE_BOOLEAN &&
 				result->data.boolean == false)
 			{
@@ -1456,7 +1447,7 @@ struct GreaterEq	{ static bool compare(const double& a, const double& b) { retur
 
 static Cell* atom_comapre_equal(Environment* env, Cell* params)
 {
-	return comparison_helper<Greater>(env, params);
+	return comparison_helper<Equal>(env, params);
 }
 
 static Cell* atom_compare_less(Environment* env, Cell* params)
@@ -1808,6 +1799,45 @@ static Cell* atom_newline(Environment* env, Cell* params)
 	return params; // unspecified
 }
 
+// 6.6.4. System interface
+// (load filename)	optional procedure
+// Filename should be a string naming an existing file containing Scheme
+// source code. The load procedure reads expressions and definitions from the
+// file and evaluates them sequentially. It is unspecified whether the
+// results of the expressions are printed. The load procedure does not affect
+// the values returned by current-input-port and current-output-port.
+// Load returns an unspecified value.
+// Rationale:
+// For portability, load must operate on source files. Its operation on other
+// kinds of files necessarily varies among implementations.
+static Cell* atom_load(Environment* env, Cell* params)
+{
+	Cell* filename = nth_param(env, params, 1, TYPE_STRING);
+	
+	char* f = filename->data.string;
+	
+	FILE* file = fopen(f, "r");
+	
+	if (!file)
+	{
+		signal_error("Error opening file %s", f);
+	}
+	
+	
+}
+
+// (transcript-on filename) optional procedure 
+// (transcript-off)	        optional procedure
+
+// Filename must be a string naming an output file to be created. The
+// effect of transcript-on is to open the named file for output, and to
+// cause a transcript of subsequent interaction between the user and the
+// Scheme system to be written to the file. The transcript is ended by a call
+// to transcript-off, which closes the transcript file. Only one transcript
+// may be in progress at any time, though some implementations may relax this
+// restriction. The values returned by these procedures are unspecified.
+
+
 // This function always returns false.
 // It is used as a proxy for functions like complex? that are never true.
 static Cell* always_false(Environment* env, Cell* params)
@@ -1821,6 +1851,60 @@ static Environment* create_environment(Environment* parent)
 	Environment* env = (Environment*)malloc(sizeof(Environment));
 	env->init(16, parent);
 	return env;
+}
+
+void atom_api_loadfile(Environment* env, const char* filename)
+{
+	FILE* file = fopen(filename, "r");
+	
+	if (!file)
+	{
+		signal_error("Error opening file %s", f);
+	}
+	
+	fseek (file, 0, SEEK_END);
+	size_t size = ftell (file);
+	rewind(file);
+	char* buffer = (char*) malloc(size+1);
+	size_t read = fread(buffer, 1, size, file);
+	buffer[read] = 0;
+	fclose (file);
+	
+	{
+		Input input;
+		input.init(buffer);
+		TokenList tokens;
+		input.tokens = &tokens;
+
+		tokens.init(1000);
+
+		while (input.get())
+		{
+			read_token(input);
+		}
+
+		tokens.start_parse();
+
+		for(;;)
+		{
+			Cell* cell = parse_datum(tokens);
+
+			if (!cell)
+			{
+				break;
+			}
+			printf("> ");
+			print(cell);
+			const Cell* result = eval(env, cell);
+
+			print(result);
+		}
+
+		tokens.destroy();
+		free(env);	
+	}
+	
+	free(buffer);
 }
 
 static Cell* eval(Environment* env, Cell* cell)
@@ -1920,17 +2004,10 @@ static void add_builtin(Environment* env, const char* name, Function function)
 	env->set(name, cell);
 }
 
-void lexer(const char* data)
+Environment* atom_api_open()
 {
-	Input input;
-	input.init(data);
-	TokenList tokens;
-	input.tokens = &tokens;
-
-	tokens.init(1000);
-
 	Environment* env = create_environment(NULL);
-
+	
 	add_builtin(env, "if",			atom_if);
 	add_builtin(env, "quote",		atom_quote);
 	add_builtin(env, "define",		atom_define);
@@ -1975,55 +2052,28 @@ void lexer(const char* data)
 	add_builtin(env, "display",	   atom_display);
 	add_builtin(env, "newline",	   atom_newline);
 	add_builtin(env, "error",	   atom_error);
-
-	while (input.get())
-	{
-		read_token(input);
-	}
-
-	tokens.start_parse();
-
-	for(;;)
-	{
-		Cell* cell = parse_datum(tokens);
-
-		if (!cell)
-		{
-			break;
-		}
-		printf("> ");
-		print(cell);
-		const Cell* result = eval(env, cell);
-
-		print(result);
-	}
-
-	tokens.destroy();
-	free(env);
+	
+	return env;	
 }
 
-char* file_to_string(const char* filename)
-{
-	FILE* file = fopen(filename, "r");
-	assert(file);
-	fseek (file, 0, SEEK_END);
-	size_t size = ftell (file);
-	rewind(file);
-	char* buffer = (char*) malloc(size+1);
-	size_t read = fread(buffer, 1, size, file);
-	buffer[read] = 0;
-	fclose (file);
-	return buffer;
+
+void atom_api_close(Environment* env)
+{	
 }
 
 int main (int argc, char * const argv[])
 {
+	Environment* atom = atom_open();
+
 	const char* filename = (argc == 1) ? "test/test.scm" : argv[1];
 
 	char* input = file_to_string(filename);
 	//printf("%s\n", input);
 	lexer(input);
 	free(input);
+	
+	atom_close(atom);
+
 	system ("pause");
 	return 0;
 }
