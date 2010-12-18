@@ -100,5 +100,7 @@ bools
 (= 1 2)
 (= 1 1 1)
 (= 1 1 1 4)
-(= 1 1 1 '())
-(assert #f)
+(= 1 1 1)
+(assert #t)
+
+(load "test/print.scm")
