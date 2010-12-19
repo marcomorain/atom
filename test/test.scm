@@ -1,3 +1,4 @@
+
 (define error
   (lambda (msg)
     (display msg)
@@ -119,3 +120,9 @@ bools
                 (newline)
 	     	'done))
 (printer 1 2 3)
+
+(define (add a b c)
+		(+ a b c))
+(add 3 3 3)
+
+

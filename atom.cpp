@@ -16,7 +16,7 @@
 #endif
 
 
-enum
+enum CellType
 {
 	TYPE_BOOLEAN,
 	TYPE_CHARACTER,
@@ -75,7 +75,7 @@ struct Cell
 		Procedure    procedure;
 	};
 	
-	int  type;
+	CellType type;
 	Data data;
 };
 
@@ -186,7 +186,7 @@ static Cell* make_cell(int type)
 {
 	Cell* result = (Cell*)malloc(sizeof(Cell));
 	memset(result, 0, sizeof(Cell));
-	result->type = type;
+	result->type = (CellType)type;
 	return result;	
 }
 
@@ -207,6 +207,18 @@ static Cell* make_character(char c)
 	Cell* character = make_cell(TYPE_CHARACTER);
 	character->data.character = c;
 	return character;	
+}
+
+static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
+{
+	type_check(TYPE_PAIR, formals->type);
+	type_check(TYPE_PAIR, body->type);
+
+	Cell* proc = make_cell(TYPE_PROCEDURE);
+	proc->data.procedure.formals = formals;
+	proc->data.procedure.body    = body;
+	proc->data.procedure.env	 = env;
+	return proc;	
 }
 
 static Cell* car(const Cell* cell)
@@ -1279,10 +1291,38 @@ static Cell* atom_cond(Environment* env, Cell* params)
 static Cell* atom_define(Environment* env, Cell* params)
 {
 	Cell* first  = car(params); // no eval
-	type_check(TYPE_SYMBOL, first->type);
-	Cell* second = car(cdr(params));
-	environment_define(env, first->data.symbol, eval(env, second));
-	return NULL;
+
+	Cell* variable = 0;
+	Cell* value    = 0;
+	
+	switch(first->type)
+	{
+		case TYPE_SYMBOL:
+		{
+			variable	= first;
+			value		= eval(env, car(cdr(params)));
+			break;
+		}
+		
+		case TYPE_PAIR:
+		{
+			variable		= car(first);
+			Cell* formals	= cdr(first);
+			Cell* body		= cdr(params);
+			value = make_procedure(env, formals, body);
+			break;
+		}
+		
+		default:
+		// todo: make this a syntax error.
+		signal_error("symbol or pair expected as parameter 1 to define");
+	}
+	
+	assert(variable && value);
+	type_check(TYPE_SYMBOL, variable->type);
+	environment_define(env, variable->data.symbol, value);
+	// undefined result.
+	return make_boolean(false);
 }
 
 
@@ -1303,11 +1343,7 @@ static Cell* atom_error(Environment* env, Cell* params)
 
 static Cell* atom_lambda(Environment* env, Cell* params)
 {
-	Cell* proc = make_cell(TYPE_PROCEDURE);
-	proc->data.procedure.formals = car(params);
-	proc->data.procedure.body    = cdr(params);
-	proc->data.procedure.env	 = env;
-	return proc;
+	return make_procedure(env, car(params), cdr(params));
 }
 
 static Cell* atom_eqv_q(Environment* env, Cell* params)
@@ -1467,11 +1503,11 @@ static Cell* comparison_helper(Environment* env, Cell* params)
 	return make_boolean(true);
 };
 
-struct Equal		{ static bool compare(const double& a, const double& b) { return a == b; } };
-struct Less			{ static bool compare(const double& a, const double& b) { return a <  b; } };
-struct Greater		{ static bool compare(const double& a, const double& b) { return a >  b; } };
-struct LessEq		{ static bool compare(const double& a, const double& b) { return a <= b; } };
-struct GreaterEq	{ static bool compare(const double& a, const double& b) { return a >= b; } };
+struct Equal		{ static bool compare(double a, double b) { return a == b; } };
+struct Less			{ static bool compare(double a, double b) { return a <  b; } };
+struct Greater		{ static bool compare(double a, double b) { return a >  b; } };
+struct LessEq		{ static bool compare(double a, double b) { return a <= b; } };
+struct GreaterEq	{ static bool compare(double a, double b) { return a >= b; } };
 
 static Cell* atom_comapre_equal(Environment* env, Cell* params)
 {
