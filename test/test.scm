@@ -125,4 +125,8 @@ bools
 		(+ a b c))
 (add 3 3 3)
 
+(symbol->string add)
+(make-string 5)
+(make-string 5 #\a)
+
 

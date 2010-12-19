@@ -1306,6 +1306,7 @@ static Cell* atom_define(Environment* env, Cell* params)
 		
 		case TYPE_PAIR:
 		{
+			// todo: handle dotted syntax
 			variable		= car(first);
 			Cell* formals	= cdr(first);
 			Cell* body		= cdr(params);
@@ -1704,6 +1705,31 @@ static Cell* atom_symbol_q(Environment* env, Cell* params)
 	return type_q_helper(env, params, TYPE_SYMBOL);
 }
 
+// (symbol->string symbol) procedure
+// Returns the name of symbol as a string.
+// If the symbol was part of an object returned as the value of a literal
+// expression (section 4.1.2) or by a call to the read procedure, and its
+// name contains alphabetic characters, then the string returned will contain
+// characters in the implementation’s preferred standard case—some
+// implementations will prefer upper case, others lower case. If the symbol
+// was returned by string->symbol, the case of characters in the string
+// returned will be the same as the case in the string that was passed to
+// string->symbol.
+// It is an error to apply mutation procedures like string-set! to strings
+// returned by this procedure.
+static Cell* atom_symbol_to_string(Environment* env, Cell* params)
+{
+	const Cell* symbol = car(params);
+	type_check(TYPE_SYMBOL, symbol->type);
+	const char* data = symbol->data.symbol;
+	size_t length = strlen(data);
+	Cell* result = make_cell(TYPE_STRING);
+	result->data.string = (char*)malloc(length+1);
+	memcpy(result->data.string, data, length);
+	result->data.string[length] = 0;
+	return result;
+}
+
 // 6.3.5 Strings
 
 // (string? obj)	procedure
@@ -1741,8 +1767,9 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 	}
 	
 	Cell* result = make_cell(TYPE_STRING);
-	result->data.string = (char*)malloc(length);
-	memset(result, fill, length);
+	result->data.string = (char*)malloc(length + 1);
+	memset(result->data.string, fill, length);
+	result->data.string[length] = 0;
 	return result;
 }
 
@@ -2100,18 +2127,19 @@ Environment* atom_api_open()
 	add_builtin(env, "string-length",	atom_string_length);
 	add_builtin(env, "string-ref",	   	atom_string_ref);
 	add_builtin(env, "string-set",	   	atom_string_set);
-	add_builtin(env, "pair?",      atom_pair_q);
-	add_builtin(env, "cons",       atom_cons);
-	add_builtin(env, "car",        atom_car);
-	add_builtin(env, "cdr",        atom_cdr);
-	add_builtin(env, "set-car!",   atom_set_car_b);
-	add_builtin(env, "set-cdr!",   atom_set_cdr_b);
-	add_builtin(env, "null?",      atom_null_q);
-	add_builtin(env, "list?",      atom_list_q);
-	add_builtin(env, "list",       atom_list);
-	add_builtin(env, "length",     atom_length);
-	add_builtin(env, "append",     atom_append);
-	add_builtin(env, "symbol?",    atom_symbol_q);
+	add_builtin(env, "pair?",      		atom_pair_q);
+	add_builtin(env, "cons",       		atom_cons);
+	add_builtin(env, "car",        		atom_car);
+	add_builtin(env, "cdr",        		atom_cdr);
+	add_builtin(env, "set-car!",   		atom_set_car_b);
+	add_builtin(env, "set-cdr!",   		atom_set_cdr_b);
+	add_builtin(env, "null?",      		atom_null_q);
+	add_builtin(env, "list?",      		atom_list_q);
+	add_builtin(env, "list",       		atom_list);
+	add_builtin(env, "length",     		atom_length);
+	add_builtin(env, "append",     		atom_append);
+	add_builtin(env, "symbol?",    		atom_symbol_q);
+	add_builtin(env, "symbol->string",	atom_symbol_to_string);
 	add_builtin(env, "procedure?", atom_procedure_q);
 	add_builtin(env, "apply",	   atom_apply);
 	add_builtin(env, "lambda",     atom_lambda);

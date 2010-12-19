@@ -5,7 +5,6 @@
 * Write repl loop
 * Syntax:
     * case
-    * cond
 * Macros
 * Garbage collector
 * Debug data on each Cell (file and line and column were it was created).
@@ -14,6 +13,7 @@
 * Userdata / void* / C / C++ data types? (with gc callback)
 * delay and force
 * vector type
+* add const flag to data if it is compile time created data.
 * Libraries:
     * string
     * input
@@ -21,4 +21,3 @@
     * math
     * symbol
 * Add proper tail recursion for if
-
