@@ -55,10 +55,11 @@ struct Cell
 	struct Procedure
 	{
 		// If function is null, then the procedure
-		// is created scheme, otherwise it is a built-in
-		Function function;
-		Cell*    formals;
-		Cell*    body;
+		// was created in scheme, otherwise it is a built-in
+		Function 		function;
+		Cell*    		formals;
+		Cell*    		body;
+		Environment*	env;
 	};
 
 	// todo: add a const string type? or a flag?
@@ -1068,12 +1069,37 @@ struct Environment
 
 		return NULL;
 	}
+};
 
-	void set(const char* symbol, Cell* value)
+void environment_define(Environment* env, const char* symbol, Cell* value)
+{
+	unsigned index = env->mask & MurmurHash2(symbol, strlen(symbol));
+
+	for (Environment::Node* node = env->data[index]; node; node = node->next)
 	{
-		unsigned hash = mask & MurmurHash2(symbol, strlen(symbol));
+		if (strcmp(symbol, node->symbol) == 0)
+		{
+			node->value = value;
+			return;
+		}
+	}
+	
+	Environment::Node* node = new Environment::Node;
+	node->symbol		= symbol;
+	node->value			= value;
+	node->next			= env->data[index];
+	env->data[index]	= node;
+}
 
-		for (Node* node = data[hash]; node; node = node->next)
+void environment_set(Environment* env, const char* symbol, Cell* value)
+{
+	unsigned hash = MurmurHash2(symbol, strlen(symbol));
+		
+	do {
+		
+		unsigned index = hash & env->mask;
+
+		for (Environment::Node* node = env->data[index]; node; node = node->next)
 		{
 			if (strcmp(symbol, node->symbol) == 0)
 			{
@@ -1081,16 +1107,13 @@ struct Environment
 				return;
 			}
 		}
-
-		// @todo: make set different to define
-		Node* node = new Node;
-		node->symbol = symbol;
-		node->value  = value;
-		node->next   = data[hash];
-		data[hash] = node;
-	}
-
-};
+		
+		env = env->parent;
+	
+	} while (env);
+		
+	signal_error("No binding for %s in any scope.", symbol);
+}
 
 static Cell* eval(Environment* env, Cell* cell);
 
@@ -1184,7 +1207,7 @@ static Cell* atom_set_b(Environment* env, Cell* params)
 	Cell* expression = eval(env, car(cdr(params)));
 	
 	// @todo: seperate env->set and env->define
-	env->set(variable->data.symbol, expression);
+	environment_set(env, variable->data.symbol, expression);
 	return expression;
 }
 
@@ -1258,7 +1281,7 @@ static Cell* atom_define(Environment* env, Cell* params)
 	Cell* first  = car(params); // no eval
 	type_check(TYPE_SYMBOL, first->type);
 	Cell* second = car(cdr(params));
-	env->set(first->data.symbol, eval(env, second));
+	environment_define(env, first->data.symbol, eval(env, second));
 	return NULL;
 }
 
@@ -1283,6 +1306,7 @@ static Cell* atom_lambda(Environment* env, Cell* params)
 	Cell* proc = make_cell(TYPE_PROCEDURE);
 	proc->data.procedure.formals = car(params);
 	proc->data.procedure.body    = cdr(params);
+	proc->data.procedure.env	 = env;
 	return proc;
 }
 
@@ -1365,16 +1389,18 @@ static Cell* plus_mul_helper(Environment* env,
 		Cell* n = car(z);
 		
 		assert(n); // todo: trigger this assert and test
+		
+		Cell* value = eval(env, n);
 
-		type_check(TYPE_NUMBER, n->type);
+		type_check(TYPE_NUMBER, value->type);
 			
 		if (is_add)
 		{
-			result += n->data.number;
+			result += value->data.number;
 		}
 		else
 		{
-			result *= n->data.number;
+			result *= value->data.number;
 		}
 	}
 	return make_number(result);
@@ -1751,6 +1777,17 @@ static Cell* atom_procedure_q(Environment* env, Cell* params)
 	return type_q_helper(env, params, TYPE_PROCEDURE);
 }
 
+// (apply proc arg1 ... args) procedure
+// Proc must be a procedure and args must be a list. Calls proc with the
+// elements of the list (append (list arg1 ...) args) as the actual arguments.
+static Cell* atom_apply(Environment* env, Cell* params)
+{
+	Cell* proc = car(params);
+	Cell* args = nth_param(env, params, 2, TYPE_PAIR);
+	Cell* caller = cons(proc, args);
+	return eval(env, caller);
+}
+
 // (write obj) library procedure
 // (write obj port)	library procedure
 // Writes a written representation of obj to the given port. Strings that
@@ -1842,7 +1879,7 @@ static Cell* always_false(Environment* env, Cell* params)
 static Environment* create_environment(Environment* parent)
 {
 	Environment* env = (Environment*)malloc(sizeof(Environment));
-	env->init(16, parent);
+	env->init(1, parent);
 	return env;
 }
 
@@ -1944,7 +1981,7 @@ tailcall:
 				return f(env, cdr(cell));
 			}
 			
-			Environment* new_env = create_environment(env);
+			Environment* new_env = create_environment(proc->env);
 			
 			Cell* params = cdr(cell);
 			for (const Cell* formals = proc->formals; formals; formals = cdr(formals))
@@ -1953,7 +1990,7 @@ tailcall:
 				if (car(formals))
 				{
 					assert(car(formals)->type == TYPE_SYMBOL);
-					new_env->set(car(formals)->data.symbol, car(params));
+					environment_define(new_env, car(formals)->data.symbol, car(params));
 					params = cdr(params);
 				}
 			}
@@ -1994,7 +2031,7 @@ static void add_builtin(Environment* env, const char* name, Function function)
 	
 	Cell* cell = make_cell(TYPE_PROCEDURE);
 	cell->data.procedure.function = function;
-	env->set(name, cell);
+	environment_define(env, name, cell);
 }
 
 Environment* atom_api_open()
@@ -2040,6 +2077,7 @@ Environment* atom_api_open()
 	add_builtin(env, "append",     atom_append);
 	add_builtin(env, "symbol?",    atom_symbol_q);
 	add_builtin(env, "procedure?", atom_procedure_q);
+	add_builtin(env, "apply",	   atom_apply);
 	add_builtin(env, "lambda",     atom_lambda);
 	add_builtin(env, "write",      atom_write);
 	add_builtin(env, "display",	   atom_display);
@@ -2059,7 +2097,7 @@ int main (int argc, char * const argv[])
 {
 	Environment* atom = atom_api_open();
 
-	const char* filename = (argc == 1) ? "test/test.scm" : argv[1];
+	const char* filename = (argc == 1) ? "/Users/marcomorain/dev/scheme/test/test.scm" : argv[1];
 	
 	atom_api_loadfile(atom, filename);
 	

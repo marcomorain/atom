@@ -1,3 +1,8 @@
+(define error
+  (lambda (msg)
+    (display msg)
+    (newline)))
+
 (define assert
 	(lambda (c)
 		(if (not c)
@@ -17,9 +22,7 @@
 (assert 1)
 
 (assert '())
-(assert cons(1 2))
-(assert () (error "some error"))
-
+(assert (cons 1 2))
 '()
 
 ; Set awy to one
@@ -103,4 +106,16 @@ bools
 (= 1 1 1)
 (assert #t)
 
-(load "test/print.scm")
+(load "/Users/marcomorain/dev/scheme/test/print.scm")
+
+(apply + '(1 2 3 ))
+
+(define printer
+  (lambda (a b c)
+		(define inner
+			(lambda (d)
+				(+ a d)))
+		(display (inner 2))
+                (newline)
+	     	'done))
+(printer 1 2 3)
