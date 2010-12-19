@@ -1078,7 +1078,8 @@ struct Environment
 		{
 			return parent->get(symbol);
 		}
-
+		
+		signal_error("reference to undefined identifier: %s", str);
 		return NULL;
 	}
 };
@@ -1730,6 +1731,28 @@ static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 	return result;
 }
 
+// (string->symbol string) procedure
+// Returns the symbol whose name is string. This procedure can create symbols
+// with names containing special characters or letters in the non-standard
+// case, but it is usually a bad idea to create such symbols because in some
+// implementations of Scheme they cannot be read as themselves.
+static Cell* atom_string_to_symbol(Environment* env, Cell* params)
+{
+	// todo: this is a copy-and-paste of symbol->string
+	const Cell* symbol = car(params);
+	type_check(TYPE_STRING, symbol->type);
+	const char* data = symbol->data.string;
+	size_t length = strlen(data);
+	Cell* result = make_cell(TYPE_SYMBOL);
+	
+	char* scratch = (char*)malloc(length+1);
+	memcpy(scratch, data, length);
+	scratch[length] = 0;
+	result->data.symbol = scratch;
+	return result;
+}
+
+
 // 6.3.5 Strings
 
 // (string? obj)	procedure
@@ -2140,6 +2163,7 @@ Environment* atom_api_open()
 	add_builtin(env, "append",     		atom_append);
 	add_builtin(env, "symbol?",    		atom_symbol_q);
 	add_builtin(env, "symbol->string",	atom_symbol_to_string);
+	add_builtin(env, "string->symbol",	atom_string_to_symbol);
 	add_builtin(env, "procedure?", atom_procedure_q);
 	add_builtin(env, "apply",	   atom_apply);
 	add_builtin(env, "lambda",     atom_lambda);

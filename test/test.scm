@@ -4,10 +4,10 @@
     (display msg)
     (newline)))
 
-(define assert
-	(lambda (c)
-		(if (not c)
-			(error "assertion failed"))))
+(define (assert cond)
+		(if (not cond)
+			(error "assertion failed")
+			#t))
 
 (assert (= (+ 1 2) 4))
 
@@ -128,5 +128,8 @@ bools
 (symbol->string add)
 (make-string 5)
 (make-string 5 #\a)
+
+(string->symbol "foo")
+(assert (symbol? (string->symbol "bar")))
 
 

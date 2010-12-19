@@ -327,7 +327,7 @@
 										<key>_historyCapacity</key>
 										<integer>0</integer>
 										<key>bookmark</key>
-										<string>8F4B429112BE6F4600B4A76F</string>
+										<string>8F4B429412BE762900B4A76F</string>
 										<key>history</key>
 										<array>
 											<string>8F4B424B12BE657600B4A76F</string>
@@ -531,12 +531,11 @@
 	<integer>5</integer>
 	<key>WindowOrderList</key>
 	<array>
-		<string>8F4B429212BE6F4600B4A76F</string>
 		<string>8F4B427212BE6E2000B4A76F</string>
 		<string>8F4B427312BE6E2000B4A76F</string>
 		<string>1C78EAAD065D492600B07095</string>
 		<string>8F3489081297FCE10090D273</string>
-		<string>/Users/marcomorain/dev/scheme/scheme.xcodeproj</string>
+		<string>1CD10A99069EF8BA00B06720</string>
 	</array>
 	<key>WindowString</key>
 	<string>62 108 995 657 0 0 1280 778 </string>
