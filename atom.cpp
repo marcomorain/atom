@@ -154,6 +154,9 @@ static void print_rec(const Cell* cell, int is_car)
 
 		if (is_car) printf(")");
 		break;
+	
+	default:
+		assert(false);
 	}
 }
 
@@ -1059,30 +1062,31 @@ struct Environment
 		memset(data, 0, num_bytes);
 		parent = parent_env;
 	}
-
-	Cell* get(const Cell* symbol) const
-	{
-		assert(symbol->type == TYPE_SYMBOL);
-		const char* str = symbol->data.symbol;
-		unsigned hash = mask & MurmurHash2(str, strlen(str));
-
-		for (Node* node = data[hash]; node; node = node->next)
-		{
-			if (strcmp(str, node->symbol) == 0)
-			{
-				return node->value;
-			}
-		}
-		
-		if (parent)
-		{
-			return parent->get(symbol);
-		}
-		
-		signal_error("reference to undefined identifier: %s", str);
-		return NULL;
-	}
 };
+
+Cell* environment_get(Environment* env, const Cell* symbol)
+{
+	assert(symbol->type == TYPE_SYMBOL);
+	const char* str = symbol->data.symbol;
+	unsigned hash = env->mask & MurmurHash2(str, strlen(str));
+
+	for (Environment::Node* node = env->data[hash]; node; node = node->next)
+	{
+		if (strcmp(str, node->symbol) == 0)
+		{
+			return node->value;
+		}
+	}
+		
+	if (env->parent)
+	{
+		return environment_get(env->parent, symbol);
+	}
+		
+	signal_error("reference to undefined identifier: %s", str);
+	return NULL;
+	
+}
 
 void environment_define(Environment* env, const char* symbol, Cell* value)
 {
@@ -1459,6 +1463,54 @@ static Cell* atom_mul(Environment* env, Cell* params)
 }
 
 
+static Cell* sub_div_helper(Environment* env, Cell* params, bool is_sub)
+{
+	Cell* z = nth_param(env, params, 1, TYPE_NUMBER);
+	double initial = z->data.number;
+	
+	if (cdr(params))
+	{
+		for (Cell* cell = cdr(params); cell; cell = cdr(cell))
+		{
+			Cell* num = eval(env, car(cell));
+			type_check(TYPE_NUMBER, num->type);
+			
+			if (is_sub)
+			{
+				initial = initial - num->data.number;
+			}
+			else
+			{
+				initial = initial / num->data.number;
+			}
+		}
+	}
+	else
+	{
+		if (is_sub)
+		{
+			initial = -initial;
+		}
+		else
+		{
+			initial = 1/initial;
+		}
+	}
+	
+	return make_number(initial);
+	
+}
+
+static Cell* atom_sub(Environment* env, Cell* params)
+{
+	return sub_div_helper(env, params, true);
+}
+
+static Cell* atom_div(Environment* env, Cell* params)
+{
+	return sub_div_helper(env, params, false);
+}
+
 static Cell* atom_number_q(Environment* env, Cell* params)
 {
 	return type_q_helper(env, params, TYPE_NUMBER);
@@ -1536,6 +1588,41 @@ static Cell* atom_compare_greater_equal(Environment* env, Cell* params)
 	return comparison_helper<GreaterEq>(env, params);
 }
 
+
+// (max x1 x2 ...) library procedure
+// (min x1 x2 ...) library procedure
+// These procedures return the maximum or minimum of their arguments.
+
+static Cell* min_max_helper(Environment* env, Cell* params, bool is_min)
+{
+	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
+	
+	for (Cell* x = cdr(params); x; x = cdr(x))
+	{
+		Cell* n = eval(env, car(x));
+		type_check(TYPE_NUMBER, n->type);
+		
+		if (is_min)
+		{
+			result = std::min(result, n->data.number);
+		}
+		else
+		{
+			result = std::max(result, n->data.number);
+		}
+	}
+	return make_number(result);
+}
+
+static Cell* atom_min(Environment* env, Cell* params)
+{
+	return min_max_helper(env, params, true);
+}
+
+static Cell* atom_max(Environment* env, Cell* params)
+{
+	return min_max_helper(env, params, false);
+}
 // 6.3
 
 // 6.3.1: Booleans
@@ -1752,6 +1839,34 @@ static Cell* atom_string_to_symbol(Environment* env, Cell* params)
 	return result;
 }
 
+// 6.3.4 Characters
+
+// (char?	obj )	procedure
+// Returns #t if obj is a character, otherwise returns #f.
+static Cell* atom_char_q(Environment* env, Cell* params)
+{
+	return type_q_helper(env, params, TYPE_CHARACTER);	
+}
+
+// (char->integer char)	procedure
+// (integer->char n)	procedure
+// Given a character, char->integer returns an exact integer representation
+// of the character. Given an exact integer that is the image of a character
+// under char->integer, integer->char returns that character.
+// These procedures implement order-preserving isomorphisms between the set
+// of characters under the char<=? ordering and some subset of the integers
+// under the <= ordering.
+static Cell* atom_char_to_integer(Environment* env, Cell* params)
+{
+	Cell* obj = nth_param(env, params, 1, TYPE_CHARACTER);
+	return make_number((double)obj->data.character);
+}
+
+static Cell* atom_integer_to_char(Environment* env, Cell* params)
+{
+	Cell* obj = nth_param(env, params, 1, TYPE_NUMBER);
+	return make_character((char)obj->data.number);
+}
 
 // 6.3.5 Strings
 
@@ -1969,6 +2084,42 @@ static Environment* create_environment(Environment* parent)
 	return env;
 }
 
+
+static void atom_api_load(Environment* env, const char* data, size_t length)
+{
+	Input input;
+	input.init(data);
+	TokenList tokens;
+	input.tokens = &tokens;
+
+	tokens.init(1000);
+
+	while (input.get())
+	{
+		read_token(input);
+	}
+
+	tokens.start_parse();
+
+	for(;;)
+	{
+		Cell* cell = parse_datum(tokens);
+
+		if (!cell)
+		{
+			break;
+		}
+
+		printf("> ");
+		print(cell);
+		const Cell* result = eval(env, cell);
+
+		print(result);
+	}
+
+	tokens.destroy();	
+}
+
 void atom_api_loadfile(Environment* env, const char* filename)
 {
 	FILE* file = fopen(filename, "r");
@@ -1986,45 +2137,23 @@ void atom_api_loadfile(Environment* env, const char* filename)
 	buffer[read] = 0;
 	fclose (file);
 	
-	{
-		Input input;
-		input.init(buffer);
-		TokenList tokens;
-		input.tokens = &tokens;
-
-		tokens.init(1000);
-
-		while (input.get())
-		{
-			read_token(input);
-		}
-
-		tokens.start_parse();
-
-		for(;;)
-		{
-			Cell* cell = parse_datum(tokens);
-
-			if (!cell)
-			{
-				break;
-			}
-
-			printf("> ");
-			print(cell);
-			const Cell* result = eval(env, cell);
-
-			print(result);
-		}
-
-		tokens.destroy();
-	}
+	atom_api_load(env, buffer, read);
 	
 	free(buffer);
 }
 
+static int level = -1;
+
+struct Bump
+{
+	int& value;
+	Bump(int& v) : value(v) { v++; };
+	~Bump() { value--; };
+};
+
 static Cell* eval(Environment* env, Cell* cell)
 {
+	Bump bump(level);
 
 tailcall:
 
@@ -2040,7 +2169,7 @@ tailcall:
 			return cell;
 
 		case TYPE_SYMBOL:
-			return env->get(cell);
+			return environment_get(env, cell);
 
 		case TYPE_PAIR:
 		{
@@ -2048,7 +2177,10 @@ tailcall:
 			
 			type_check(TYPE_SYMBOL, symbol->type);
 			
-			const Cell* function = env->get(symbol);
+			//for (int i=0; i<level; i++) printf("  ");
+			//printf("Calling function %s\n", symbol->data.symbol);
+			
+			const Cell* function = environment_get(env, symbol);
 			
 			if (!function)
 			{
@@ -2076,7 +2208,12 @@ tailcall:
 				if (car(formals))
 				{
 					assert(car(formals)->type == TYPE_SYMBOL);
-					environment_define(new_env, car(formals)->data.symbol, car(params));
+					Cell* value = eval(env, car(params));
+					environment_define(new_env, car(formals)->data.symbol, value);
+					
+					//printf("%s: ", car(formals)->data.symbol);
+					//print(value);
+					
 					params = cdr(params);
 				}
 			}
@@ -2138,13 +2275,20 @@ Environment* atom_api_open()
 	add_builtin(env, "integer?",   	atom_integer_q);
 	add_builtin(env, "+",		   	atom_plus);
 	add_builtin(env, "*",		   	atom_mul);
+	add_builtin(env, "-",			atom_sub);
+	add_builtin(env, "/",			atom_div);
 	add_builtin(env, "=",			atom_comapre_equal);
 	add_builtin(env, "<",			atom_compare_less);
 	add_builtin(env, ">",			atom_compare_greater);
 	add_builtin(env, "<=",			atom_compare_less_equal);
 	add_builtin(env, ">=",			atom_compare_greater_equal);
+	add_builtin(env, "min",			atom_min);
+	add_builtin(env, "max",			atom_max);
 	add_builtin(env, "not",		   	atom_not);
 	add_builtin(env, "boolean?",   	atom_boolean_q);
+	add_builtin(env, "char?",			atom_char_q);
+	add_builtin(env, "char->integer",	atom_char_to_integer);
+	add_builtin(env, "integer->char",	atom_integer_to_char);
 	add_builtin(env, "string?",	   		atom_string_q);
 	add_builtin(env, "make-string",		atom_make_string);
 	add_builtin(env, "string-length",	atom_string_length);
@@ -2178,17 +2322,61 @@ Environment* atom_api_open()
 
 
 void atom_api_close(Environment* env)
-{	
+{
+}
+
+void atom_api_repl(Environment* env)
+{
+	std::string line;
+	std::getline (std::cin, line);
+	atom_api_load(env, line.c_str(), line.length());
+}
+
+
+static bool match(const char* input, const char* a, const char* b)
+{
+	return	strcmp(input, a) == 0 ||
+			strcmp(input, b) == 0;
 }
 
 int main (int argc, char * const argv[])
 {
 	Environment* atom = atom_api_open();
+	
+	bool repl = false;
+	bool file = false;
+	const char* filename = NULL;
+	
+	for (int i=1; i<argc; i++)
+	{
+		if (match(argv[i], "-i", "--interactive"))
+		{
+			repl = true;
+		}
+		else if (match(argv[i], "-f", "--file"))
+		{
+			i++;
+			if (i == argc)
+			{
+				signal_error("filename expected");
+			}
+			file = true;
+			filename = argv[i];
+		}
+	}
 
-	const char* filename = (argc == 1) ? "/Users/marcomorain/dev/scheme/test/test.scm" : argv[1];
+	while (repl)
+	{
+		atom_api_repl(atom);
+	}
 	
+	if (!file)
+	{
+		filename = "/Users/marcomorain/dev/scheme/test/test.scm";
+	}
+
 	atom_api_loadfile(atom, filename);
-	
+
 	atom_api_close(atom);
 
 	system ("pause");

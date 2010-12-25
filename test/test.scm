@@ -132,4 +132,13 @@ bools
 (string->symbol "foo")
 (assert (symbol? (string->symbol "bar")))
 
+(char->integer #\a)
+
+(integer->char 100)
+
+(integer->char (char->integer #\m))
+
+(integer->char (char->integer #\M))
+
+(define a 1)
 
