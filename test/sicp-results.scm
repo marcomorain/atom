@@ -101,6 +101,10 @@
         ((and (>= b a) (>= c b)) (+ (square b) (square c))) ; a <= b <= c 
         (else (sum-of-squares-of-two-largest b c a)))) 
  
+
+(test 25 (sum-of-squares-of-two-largest 1 3 4))
+(test 25 (sum-of-squares-of-two-largest 4 1 3))
+(test 25 (sum-of-squares-of-two-largest 3 4 1))
 ;;  ex1.3: Define a procedure that takes three numbers as arguments  
 ;;  and returns the sum of the squares of the two larger numbers. 
  
@@ -114,3 +118,7 @@
      (if (or (> c a) (> c b)) 
          (* c c ) 
          0)))
+
+(test 25 (sum-of-squared-largest-two 1 3 4))
+(test 25 (sum-of-squared-largest-two 4 1 3))
+(test 25 (sum-of-squared-largest-two 3 4 1))

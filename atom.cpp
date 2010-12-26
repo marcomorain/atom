@@ -256,6 +256,12 @@ static Cell* cons(Cell* car, Cell* cdr)
 	return cell;
 }
 
+static bool is_false(const Cell* cell)
+{
+	return	cell->type == TYPE_BOOLEAN &&
+			cell->data.boolean == false;
+}
+
 struct Token
 {
 	void print(void) const
@@ -1293,6 +1299,62 @@ static Cell* atom_cond(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+
+// (and <test1> ...)  library syntax
+// The ⟨test⟩ expressions are evaluated from left to right, and the value of
+// the first expression that evaluates to a false value (see section 6.3.1)
+// is returned. Any remaining expressions are not evaluated. If all the
+// expressions evaluate to true values, the value of the last expression is
+// returned. If there are no expressions then #t is returned.
+static Cell* atom_and(Environment* env, Cell* params)
+{
+	if (!car(params))
+	{
+		signal_error("syntax error. at least 1 test exptected in (and ...)");
+	}
+
+	Cell* last_result;
+	for (Cell* cell = params; cell; cell = cdr(cell))
+	{
+		last_result = eval(env, car(cell));
+		
+		if (is_false(last_result))
+		{
+			return last_result;
+		}
+	}
+	
+	return last_result;
+}
+
+// (or	<test1> ...) library syntax
+// The ⟨test⟩ expressions are evaluated from left to right, and the value of
+// the first expression that evaluates to a true value (see section 6.3.1) is
+// returned. Any remaining expressions are not evaluated. If all expressions
+// evaluate to false values, the value of the last expression is returned. If
+// there are no expressions then #f is returned.
+static Cell* atom_or(Environment* env, Cell* params)
+{
+	if (!car(params))
+	{
+		signal_error("syntax error. at least 1 test exptected in (or ...)");
+	}
+
+	for (Cell* cell = params; cell; cell = cdr(cell))
+	{
+		Cell* test = eval(env, car(cell));
+		
+		if (is_false(test))
+		{
+			continue;
+		}
+		
+		return test;
+	}
+	
+	return make_boolean(false);
+}
+
 static Cell* atom_define(Environment* env, Cell* params)
 {
 	Cell* first  = car(params); // no eval
@@ -2266,6 +2328,8 @@ Environment* atom_api_open()
 	add_builtin(env, "define",		atom_define);
 	add_builtin(env, "set!",		atom_set_b);
 	add_builtin(env, "cond",		atom_cond);
+	add_builtin(env, "and",			atom_and);
+	add_builtin(env, "or",			atom_or);
 	add_builtin(env, "eqv?",		atom_eqv_q);
 	add_builtin(env, "begin",      	atom_begin);
 	add_builtin(env, "number?",    	atom_number_q);
