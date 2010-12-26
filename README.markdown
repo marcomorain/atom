@@ -23,9 +23,9 @@
 
 ## Report
 ### Chapter 4: Expressions
-* quote
+* <del>quote</del>
 * lambda
-* if
+* <del>if</del>
 * set!
 * cond
 * case
