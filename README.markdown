@@ -162,7 +162,7 @@
 
 ## 6.3.5 Strings
 
-* string?
+* <del>string?</del>
 * make-string
 * string
 * string-length
