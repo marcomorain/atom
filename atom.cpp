@@ -1299,6 +1299,31 @@ static Cell* atom_cond(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+// (case <key> <clause1> <clause2> ...) library syntax
+// Syntax: ⟨Key⟩ may be any expression. Each ⟨clause⟩ should have the form
+//  ((⟨datum1⟩ ...) ⟨expression1⟩ ⟨expression2⟩ ...),
+// where each ⟨datum⟩ is an external representation of some object. All the
+// ⟨datum⟩s must be distinct. The last ⟨clause⟩ may be an “else clause,”
+// which has the form
+//  (else ⟨expression1⟩ ⟨expression2⟩ ...).
+// Semantics:
+// A case expression is evaluated as follows. ⟨Key⟩ is evaluated and its
+// result is compared against each ⟨datum⟩. If the result of evaluating ⟨key⟩ 
+// is equivalent (in the sense of eqv?; see section 6.1) to a ⟨datum⟩, then
+// the expressions in the corresponding ⟨clause⟩ are evaluated from left to
+// right and the result(s) of the last expression in
+// the ⟨clause⟩ is(are) returned as the result(s) of the case expression. If
+// the result of evaluating ⟨key⟩ is different from every ⟨datum⟩, then if
+// there is an else clause its expressions are evaluated and the result(s) of
+// the last is(are) the result(s) of the case expression; otherwise the
+// result of the case expression is unspecified.
+static Cell* atom_case(Environment* env, Cell* params)
+{
+	Cell* key = nth_param(env, params, 1, TYPE_NUMBER);
+	// todo
+	return NULL;
+	
+}
 
 // (and <test1> ...)  library syntax
 // The ⟨test⟩ expressions are evaluated from left to right, and the value of
@@ -2328,6 +2353,7 @@ Environment* atom_api_open()
 	add_builtin(env, "define",		atom_define);
 	add_builtin(env, "set!",		atom_set_b);
 	add_builtin(env, "cond",		atom_cond);
+	add_builtin(env, "case",		atom_case);
 	add_builtin(env, "and",			atom_and);
 	add_builtin(env, "or",			atom_or);
 	add_builtin(env, "eqv?",		atom_eqv_q);
@@ -2357,7 +2383,7 @@ Environment* atom_api_open()
 	add_builtin(env, "make-string",		atom_make_string);
 	add_builtin(env, "string-length",	atom_string_length);
 	add_builtin(env, "string-ref",	   	atom_string_ref);
-	add_builtin(env, "string-set",	   	atom_string_set);
+	add_builtin(env, "string-set!",	   	atom_string_set);
 	add_builtin(env, "pair?",      		atom_pair_q);
 	add_builtin(env, "cons",       		atom_cons);
 	add_builtin(env, "car",        		atom_car);
