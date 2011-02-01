@@ -136,9 +136,9 @@
 * assoc
 
 ## 6.3.3 Symbols
-* symbol?
-* symbol->string
-* string->symbol
+* <del>symbol?</del>
+* <del>symbol->string</del>
+* <del>string->symbol</del>
 * char?
 * char=?
 * char<?
@@ -163,11 +163,11 @@
 ## 6.3.5 Strings
 
 * <del>string?</del>
-* make-string
+* <del>make-string</del>
 * string
-* string-length
-* string-ref
-* string-set!
+* <del>string-length</del>
+* <del>string-ref</del>
+* <del>string-set!</del>
 * string=?
 * string-ci=?
 * string<?
@@ -236,9 +236,9 @@
 * char-ready?
 
 ### 6.6.3 Output
-* write
-* display
-* newline
+* <del>write</del>
+* <del>display</del>
+* <del>newline</del>
 * write-char
 
 ### 6.6.4 Output
