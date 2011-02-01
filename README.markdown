@@ -26,15 +26,15 @@
 * <del>quote</del>
 * lambda
 * <del>if</del>
-* set!
+* <del>set!</dev>
 * <del>cond</del>
 * case
 * <del>and</del>
-* </del>or</del>
+* <del>or</del>
 * let
 * let*
 * letrec
-* begin
+* <del>begin</del>
 * do
 * let (named)
 * delay
@@ -44,7 +44,7 @@
 * syntax-rules
 
 ### Chapter 5: Program structure
-* define
+* <del>define</del>
 * define-syntax
 
 ### Chapter 6: Standard Procedures
