@@ -1439,52 +1439,6 @@ static Cell* atom_lambda(Environment* env, Cell* params)
 	return make_procedure(env, car(params), cdr(params));
 }
 
-static Cell* atom_eqv_q(Environment* env, Cell* params)
-{
-	Cell* obj1 = eval(env, car(params));
-	Cell* obj2 = eval(env, car(cdr(params)));
-	
-	bool result = false;
-	
-	const int type = obj1->type;
-	
-	if (type == obj2->type)
-	{
-		switch(type)
-		{
-			case TYPE_BOOLEAN:
-			result = obj1->data.boolean == obj2->data.boolean;
-			break;
-			
-			case TYPE_CHARACTER:
-			result = obj1->data.character == obj2->data.character;
-			break;
-			
-			case TYPE_SYMBOL:
-			// @todo: intern symbols, use pointer equality
-			result = 0 == strcmp(obj1->data.symbol, obj2->data.symbol);
-			break;
-			
-			case TYPE_NUMBER:
-			result = obj1->data.number == obj2->data.number;
-			break;
-			
-			case TYPE_PAIR:
-			case TYPE_VECTOR:
-			case TYPE_STRING:
-			result = obj1 == obj2;
-			break;
-			
-			default:
-			// unhandled case
-			assert(0);
-			break;
-		}
-	}
-	
-	return make_boolean(result);
-}
-
 // 4.2.3 Sequencing
 
 // (begin <expression1> <expression> ...)	library syntax
@@ -1596,6 +1550,80 @@ static Cell* atom_sub(Environment* env, Cell* params)
 static Cell* atom_div(Environment* env, Cell* params)
 {
 	return sub_div_helper(env, params, false);
+}
+
+static bool eq_helper(const Cell* obj1, const Cell* obj2)
+{
+	const int type = obj1->type;
+
+	if (type != obj2->type)
+	{
+		return false;
+	}
+	
+	switch(type)
+	{
+		case TYPE_BOOLEAN:
+		return obj1->data.boolean == obj2->data.boolean;
+
+		case TYPE_CHARACTER:
+		return obj1->data.character == obj2->data.character;
+
+		case TYPE_SYMBOL:
+		// @todo: intern symbols, use pointer equality
+		return 0 == strcmp(obj1->data.symbol, obj2->data.symbol);
+
+		case TYPE_NUMBER:
+		return obj1->data.number == obj2->data.number;
+			
+		case TYPE_PAIR:
+		case TYPE_VECTOR:
+		case TYPE_STRING:
+		return obj1 == obj2;
+
+		default:
+		// unhandled case
+		assert(0);
+	}
+
+	return false;
+}
+
+// (eqv? obj1 obj2) procedure
+// The eqv? procedure defines a useful equivalence relation on objects.
+// Briefly, it returns #t if obj1 and obj2 should normally be regarded as the
+// same object.
+static Cell* atom_eqv_q(Environment* env, Cell* params)
+{
+	Cell* obj1 = eval(env, car(params));
+	Cell* obj2 = eval(env, car(cdr(params)));
+	
+	bool result = eq_helper(obj1, obj2);
+	
+	if (!result &&
+		obj1->type == TYPE_STRING &&
+		obj2->type == TYPE_STRING)
+	{
+		result = 0 == strcmp(obj1->data.string, obj2->data.string);
+	}
+	
+	return make_boolean(result);
+}
+
+// (eq? obj1 obj2)	procedure
+// Eq? is similar to eqv? except that in some cases it is capable of
+// discerning distinctions finer than those detectable by eqv?.
+// Eq? and eqv? are guaranteed to have the same behavior on symbols, booleans,
+// the empty list, pairs, procedures, and non-empty strings and vectors.
+// Eq?’s behavior on numbers and characters is implementation-dependent, but
+// it will always return either true or false, and will return true only when
+// eqv? would also return true. Eq? may also behave differently from eqv? on
+// empty vectors and empty strings.
+static Cell* atom_eq_q(Environment* env, Cell* params)
+{
+	Cell* obj1 = eval(env, car(params));
+	Cell* obj2 = eval(env, car(cdr(params)));
+	return make_boolean(eq_helper(obj1, obj2));
 }
 
 static Cell* atom_number_q(Environment* env, Cell* params)
@@ -2348,34 +2376,35 @@ Environment* atom_api_open()
 {
 	Environment* env = create_environment(NULL);
 	
-	add_builtin(env, "if",			atom_if);
-	add_builtin(env, "quote",		atom_quote);
-	add_builtin(env, "define",		atom_define);
-	add_builtin(env, "set!",		atom_set_b);
-	add_builtin(env, "cond",		atom_cond);
-	add_builtin(env, "case",		atom_case);
-	add_builtin(env, "and",			atom_and);
-	add_builtin(env, "or",			atom_or);
-	add_builtin(env, "eqv?",		atom_eqv_q);
-	add_builtin(env, "begin",      	atom_begin);
-	add_builtin(env, "number?",    	atom_number_q);
-	add_builtin(env, "complex?",   	always_false);
-	add_builtin(env, "real?",      	atom_number_q);
-	add_builtin(env, "rational?",  	always_false);
-	add_builtin(env, "integer?",   	atom_integer_q);
-	add_builtin(env, "+",		   	atom_plus);
-	add_builtin(env, "*",		   	atom_mul);
-	add_builtin(env, "-",			atom_sub);
-	add_builtin(env, "/",			atom_div);
-	add_builtin(env, "=",			atom_comapre_equal);
-	add_builtin(env, "<",			atom_compare_less);
-	add_builtin(env, ">",			atom_compare_greater);
-	add_builtin(env, "<=",			atom_compare_less_equal);
-	add_builtin(env, ">=",			atom_compare_greater_equal);
-	add_builtin(env, "min",			atom_min);
-	add_builtin(env, "max",			atom_max);
-	add_builtin(env, "not",		   	atom_not);
-	add_builtin(env, "boolean?",   	atom_boolean_q);
+	add_builtin(env, "if",				atom_if);
+	add_builtin(env, "quote",			atom_quote);
+	add_builtin(env, "define",			atom_define);
+	add_builtin(env, "set!",			atom_set_b);
+	add_builtin(env, "cond",			atom_cond);
+	add_builtin(env, "case",			atom_case);
+	add_builtin(env, "and",				atom_and);
+	add_builtin(env, "or",				atom_or);
+	add_builtin(env, "eqv?",			atom_eqv_q);
+	add_builtin(env, "eq?",				atom_eq_q);
+	add_builtin(env, "begin",      		atom_begin);
+	add_builtin(env, "number?",    		atom_number_q);
+	add_builtin(env, "complex?",   		always_false);
+	add_builtin(env, "real?",      		atom_number_q);
+	add_builtin(env, "rational?",  		always_false);
+	add_builtin(env, "integer?",   		atom_integer_q);
+	add_builtin(env, "+",		   		atom_plus);
+	add_builtin(env, "*",		   		atom_mul);
+	add_builtin(env, "-",				atom_sub);
+	add_builtin(env, "/",				atom_div);
+	add_builtin(env, "=",				atom_comapre_equal);
+	add_builtin(env, "<",				atom_compare_less);
+	add_builtin(env, ">",				atom_compare_greater);
+	add_builtin(env, "<=",				atom_compare_less_equal);
+	add_builtin(env, ">=",				atom_compare_greater_equal);
+	add_builtin(env, "min",				atom_min);
+	add_builtin(env, "max",				atom_max);
+	add_builtin(env, "not",		   		atom_not);
+	add_builtin(env, "boolean?",   		atom_boolean_q);
 	add_builtin(env, "char?",			atom_char_q);
 	add_builtin(env, "char->integer",	atom_char_to_integer);
 	add_builtin(env, "integer->char",	atom_integer_to_char);
@@ -2398,14 +2427,14 @@ Environment* atom_api_open()
 	add_builtin(env, "symbol?",    		atom_symbol_q);
 	add_builtin(env, "symbol->string",	atom_symbol_to_string);
 	add_builtin(env, "string->symbol",	atom_string_to_symbol);
-	add_builtin(env, "procedure?", atom_procedure_q);
-	add_builtin(env, "apply",	   atom_apply);
-	add_builtin(env, "lambda",     atom_lambda);
-	add_builtin(env, "write",      atom_write);
-	add_builtin(env, "display",	   atom_display);
-	add_builtin(env, "newline",	   atom_newline);
-	add_builtin(env, "error",	   atom_error);
-	add_builtin(env, "load",	   atom_load);
+	add_builtin(env, "procedure?", 		atom_procedure_q);
+	add_builtin(env, "apply",	   		atom_apply);
+	add_builtin(env, "lambda",     		atom_lambda);
+	add_builtin(env, "write",      		atom_write);
+	add_builtin(env, "display",	   		atom_display);
+	add_builtin(env, "newline",	   		atom_newline);
+	add_builtin(env, "error",	   		atom_error);
+	add_builtin(env, "load",	   		atom_load);
 	
 	return env;	
 }
