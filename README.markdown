@@ -23,18 +23,21 @@
 
 ## Report
 ### Chapter 4: Expressions
-* <del>quote</del>
+#### Done 
+* quote
 * lambda
-* <del>if</del>
-* <del>set!</dev>
-* <del>cond</del>
+* if
+* set!
+* cond
+* and
+* or
+* begin
+
+#### Not Done
 * case
-* <del>and</del>
-* <del>or</del>
 * let
 * let*
 * letrec
-* <del>begin</del>
 * do
 * let (named)
 * delay

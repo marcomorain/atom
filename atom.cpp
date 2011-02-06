@@ -2376,17 +2376,19 @@ Environment* atom_api_open()
 {
 	Environment* env = create_environment(NULL);
 	
-	add_builtin(env, "if",				atom_if);
 	add_builtin(env, "quote",			atom_quote);
-	add_builtin(env, "define",			atom_define);
+	add_builtin(env, "lambda",     		atom_lambda);
+	add_builtin(env, "if",				atom_if);
 	add_builtin(env, "set!",			atom_set_b);
 	add_builtin(env, "cond",			atom_cond);
 	add_builtin(env, "case",			atom_case);
 	add_builtin(env, "and",				atom_and);
 	add_builtin(env, "or",				atom_or);
+	add_builtin(env, "begin",      		atom_begin);
+	
+	add_builtin(env, "define",			atom_define);
 	add_builtin(env, "eqv?",			atom_eqv_q);
 	add_builtin(env, "eq?",				atom_eq_q);
-	add_builtin(env, "begin",      		atom_begin);
 	add_builtin(env, "number?",    		atom_number_q);
 	add_builtin(env, "complex?",   		always_false);
 	add_builtin(env, "real?",      		atom_number_q);
@@ -2429,7 +2431,6 @@ Environment* atom_api_open()
 	add_builtin(env, "string->symbol",	atom_string_to_symbol);
 	add_builtin(env, "procedure?", 		atom_procedure_q);
 	add_builtin(env, "apply",	   		atom_apply);
-	add_builtin(env, "lambda",     		atom_lambda);
 	add_builtin(env, "write",      		atom_write);
 	add_builtin(env, "display",	   		atom_display);
 	add_builtin(env, "newline",	   		atom_newline);
