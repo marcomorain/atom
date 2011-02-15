@@ -2385,8 +2385,8 @@ Environment* atom_api_open()
 	add_builtin(env, "and",				atom_and);
 	add_builtin(env, "or",				atom_or);
 	add_builtin(env, "begin",      		atom_begin);
-	
 	add_builtin(env, "define",			atom_define);
+	
 	add_builtin(env, "eqv?",			atom_eqv_q);
 	add_builtin(env, "eq?",				atom_eq_q);
 	add_builtin(env, "number?",    		atom_number_q);
@@ -2405,16 +2405,11 @@ Environment* atom_api_open()
 	add_builtin(env, ">=",				atom_compare_greater_equal);
 	add_builtin(env, "min",				atom_min);
 	add_builtin(env, "max",				atom_max);
+	
 	add_builtin(env, "not",		   		atom_not);
 	add_builtin(env, "boolean?",   		atom_boolean_q);
-	add_builtin(env, "char?",			atom_char_q);
-	add_builtin(env, "char->integer",	atom_char_to_integer);
-	add_builtin(env, "integer->char",	atom_integer_to_char);
-	add_builtin(env, "string?",	   		atom_string_q);
-	add_builtin(env, "make-string",		atom_make_string);
-	add_builtin(env, "string-length",	atom_string_length);
-	add_builtin(env, "string-ref",	   	atom_string_ref);
-	add_builtin(env, "string-set!",	   	atom_string_set);
+
+	// lists
 	add_builtin(env, "pair?",      		atom_pair_q);
 	add_builtin(env, "cons",       		atom_cons);
 	add_builtin(env, "car",        		atom_car);
@@ -2426,16 +2421,37 @@ Environment* atom_api_open()
 	add_builtin(env, "list",       		atom_list);
 	add_builtin(env, "length",     		atom_length);
 	add_builtin(env, "append",     		atom_append);
+	
+	// char
+	add_builtin(env, "char?",			atom_char_q);
+	add_builtin(env, "char->integer",	atom_char_to_integer);
+	add_builtin(env, "integer->char",	atom_integer_to_char);
+	
+	// string
+	add_builtin(env, "string?",	   		atom_string_q);
+	add_builtin(env, "make-string",		atom_make_string);
+	add_builtin(env, "string-length",	atom_string_length);
+	add_builtin(env, "string-ref",	   	atom_string_ref);
+	add_builtin(env, "string-set!",	   	atom_string_set);
+	
+	// symbols
 	add_builtin(env, "symbol?",    		atom_symbol_q);
 	add_builtin(env, "symbol->string",	atom_symbol_to_string);
 	add_builtin(env, "string->symbol",	atom_string_to_symbol);
+	
+	// control
 	add_builtin(env, "procedure?", 		atom_procedure_q);
 	add_builtin(env, "apply",	   		atom_apply);
+	
+	// output
 	add_builtin(env, "write",      		atom_write);
 	add_builtin(env, "display",	   		atom_display);
 	add_builtin(env, "newline",	   		atom_newline);
-	add_builtin(env, "error",	   		atom_error);
+	
+	// output
 	add_builtin(env, "load",	   		atom_load);
+	
+	add_builtin(env, "error",	   		atom_error);
 	
 	return env;	
 }

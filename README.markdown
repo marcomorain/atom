@@ -47,36 +47,48 @@
 * syntax-rules
 
 ### Chapter 5: Program structure
-* <del>define</del>
+#### Done
+* define
+
+#### Not Done
 * define-syntax
 
 ### Chapter 6: Standard Procedures
+#### 6.1. Equivalence predicates
+##### Done
 * eqv?
 * eq?
+
+##### Not Done
 * equal?
+
+#### 6.2. Numbers
+##### Done
 * number?
 * complex?
 * real?
 * rational?
 * integer?
-* exact? 
-* inexact?
 * =
 * <
 * >
 * <=
 * >=
+* max
+* min
+* +
+* *
+* -
+* /
+
+##### Not Done
+* exact? 
+* inexact?
 * zero?
 * positive?
 * negative?
 * odd?
 * even?
-* <del>max</del>
-* <del>min</del>
-* <del>+</del>
-* <del>*</del>
-* <del>-</del>
-* <del>/</del>
 * abs
 * quotient
 * remainder
@@ -107,15 +119,19 @@
 * angle
 * exact->inexact
 * inexact->exact
+
 ## 6.2.6  Numerical input and output
+
+##### Not Done
 * number->string
 * string->number
 
 ## Booleans
 * not
-* boolean
+* boolean?
 
 ## Pairs and lists
+##### Done
 * pair?
 * cons
 * car
@@ -128,6 +144,8 @@
 * list
 * length
 * append
+
+##### Not Done
 * reverse
 * list-tail
 * list-ref
@@ -139,10 +157,18 @@
 * assoc
 
 ## 6.3.3 Symbols
-* <del>symbol?</del>
-* <del>symbol->string</del>
-* <del>string->symbol</del>
+##### Done
+* symbol?
+* symbol->string
+* string->symbol
+
+## 6.3.4. Characters
+##### Done
 * char?
+* char->integer
+* integer->char
+
+##### Not Done
 * char=?
 * char<?
 * char>?
@@ -158,19 +184,20 @@
 * char-whitespace?
 * char-upper-case?
 * char-lower-case?
-* char->integer
-* integer->char
 * char-upcase
 * char-downcase
 
 ## 6.3.5 Strings
 
-* <del>string?</del>
-* <del>make-string</del>
+##### Done
+* string?
+* make-string
+* string-length
+* string-ref
+* string-set!
+
+##### Not Done
 * string
-* <del>string-length</del>
-* <del>string-ref</del>
-* <del>string-set!</del>
 * string=?
 * string-ci=?
 * string<?
@@ -189,6 +216,8 @@
 * string-fill!
 
 ## 6.3.6 Vectors
+
+##### Not Done
 * vector?
 * make-vector
 * vector
@@ -200,8 +229,11 @@
 * vector->fill!
 
 ### 6.4 Control Features
+##### Done
 * procedure?
 * apply?
+
+##### Not Done
 * map
 * for-each
 * force
@@ -211,13 +243,16 @@
 * dynamic-wind
 
 ### 6.5 Eval
+##### Not Done
+##### Not Done
 * eval
 * scheme-report-environment
 * null-environment
 * interaction-environment
 
 ### 6.6.1 Ports
-
+##### Not Done
+##### Not Done
 * call-with-input-file
 * call-with-output-file
 * input-port?
@@ -232,6 +267,8 @@
 * close-output-file
 
 ### 6.6.3 Input
+##### Done
+##### Not Done
 * read
 * read-char
 * peek-char
@@ -239,12 +276,19 @@
 * char-ready?
 
 ### 6.6.3 Output
-* <del>write</del>
-* <del>display</del>
-* <del>newline</del>
+
+##### Done
+* write
+* display
+* newline
+
+##### Not Done
 * write-char
 
 ### 6.6.4 Output
+##### Done
 * load
+
+##### Not Done
 * transcript-on
 * transcript-off
