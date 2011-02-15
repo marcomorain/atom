@@ -76,7 +76,9 @@ struct Cell
 	};
 	
 	CellType type;
-	Data data;
+	Data	 data;
+	Cell*    next;
+	bool	 mark;
 };
 
 static Cell cell_true  = { TYPE_BOOLEAN, {true } };
@@ -185,12 +187,120 @@ static void type_check(int expected, int actual)
 	}
 }
 
-static Cell* make_cell(int type)
+
+static bool power_of_two(int v)
+{
+	return v && !(v & (v - 1));
+}
+
+
+struct Environment
+{
+	struct Node
+	{
+		const char* symbol;
+		Cell*       value;
+		Node*		next;
+	};
+
+	Environment* parent;
+	Node**		 data;
+	unsigned	 mask;
+	Cell*		 cells;
+
+	void init(int size, Environment* parent_env)
+	{
+		assert(power_of_two(size));
+		mask = size-1;
+		const size_t num_bytes = size * sizeof(Node*);
+		data = (Node**)malloc(num_bytes);
+		memset(data, 0, num_bytes);
+		parent = parent_env;
+	}
+};
+
+static Cell* make_cell(Environment* env, int type)
 {
 	Cell* result = (Cell*)malloc(sizeof(Cell));
 	memset(result, 0, sizeof(Cell));
 	result->type = (CellType)type;
+
+	// stick on the first item in the linked list
+	while(env->parent) env = env->parent;
+	result->next = env->cells;
+	env->cells = result;
+
 	return result;	
+}
+
+static void mark(Cell* cell);
+
+static void mark_environment(Environment* env)
+{
+	for (int i = 0; i <= env->mask; i++)
+	{
+		for (Environment::Node* node = env->data[i]; node; node = node->next)
+		{
+			mark(node->value);	
+		}
+	}
+}
+
+static void mark(Cell* cell)
+{
+	if (!cell || cell->mark) return;
+	
+	cell->mark = true;
+	
+	switch(cell->type)
+	{
+		case TYPE_BOOLEAN:
+		case TYPE_CHARACTER:
+		case TYPE_NUMBER:
+		case TYPE_STRING:
+		case TYPE_SYMBOL:
+			break;
+		
+		case TYPE_PAIR:
+			mark(cell->data.pair.car);
+			mark(cell->data.pair.cdr);
+			break;
+			
+		case TYPE_VECTOR:
+			assert(0); // TODO
+			break;
+		
+		case TYPE_PROCEDURE:
+		{
+			Cell::Procedure& p = cell->data.procedure;
+			if (!p.function)
+			{
+				mark(p.formals);
+				mark(p.body);
+				mark_environment(p.env);	
+			}
+			break;
+		}
+	}
+}
+
+static void collect_garbage(Environment* env)
+{
+	while(env->parent) env = env->parent;
+	
+	mark_environment(env);
+	
+	for (Cell* cell = env->cells; cell; cell = cell->next)
+	{
+		if (cell->mark)
+		{
+			cell->mark = false;
+		}
+		else
+		{
+			free(cell);
+		}
+	}
 }
 
 static Cell* make_boolean(bool value)
@@ -198,16 +308,16 @@ static Cell* make_boolean(bool value)
 	return value ? &cell_true : &cell_false;
 }
 
-static Cell* make_number(double value)
+static Cell* make_number(Environment* env, double value)
 {
-	Cell* number = make_cell(TYPE_NUMBER);
+	Cell* number = make_cell(env, TYPE_NUMBER);
 	number->data.number = value;
 	return number;
 }
 
-static Cell* make_character(char c)
+static Cell* make_character(Environment* env, char c)
 {
-	Cell* character = make_cell(TYPE_CHARACTER);
+	Cell* character = make_cell(env, TYPE_CHARACTER);
 	character->data.character = c;
 	return character;	
 }
@@ -217,7 +327,7 @@ static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
 	type_check(TYPE_PAIR, formals->type);
 	type_check(TYPE_PAIR, body->type);
 
-	Cell* proc = make_cell(TYPE_PROCEDURE);
+	Cell* proc = make_cell(env, TYPE_PROCEDURE);
 	proc->data.procedure.formals = formals;
 	proc->data.procedure.body    = body;
 	proc->data.procedure.env	 = env;
@@ -248,9 +358,9 @@ static void set_cdr(Cell* list, Cell* cdr)
 	list->data.pair.cdr = cdr;
 }
 
-static Cell* cons(Cell* car, Cell* cdr)
+static Cell* cons(Environment* env, Cell* car, Cell* cdr)
 {
-	Cell* cell = make_cell(TYPE_PAIR);
+	Cell* cell = make_cell(env, TYPE_PAIR);
 	set_car(cell, car);
 	set_cdr(cell, cdr);
 	return cell;
@@ -348,9 +458,10 @@ public:
 	size_t buffer_length;
 	size_t buffer_position;
 
-	Token*	tokens;
-	int		next;
-	int		length;
+	Environment* env;
+	Token*	     tokens;
+	int		     next;
+	int		     length;
 	
 	void start_parse()
 	{
@@ -423,7 +534,7 @@ public:
 		next++;
 	}
 
-	void init(int size)
+	void init(Environment* env, int size)
 	{
 		next   = 0;
 		length = size;
@@ -432,8 +543,7 @@ public:
 		buffer_position = 0;
 		buffer_length	= 64;
 		buffer_data = (char*)malloc(buffer_length);
-		
-
+		this->env = env;
 	}
 
 	void destroy()
@@ -796,17 +906,19 @@ Cell* parse_vector(TokenList& tokens)
 Cell* parse_abreviation(TokenList& tokens)
 {
 	const Token* t = tokens.peek();
-	
+
 	if (!t) signal_error("unexpected end of input");
 
 	if(t->type == TOKEN_QUOTE)
 	{
-		Cell* quote        = make_cell(TYPE_SYMBOL);
+		Environment* env = tokens.env;
+		
+		Cell* quote        = make_cell(tokens.env, TYPE_SYMBOL);
 		quote->data.symbol = "quote";
 		tokens.skip();
-		return cons(quote,
-					cons(parse_datum(tokens),
-				         cons(NULL, NULL)));
+		return cons(env, quote,
+					cons(env, parse_datum(tokens),
+				        cons(env, NULL, NULL)));
 	}
 
 	if (t->type == TOKEN_BACKTICK)
@@ -844,7 +956,7 @@ Cell* parse_list(TokenList& tokens)
 	
 	Cell* cell = parse_datum(tokens);
 	
-	Cell* list = cons(cell, NULL);
+	Cell* list = cons(tokens.env, cell, NULL);
 
 	Cell* head = list;
 
@@ -888,7 +1000,7 @@ Cell* parse_list(TokenList& tokens)
 			signal_error("is this unexpected end of input? todo");
 		}
 
-		Cell* rest = cons(car, NULL);
+		Cell* rest = cons(tokens.env, car, NULL);
 		set_cdr(list, rest);
 		list = rest;
 	}
@@ -917,7 +1029,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 	{
 		case TOKEN_BOOLEAN:
 		{
-			Cell* cell = make_cell(TYPE_BOOLEAN);
+			Cell* cell = make_cell(tokens.env, TYPE_BOOLEAN);
 			cell->data.boolean = t->data.boolean;
 			tokens.skip();
 			return cell;
@@ -926,7 +1038,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 		case TOKEN_CHARACTER:
 		{
 			
-			Cell* cell = make_cell(TYPE_CHARACTER);
+			Cell* cell = make_cell(tokens.env, TYPE_CHARACTER);
 			cell->data.character = t->data.character;
 			tokens.skip();
 			return cell;
@@ -934,14 +1046,14 @@ Cell* parse_simple_datum(TokenList& tokens)
 
 		case TOKEN_NUMBER:
 		{
-			Cell* cell = make_number(t->data.number);
+			Cell* cell = make_number(tokens.env, t->data.number);
 			tokens.skip();
 			return cell;
 		}
 
 		case TOKEN_IDENTIFIER:
 		{
-			Cell* cell = make_cell(TYPE_SYMBOL);
+			Cell* cell = make_cell(tokens.env, TYPE_SYMBOL);
 			cell->data.symbol = t->data.identifier;
 			tokens.skip();
 			return cell;
@@ -949,7 +1061,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 		
 		case TOKEN_STRING:
 		{
-			Cell* cell = make_cell(TYPE_STRING);
+			Cell* cell = make_cell(tokens.env, TYPE_STRING);
 			cell->data.string = t->data.string;
 			tokens.skip();
 			return cell;
@@ -1040,35 +1152,6 @@ static unsigned int MurmurHash2 ( const void * key, int len)
 	return h;
 } 
 
-
-static bool power_of_two(int v)
-{
-	return v && !(v & (v - 1));
-}
-
-struct Environment
-{
-	struct Node
-	{
-		const char* symbol;
-		Cell*       value;
-		Node*		next;
-	};
-
-	Environment* parent;
-	Node**		 data;
-	unsigned	 mask;
-
-	void init(int size, Environment* parent_env)
-	{
-		assert(power_of_two(size));
-		mask = size-1;
-		const size_t num_bytes = size * sizeof(Node*);
-		data = (Node**)malloc(num_bytes);
-		memset(data, 0, num_bytes);
-		parent = parent_env;
-	}
-};
 
 Cell* environment_get(Environment* env, const Cell* symbol)
 {
@@ -1486,7 +1569,7 @@ static Cell* plus_mul_helper(Environment* env,
 			result *= value->data.number;
 		}
 	}
-	return make_number(result);
+	return make_number(env, result);
 }
 
 // (+ z1 ...)
@@ -1538,7 +1621,7 @@ static Cell* sub_div_helper(Environment* env, Cell* params, bool is_sub)
 		}
 	}
 	
-	return make_number(initial);
+	return make_number(env, initial);
 	
 }
 
@@ -1726,7 +1809,7 @@ static Cell* min_max_helper(Environment* env, Cell* params, bool is_min)
 			result = std::max(result, n->data.number);
 		}
 	}
-	return make_number(result);
+	return make_number(env, result);
 }
 
 static Cell* atom_min(Environment* env, Cell* params)
@@ -1766,7 +1849,7 @@ static Cell* atom_cons(Environment* env, Cell* params)
 {
 	Cell* first  = eval(env, car(params));
 	Cell* second = eval(env, car(cdr(params)));
-	return cons(first, second);
+	return cons(env, first, second);
 }
 
 static Cell* atom_car(Environment* env, Cell* params)
@@ -1846,12 +1929,12 @@ static Cell* atom_list_q(Environment* env, Cell* params)
 static Cell* atom_list(Environment* env, Cell* params)
 {
 	// @todo: use an empty list type here.
-	Cell* result = cons(NULL, NULL);
+	Cell* result = cons(env, NULL, NULL);
 	
 	for (;;)
 	{
 		set_car(result, eval(env, car(params)));
-		set_cdr(result, cons(NULL, NULL));
+		set_cdr(result, cons(env, NULL, NULL));
 		params = cdr(params);
 	}
 	
@@ -1869,7 +1952,7 @@ static Cell* atom_length(Environment* env, Cell* params)
 		length++;
 	}
 	
-	return make_number((double)length);
+	return make_number(env, (double)length);
 }
 
 // (append list ...)
@@ -1877,7 +1960,7 @@ static Cell* atom_length(Environment* env, Cell* params)
 // the elements of the other lists.
 static Cell* atom_append(Environment* env, Cell* params)
 {
-	Cell* result = cons(NULL, NULL);
+	Cell* result = cons(env, NULL, NULL);
 	
 	// for each list
 	for (Cell* head = eval(env, car(params)); head; head = head->data.pair.cdr)
@@ -1888,7 +1971,7 @@ static Cell* atom_append(Environment* env, Cell* params)
 		for (Cell* obj = head; obj; obj = cdr(obj))
 		{
 			set_car(result, car(obj));
-			set_cdr(result, cons(NULL, NULL));
+			set_cdr(result, cons(env, NULL, NULL));
 			result = cdr(result);
 		}
 	}
@@ -1926,7 +2009,7 @@ static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 	type_check(TYPE_SYMBOL, symbol->type);
 	const char* data = symbol->data.symbol;
 	size_t length = strlen(data);
-	Cell* result = make_cell(TYPE_STRING);
+	Cell* result = make_cell(env, TYPE_STRING);
 	result->data.string = (char*)malloc(length+1);
 	memcpy(result->data.string, data, length);
 	result->data.string[length] = 0;
@@ -1945,7 +2028,7 @@ static Cell* atom_string_to_symbol(Environment* env, Cell* params)
 	type_check(TYPE_STRING, symbol->type);
 	const char* data = symbol->data.string;
 	size_t length = strlen(data);
-	Cell* result = make_cell(TYPE_SYMBOL);
+	Cell* result = make_cell(env, TYPE_SYMBOL);
 	
 	char* scratch = (char*)malloc(length+1);
 	memcpy(scratch, data, length);
@@ -1974,13 +2057,13 @@ static Cell* atom_char_q(Environment* env, Cell* params)
 static Cell* atom_char_to_integer(Environment* env, Cell* params)
 {
 	Cell* obj = nth_param(env, params, 1, TYPE_CHARACTER);
-	return make_number((double)obj->data.character);
+	return make_number(env, (double)obj->data.character);
 }
 
 static Cell* atom_integer_to_char(Environment* env, Cell* params)
 {
 	Cell* obj = nth_param(env, params, 1, TYPE_NUMBER);
-	return make_character((char)obj->data.number);
+	return make_character(env, (char)obj->data.number);
 }
 
 // 6.3.5 Strings
@@ -2019,7 +2102,7 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 		signal_error("positive integer length required");
 	}
 	
-	Cell* result = make_cell(TYPE_STRING);
+	Cell* result = make_cell(env, TYPE_STRING);
 	result->data.string = (char*)malloc(length + 1);
 	memset(result->data.string, fill, length);
 	result->data.string[length] = 0;
@@ -2037,7 +2120,7 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 static Cell* atom_string_length(Environment* env, Cell* params)
 {
 	Cell* string = nth_param(env, params, 1, TYPE_STRING);
-	return make_number(strlen(string->data.string));
+	return make_number(env, strlen(string->data.string));
 }
 
 // (string-ref string k)	procedure
@@ -2057,7 +2140,7 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 		signal_error("k is not a valid index of the given string");
 	}
 	
-	return make_character(string->data.string[index]);
+	return make_character(env, string->data.string[index]);
 }
 
 
@@ -2100,7 +2183,7 @@ static Cell* atom_apply(Environment* env, Cell* params)
 {
 	Cell* proc = car(params);
 	Cell* args = nth_param(env, params, 2, TYPE_PAIR);
-	Cell* caller = cons(proc, args);
+	Cell* caller = cons(env, proc, args);
 	return eval(env, caller);
 }
 
@@ -2207,7 +2290,7 @@ static void atom_api_load(Environment* env, const char* data, size_t length)
 	TokenList tokens;
 	input.tokens = &tokens;
 
-	tokens.init(1000);
+	tokens.init(env, 1000);
 
 	while (input.get())
 	{
@@ -2232,7 +2315,9 @@ static void atom_api_load(Environment* env, const char* data, size_t length)
 		print(result);
 	}
 
-	tokens.destroy();	
+	tokens.destroy();
+	
+	collect_garbage(env);
 }
 
 void atom_api_loadfile(Environment* env, const char* filename)
@@ -2367,7 +2452,7 @@ static void add_builtin(Environment* env, const char* name, Function function)
 	assert(name);
 	assert(function);
 	
-	Cell* cell = make_cell(TYPE_PROCEDURE);
+	Cell* cell = make_cell(env, TYPE_PROCEDURE);
 	cell->data.procedure.function = function;
 	environment_define(env, name, cell);
 }
