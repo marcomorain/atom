@@ -29,7 +29,7 @@
 * do
 * let (named)
 * delay
-* quasiquote <qq template>) 
+* quasiquote <qq template>
 * let-syntax
 * letrec-syntax
 * syntax-rules

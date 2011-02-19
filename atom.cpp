@@ -290,17 +290,26 @@ static void collect_garbage(Environment* env)
 	
 	mark_environment(env);
 	
-	for (Cell* cell = env->cells; cell; cell = cell->next)
+	Cell* remaining = NULL;
+	Cell* next = NULL;
+	
+	for (Cell* cell = env->cells; cell; cell = next)
 	{
+		next = cell->next;
+		
 		if (cell->mark)
 		{
 			cell->mark = false;
+			cell->next = remaining;
+			remaining = cell;
 		}
 		else
 		{
 			free(cell);
 		}
 	}
+	
+	env->cells = remaining;
 }
 
 static Cell* make_boolean(bool value)

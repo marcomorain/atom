@@ -142,3 +142,18 @@ bools
 
 (define a 1)
 
+
+(define fizz-buzz
+  (lambda (count)
+	(if (> count 0)
+	  (begin
+      	(display
+        	(cond ((= 0 (modulo i 15)) "FizzBuzz")
+              	  ((= 0 (modulo i 3))  "Fizz")
+              	  ((= 0 (modulo i 5))  "Buzz")
+                  (else                i)))
+		(newline)
+		(fizz-buzz (- count 1))))))
+		
+(fizz-buzz 10)
+
