@@ -7,6 +7,10 @@
 #include <stdio.h>
 #include <stdarg.h>
 
+// fmod (in atom_modulo) brings in a dependancy on math.h
+// todo: split / remove break?
+#include <math.h>
+
 #define DEBUG_LEXER (0)
 
 #if (DEBUG_LEXER)
@@ -52,6 +56,12 @@ struct Cell
 		Cell* cdr;
 	};
 	
+	struct Vector
+	{
+		Cell** data;
+		int    length;		
+	};
+	
 	struct Procedure
 	{
 		// If function is null, then the procedure
@@ -63,6 +73,7 @@ struct Cell
 	};
 
 	// todo: add a const string type? or a flag?
+	// todo: add a length to string type
 
 	union Data
 	{
@@ -72,6 +83,7 @@ struct Cell
 		char*		 string;
 		Pair         pair;
 		const char*  symbol;
+		Vector		 vector;
 		Procedure    procedure;
 	};
 	
@@ -193,6 +205,11 @@ static bool power_of_two(int v)
 	return v && !(v & (v - 1));
 }
 
+static bool is_integer(double d)
+{
+	return d == (int)d;
+}
+
 
 struct Environment
 {
@@ -237,7 +254,7 @@ static void mark(Cell* cell);
 
 static void mark_environment(Environment* env)
 {
-	for (int i = 0; i <= env->mask; i++)
+	for (unsigned i = 0; i <= env->mask; i++)
 	{
 		for (Environment::Node* node = env->data[i]; node; node = node->next)
 		{
@@ -341,6 +358,18 @@ static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
 	proc->data.procedure.body    = body;
 	proc->data.procedure.env	 = env;
 	return proc;	
+}
+
+static Cell* make_vector(Environment* env, int length, Cell* fill)
+{
+	Cell* vec = make_cell(env, TYPE_VECTOR);
+	vec->data.vector.length = length;
+	vec->data.vector.data   = (Cell**)malloc(length * sizeof(Cell*));
+	for (int i=0; i<length; i++)
+	{
+		vec->data.vector.data[i] = fill;
+	}
+	return vec;
 }
 
 static Cell* car(const Cell* cell)
@@ -1238,10 +1267,10 @@ static Cell* type_q_helper(Environment* env, Cell* params, int type)
 	return make_boolean(obj->type == type);
 }
 
-// Return the nth paramter to a function
-// If the type does not match, then an error is signaled.
+// return the nth parameter to a function.
 // n is indexed from 1 for the first parameter, 2 for the second.
-static inline Cell* nth_param(Environment* env, Cell* params, int n, int type)
+
+static Cell* nth_param_any(Environment* env, Cell* params, int n)
 {
 	for (int i=1; i<n; i++)
 	{
@@ -1256,10 +1285,43 @@ static inline Cell* nth_param(Environment* env, Cell* params, int n, int type)
 		signal_error("Too few parameters passed (%d expected)", n);
 	}
 	
-	Cell* result = eval(env, car(params));
-	
-	// todo: this message should include 'n'
+	return eval(env, car(params));
+}
+
+// The same as nth_param_any, with an added type check.
+// If the type does not match, then an error is signaled.
+static Cell* nth_param(Environment* env, Cell* params, int n, int type)
+{
+	Cell* result = nth_param_any(env, params, n);
+	// todo: this error message should include 'n'
 	type_check(type, result->type);
+	return result;
+}
+
+static int nth_param_integer(Environment* env, Cell* params, int n)
+{
+	Cell* param = nth_param(env, params, n, TYPE_NUMBER);
+	if (!is_integer(param->data.number))
+	{
+		// todo: better error message
+		signal_error("Not an integer");
+	}
+	return (int)param->data.number;
+}
+
+
+// Evaluate and return the second parameter, if one exists.
+// Return null otherwise.
+static Cell* optional_second_param(Environment* env, Cell* params)
+{	
+	Cell* rest = cdr(params);
+	
+	if (!rest)
+	{
+		return NULL;
+	}
+	
+	Cell* result = eval(env, car(rest));
 	return result;
 }
 
@@ -1411,7 +1473,7 @@ static Cell* atom_cond(Environment* env, Cell* params)
 // result of the case expression is unspecified.
 static Cell* atom_case(Environment* env, Cell* params)
 {
-	Cell* key = nth_param(env, params, 1, TYPE_NUMBER);
+	//Cell* key = nth_param(env, params, 1, TYPE_NUMBER);
 	// todo
 	return NULL;
 	
@@ -1644,6 +1706,13 @@ static Cell* atom_div(Environment* env, Cell* params)
 	return sub_div_helper(env, params, false);
 }
 
+static Cell* atom_modulo(Environment* env, Cell* params)
+{
+	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
+	Cell* b = nth_param(env, params, 2, TYPE_NUMBER);
+	return make_number(env, fmod(a->data.number, b->data.number));
+}
+
 static bool eq_helper(const Cell* obj1, const Cell* obj2)
 {
 	const int type = obj1->type;
@@ -1728,7 +1797,7 @@ static Cell* atom_integer_q(Environment* env, Cell* params)
 	Cell* obj = eval(env, car(params));
 	
 	bool integer =	obj->type == TYPE_NUMBER &&
-					obj->data.number == (int)obj->data.number;
+					is_integer(obj->data.number);
 	
 	return make_boolean(integer);
 }
@@ -2087,34 +2156,32 @@ static Cell* atom_string_q(Environment* env, Cell* params)
 // (make-string k)      procedure
 // (make-string k char) procedure
 // Make-string returns a newly allocated string of length k. If char is
-// given, then all elements of the string are ini- tialized to char,
+// given, then all elements of the string are initialized to char,
 // otherwise the contents of the string are unspecified.
 // ATOM: The contents are zero.
 static Cell* atom_make_string(Environment* env, Cell* params)
 {
-	Cell* k = nth_param(env, params, 1, TYPE_NUMBER);
+	int k = nth_param_integer(env, params, 1);
 
 	char fill = 0;
 	
-	// todo: macro for getting the nth param
-	if (Cell* rest = cdr(params))
+	Cell* second = optional_second_param(env, params);
+	
+	if (second)
 	{
-		rest = eval(env, car(rest));
-		type_check(TYPE_CHARACTER, rest->type);
-		fill = rest->data.character;
+		type_check(TYPE_CHARACTER, second->type);
+		fill = second->data.character;
 	}
 	
-	int length = (int)k->data.number;
-	
-	if (length < 0)
+	if (k < 0)
 	{
 		signal_error("positive integer length required");
 	}
 	
 	Cell* result = make_cell(env, TYPE_STRING);
-	result->data.string = (char*)malloc(length + 1);
-	memset(result->data.string, fill, length);
-	result->data.string[length] = 0;
+	result->data.string = (char*)malloc(k + 1);
+	memset(result->data.string, fill, k);
+	result->data.string[k] = 0;
 	return result;
 }
 
@@ -2138,18 +2205,15 @@ static Cell* atom_string_length(Environment* env, Cell* params)
 static Cell* atom_string_ref(Environment* env, Cell* params)
 {
 	Cell* string = nth_param(env, params, 1, TYPE_STRING);
-	Cell* k      = nth_param(env, params, 2, TYPE_NUMBER);
-	
-	// todo: assert k is an integer - double to size_t
-	int index = (int)k->data.number;
+	int k        = nth_param_integer(env, params, 2);
 	
 	// todo: watch this cast.
-	if (index < 0 || index < (int)strlen(string->data.string))
+	if (k < 0 || k < (int)strlen(string->data.string))
 	{
 		signal_error("k is not a valid index of the given string");
 	}
 	
-	return make_character(env, string->data.string[index]);
+	return make_character(env, string->data.string[k]);
 }
 
 
@@ -2160,22 +2224,120 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 static Cell* atom_string_set(Environment* env, Cell* params)
 {
 	Cell* string = nth_param(env, params, 1, TYPE_STRING);
-	Cell* k      = nth_param(env, params, 2, TYPE_NUMBER);
+	int   k      = nth_param_integer(env, params, 2);
 	Cell* c      = nth_param(env, params, 3, TYPE_CHARACTER);
-	
-	// todo: assert k is integer - double to size_t
-	int index = (int)k->data.number;
+
 	char* data = string->data.string;
 	
-	// todo: watch this case.
-	if (index < 0 || index >= (int)strlen(data))
+	// todo: watch this cast.
+	// todo: strings should carry a length
+	if (k < 0 || k >= (int)strlen(data))
 	{
 		signal_error("invalid string index");
 	}
 	
-	data[index] = c->data.character;
+	data[k] = c->data.character;
 	return string;
 }
+
+// (vector? obj)
+// Returns #t if obj is a vector, otherwise returns #f.
+static Cell* atom_vector_q(Environment* env, Cell* params)
+{
+	return type_q_helper(env, params, TYPE_VECTOR);
+}
+
+// (make-vector k)	procedure
+// (make-vector k fill)	procedure
+// Returns a newly allocated vector of k elements. If a second argument is given, then each
+// element is initialized to fill. Otherwise the initial contents of each element is unspecified.
+static Cell* atom_make_vector(Environment* env, Cell* params)
+{
+	int k = nth_param_integer(env, params, 1);
+	// todo: assert k <= 0
+	Cell* fill = optional_second_param(env, params);
+	return make_vector(env, k, fill);
+}
+
+// (vector obj ...)	library procedure
+// Returns a newly allocated vector whose elements contain the given arguments. Analogous to list.
+static Cell* atom_vector(Environment* env, Cell* params)
+{
+  // todo
+	return NULL;	
+}
+
+// (vector-length vector)
+// Returns the number of elements in vector as an exact integer.
+static Cell* atom_vector_length(Environment* env, Cell* params)
+{
+	Cell* v = nth_param(env, params, 1, TYPE_VECTOR);
+	return make_number(env, v->data.vector.length);
+}
+
+// Return true if k is a valid index into vector
+static bool valid_vector_index(Cell* vector, int k)
+{
+	return k >= 0 && k < vector->data.vector.length;
+}
+
+// (vector-ref vector k) procedure
+// k must be a valid index of vector. Vector-ref returns the contents of element k of vector.
+static Cell* atom_vector_ref(Environment* env, Cell* params)
+{
+	Cell* v = nth_param(env, params, 1, TYPE_VECTOR);
+	int k = nth_param_integer(env, params, 2);
+	
+	if (!valid_vector_index(v, k))
+	{
+		signal_error("Invalid vector index");
+	}
+	
+	Cell* result = v->data.vector.data[k];
+	
+	// check if unitialized.
+	if (!result)
+	{
+		// todo: format error message better
+		signal_error("Cannot access unitialized vector");
+	}
+	return result;
+}
+
+// (vector-set! vector k obj) procedure
+// k must be a valid index of vector. Vector-set! stores obj in element k of vector. The value
+// returned by vector-set! is unspecified.
+static Cell* atom_vector_set_b(Environment* env, Cell* params)
+{
+	Cell* vector = nth_param(env, params, 1, TYPE_VECTOR);
+	int   k      = nth_param_integer(env, params, 2);
+	Cell* obj    = nth_param_any(env, params, 3);
+	
+	if (!valid_vector_index(vector, k))
+	{	
+		// todo: better error message.	
+		signal_error("Invalid vector index k");
+	}
+	
+	vector->data.vector.data[k] = obj;
+	return obj;
+}
+
+// (vector-fill! vector fill) library procedure
+// Stores fill in every element of vector. The value returned by vector-fill! is unspecified.
+// ATOM: Fill is returned.
+static Cell* atom_vector_fill_b(Environment* env, Cell* params)
+{
+	Cell* vector = nth_param(env, params, 1, TYPE_VECTOR);
+	Cell* fill   = nth_param_any(env, params, 2);
+	
+	for (int i=0; i<vector->data.vector.length; i++)
+	{
+		vector->data.vector.data[i] = fill;
+	}
+	return fill;
+}
+
 // 6.4. Control features
 
 // (procedure? obj)
@@ -2492,6 +2654,7 @@ Environment* atom_api_open()
 	add_builtin(env, "*",		   		atom_mul);
 	add_builtin(env, "-",				atom_sub);
 	add_builtin(env, "/",				atom_div);
+	add_builtin(env, "modulo",			atom_modulo);
 	add_builtin(env, "=",				atom_comapre_equal);
 	add_builtin(env, "<",				atom_compare_less);
 	add_builtin(env, ">",				atom_compare_greater);
@@ -2527,6 +2690,15 @@ Environment* atom_api_open()
 	add_builtin(env, "string-length",	atom_string_length);
 	add_builtin(env, "string-ref",	   	atom_string_ref);
 	add_builtin(env, "string-set!",	   	atom_string_set);
+	
+	// Vector
+	add_builtin(env, "vector?",	   		atom_vector_q);
+	add_builtin(env, "make-vector",	  	atom_make_vector);
+	add_builtin(env, "vector",	   		atom_vector);
+	add_builtin(env, "vector-length", 	atom_vector_length);
+	add_builtin(env, "vector-ref",		atom_vector_ref);
+	add_builtin(env, "vector-set!",		atom_vector_set_b);
+	add_builtin(env, "vector-fill!",	atom_vector_fill_b);
 	
 	// symbols
 	add_builtin(env, "symbol?",    		atom_symbol_q);
