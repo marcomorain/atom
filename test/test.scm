@@ -167,5 +167,8 @@ c
 (define a "string")
 (let* ((a 1)
 			 (b (+ a 1)))
+			(display "side effect")
 			(+ b 1))
 a
+
+;(let ((a 1)) )

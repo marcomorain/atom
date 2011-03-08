@@ -1547,7 +1547,12 @@ static Environment* create_environment(Environment* parent)
 static Cell* let_helper(Environment* env, Cell* params, bool star)
 {
 	Cell* bindings = car(params);
-	Cell* body     = car(cdr(params));
+	Cell* body     = cdr(params);
+	
+	if (!body)
+	{
+		signal_error("No expression in body");
+	}
 	
 	Environment* child = create_environment(env);
 	
@@ -1562,7 +1567,15 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 		environment_define(child, symbol->data.symbol, init);
 	}
 	
-	return eval(child, body);
+	Cell* last = NULL;
+
+	for (Cell* b = body; b; b = cdr(b))
+	{
+		Cell* expr = car(b);
+		last = eval(child, expr);
+	}
+	
+	return last;
 }
 
 
