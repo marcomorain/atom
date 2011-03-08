@@ -68,6 +68,7 @@
 * *
 * -
 * /
+* modulo
 
 ##### Not Done
 * exact? 
@@ -80,7 +81,6 @@
 * abs
 * quotient
 * remainder
-* modulo
 * gcd
 * lcm
 * numerator
@@ -205,16 +205,18 @@
 
 ## 6.3.6 Vectors
 
-##### Not Done
+##### Done
 * vector?
 * make-vector
-* vector
 * vector-length
 * vector-ref
 * vector-set!
+* vector->fill!
+
+##### Not Done
+* vector
 * vector->list
 * list->vector
-* vector->fill!
 
 ### 6.4 Control Features
 ##### Done
