@@ -1340,13 +1340,13 @@ static Cell* atom_quote(Environment* env, Cell* params)
 
 // (if <test> <consequent> <alternate>)  syntax
 // (if <test> <consequent>)              syntax
-// Syntax: ⟨Test⟩, ⟨consequent⟩, and ⟨alternate⟩ may be arbitrary
+// Syntax: <Test>, <consequent>, and <alternate> may be arbitrary
 // expressions.
-// Semantics: An if expression is evaluated as follows: first, ⟨test⟩ is
+// Semantics: An if expression is evaluated as follows: first, <test> is
 // evaluated. If it yields a true value (see section 6.3.1), then
-// ⟨consequent⟩ is evaluated and its value(s) is(are) returned. Otherwise
-// ⟨alternate⟩ is evaluated and its value(s) is(are) returned.
-// If ⟨test⟩ yields a false value and no ⟨alternate⟩ is specified, then
+// <consequent> is evaluated and its value(s) is(are) returned. Otherwise
+// <alternate> is evaluated and its value(s) is(are) returned.
+// If <test> yields a false value and no <alternate> is specified, then
 // the result of the expression is unspecified.
 static Cell* atom_if(Environment* env, Cell* params)
 {
@@ -1371,9 +1371,9 @@ static Cell* atom_if(Environment* env, Cell* params)
 
 // 4.1.6. Assignments
 
-// (set! ⟨variable⟩ ⟨expression⟩)
-// ⟨Expression⟩ is evaluated, and the resulting value is stored in the
-// location to which ⟨variable⟩ is bound. ⟨Variable⟩ must be bound either
+// (set! <variable> <expression>)
+// <Expression> is evaluated, and the resulting value is stored in the
+// location to which <variable> is bound. <Variable> must be bound either
 // in some region enclosing the set! expression or at top level. The result
 // of the set! expression is unspecified.
 
@@ -1392,29 +1392,29 @@ static Cell* atom_set_b(Environment* env, Cell* params)
 // (cond <clause1> <clause2> ...) library syntax
 
 // Syntax: Each <clause> should be of the form
-// (⟨test⟩ ⟨expression1⟩ ...)
+// (<test> <expression1> ...)
 // where <test> is any expression.
 // Alternatively, a <clause> may be of the form
-// (⟨test⟩ => ⟨expression⟩)
-// The last ⟨clause⟩ may be an “else clause,” which has the form
-// (else ⟨expression1⟩ ⟨expression2⟩ ...)
+// (<test> => <expression>)
+// The last <clause> may be an “else clause,” which has the form
+// (else <expression1> <expression2> ...)
 
 // Semantics: A cond expression is evaluated by evaluating the <test>
-// expressions of successive ⟨clause⟩s in order until one of them evaluates
-// to a true value. When a ⟨test⟩ evaluates to a true value, then the
-// remaining ⟨expression⟩s in its ⟨clause⟩ are evaluated in order, and the
-// result(s) of the last ⟨expression⟩ in the ⟨clause⟩ is(are) returned as
-// the result(s) of the entire cond expression. If the selected ⟨clause⟩
-// contains only the ⟨test⟩ and no ⟨expression⟩s, then the value of the
-// ⟨test⟩ is returned as the result.
+// expressions of successive <clause>s in order until one of them evaluates
+// to a true value. When a <test> evaluates to a true value, then the
+// remaining <expression>s in its <clause> are evaluated in order, and the
+// result(s) of the last <expression> in the <clause> is(are) returned as
+// the result(s) of the entire cond expression. If the selected <clause>
+// contains only the <test> and no <expression>s, then the value of the
+// <test> is returned as the result.
 
-// If the selected ⟨clause⟩ uses the => alternate form, then the
-// ⟨expression⟩ is evaluated. Its value must be a procedure that accepts
-// one argument; this procedure is then called on the value of the ⟨test⟩
+// If the selected <clause> uses the => alternate form, then the
+// <expression> is evaluated. Its value must be a procedure that accepts
+// one argument; this procedure is then called on the value of the <test>
 // and the value(s) returned by this procedure is(are) returned by the cond
-// expression. If all ⟨test⟩s evaluate to false values, and there is no
+// expression. If all <test>s evaluate to false values, and there is no
 // else clause, then the result of the conditional expression is
-// unspecified; if there is an else clause, then its ⟨expression⟩s are
+// unspecified; if there is an else clause, then its <expression>s are
 // evaluated, and the value(s) of the last one is(are) returned.
 
 static Cell* atom_cond(Environment* env, Cell* params)
@@ -1454,20 +1454,20 @@ static Cell* atom_cond(Environment* env, Cell* params)
 }
 
 // (case <key> <clause1> <clause2> ...) library syntax
-// Syntax: ⟨Key⟩ may be any expression. Each ⟨clause⟩ should have the form
-//  ((⟨datum1⟩ ...) ⟨expression1⟩ ⟨expression2⟩ ...),
-// where each ⟨datum⟩ is an external representation of some object. All the
-// ⟨datum⟩s must be distinct. The last ⟨clause⟩ may be an “else clause,”
+// Syntax: <Key> may be any expression. Each <clause> should have the form
+//  ((<datum1> ...) <expression1> <expression2> ...),
+// where each <datum> is an external representation of some object. All the
+// <datum>s must be distinct. The last <clause> may be an “else clause,”
 // which has the form
-//  (else ⟨expression1⟩ ⟨expression2⟩ ...).
+//  (else <expression1> <expression2> ...).
 // Semantics:
-// A case expression is evaluated as follows. ⟨Key⟩ is evaluated and its
-// result is compared against each ⟨datum⟩. If the result of evaluating ⟨key⟩ 
-// is equivalent (in the sense of eqv?; see section 6.1) to a ⟨datum⟩, then
-// the expressions in the corresponding ⟨clause⟩ are evaluated from left to
+// A case expression is evaluated as follows. <Key> is evaluated and its
+// result is compared against each <datum>. If the result of evaluating <key> 
+// is equivalent (in the sense of eqv?; see section 6.1) to a <datum>, then
+// the expressions in the corresponding <clause> are evaluated from left to
 // right and the result(s) of the last expression in
-// the ⟨clause⟩ is(are) returned as the result(s) of the case expression. If
-// the result of evaluating ⟨key⟩ is different from every ⟨datum⟩, then if
+// the <clause> is(are) returned as the result(s) of the case expression. If
+// the result of evaluating <key> is different from every <datum>, then if
 // there is an else clause its expressions are evaluated and the result(s) of
 // the last is(are) the result(s) of the case expression; otherwise the
 // result of the case expression is unspecified.
@@ -1480,7 +1480,7 @@ static Cell* atom_case(Environment* env, Cell* params)
 }
 
 // (and <test1> ...)  library syntax
-// The ⟨test⟩ expressions are evaluated from left to right, and the value of
+// The <test> expressions are evaluated from left to right, and the value of
 // the first expression that evaluates to a false value (see section 6.3.1)
 // is returned. Any remaining expressions are not evaluated. If all the
 // expressions evaluate to true values, the value of the last expression is
@@ -1507,7 +1507,7 @@ static Cell* atom_and(Environment* env, Cell* params)
 }
 
 // (or	<test1> ...) library syntax
-// The ⟨test⟩ expressions are evaluated from left to right, and the value of
+// The <test> expressions are evaluated from left to right, and the value of
 // the first expression that evaluates to a true value (see section 6.3.1) is
 // returned. Any remaining expressions are not evaluated. If all expressions
 // evaluate to false values, the value of the last expression is returned. If
@@ -1542,32 +1542,56 @@ static Environment* create_environment(Environment* parent)
 	return env;
 }
 
-// (let <bindings> <body>) library syntax
-// Syntax: <Bindings> should have the form
-// ((<variable1> <init1>) ...), where each ⟨init⟩ is an expression, and ⟨body⟩ should be a
-// sequence of one or more expressions. It is an error for a <variable> to appear more than once in
-// the list of variables being bound.
-// Semantics: The <init>s are evaluated in the current environment (in some unspecified order), the
-// <variable>s are bound to fresh locations holding the results, the ⟨body⟩ is evaluated in the
-// extended environment, and the value(s) of the last expression of ⟨body⟩ is(are) returned. Each
-// binding of a ⟨variable⟩ has ⟨body⟩ as its region.
-static Cell* atom_let(Environment* env, Cell* params)
+// This function imeplements let and let*
+// The only difference is the environment in which each init is evaluated in.
+static Cell* let_helper(Environment* env, Cell* params, bool star)
 {
 	Cell* bindings = car(params);
 	Cell* body     = car(cdr(params));
 	
 	Environment* child = create_environment(env);
+	
+	Environment* target = star ? child : env;
 
 	for (Cell* b = bindings; b; b = cdr(b))
 	{
 		Cell* pair = car(b);
 		Cell* symbol = car(pair);
 		type_check(TYPE_SYMBOL, symbol->type);
-		Cell* init   = eval(env, car(cdr(pair)));
+		Cell* init   = eval(target, car(cdr(pair)));
 		environment_define(child, symbol->data.symbol, init);
 	}
 	
 	return eval(child, body);
+}
+
+
+// (let <bindings> <body>) library syntax
+// Syntax: <Bindings> should have the form
+// ((<variable1> <init1>) ...), where each <init> is an expression, and <body> should be a
+// sequence of one or more expressions. It is an error for a <variable> to appear more than once in
+// the list of variables being bound.
+//
+// Semantics: The <init>s are evaluated in the current environment (in some unspecified order), the
+// <variable>s are bound to fresh locations holding the results, the <body> is evaluated in the
+// extended environment, and the value(s) of the last expression of <body> is(are) returned. Each
+// binding of a <variable> has <body> as its region.
+static Cell* atom_let(Environment* env, Cell* params)
+{
+	return let_helper(env, params, false);
+}
+
+// (let* <bindings> <body>) Library syntax
+// Syntax: <Bindings> should have the form
+// ((<variable1> <init1>) ...), and <body> should be a sequence of one or more expressions.
+//
+// Semantics: Let* is similar to let, but the bindings are performed sequentially from left to right,
+// and the region of a binding indicated by (<variable> <init>) is that part of the let* expression
+// to the right of the binding. Thus the second binding is done in an environment in which the first
+// binding is visible, and so on.
+static Cell* atom_let_s(Environment* env, Cell* params)
+{
+	return let_helper(env, params, true);
 }
 
 static Cell* atom_define(Environment* env, Cell* params)
@@ -1633,7 +1657,7 @@ static Cell* atom_lambda(Environment* env, Cell* params)
 
 // (begin <expression1> <expression> ...)	library syntax
 // The <expression>s are evaluated sequentially from left to right, and
-// the value(s) of the last ⟨expression⟩ is(are) re- turned. This expression
+// the value(s) of the last <expression> is(are) re- turned. This expression
 // type is used to sequence side ef- fects such as input and output.
 
 static Cell* atom_begin(Environment* env, Cell* params)
@@ -2668,6 +2692,7 @@ Environment* atom_api_open()
 	add_builtin(env, "and",				atom_and);
 	add_builtin(env, "or",				atom_or);
 	add_builtin(env, "let",				atom_let);
+	add_builtin(env, "let*",			atom_let_s);
 	add_builtin(env, "begin",      		atom_begin);
 	add_builtin(env, "define",			atom_define);
 
