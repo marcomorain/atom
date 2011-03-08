@@ -1534,6 +1534,42 @@ static Cell* atom_or(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+
+static Environment* create_environment(Environment* parent)
+{
+	Environment* env = (Environment*)malloc(sizeof(Environment));
+	env->init(1, parent);
+	return env;
+}
+
+// (let <bindings> <body>) library syntax
+// Syntax: <Bindings> should have the form
+// ((<variable1> <init1>) ...), where each ⟨init⟩ is an expression, and ⟨body⟩ should be a
+// sequence of one or more expressions. It is an error for a <variable> to appear more than once in
+// the list of variables being bound.
+// Semantics: The <init>s are evaluated in the current environment (in some unspecified order), the
+// <variable>s are bound to fresh locations holding the results, the ⟨body⟩ is evaluated in the
+// extended environment, and the value(s) of the last expression of ⟨body⟩ is(are) returned. Each
+// binding of a ⟨variable⟩ has ⟨body⟩ as its region.
+static Cell* atom_let(Environment* env, Cell* params)
+{
+	Cell* bindings = car(params);
+	Cell* body     = car(cdr(params));
+	
+	Environment* child = create_environment(env);
+
+	for (Cell* b = bindings; b; b = cdr(b))
+	{
+		Cell* pair = car(b);
+		Cell* symbol = car(pair);
+		type_check(TYPE_SYMBOL, symbol->type);
+		Cell* init   = eval(env, car(cdr(pair)));
+		environment_define(child, symbol->data.symbol, init);
+	}
+	
+	return eval(child, body);
+}
+
 static Cell* atom_define(Environment* env, Cell* params)
 {
 	Cell* first  = car(params); // no eval
@@ -2445,15 +2481,6 @@ static Cell* always_false(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
-
-static Environment* create_environment(Environment* parent)
-{
-	Environment* env = (Environment*)malloc(sizeof(Environment));
-	env->init(1, parent);
-	return env;
-}
-
-
 static void atom_api_load(Environment* env, const char* data, size_t length)
 {
 	Input input;
@@ -2640,8 +2667,10 @@ Environment* atom_api_open()
 	add_builtin(env, "case",			atom_case);
 	add_builtin(env, "and",				atom_and);
 	add_builtin(env, "or",				atom_or);
+	add_builtin(env, "let",				atom_let);
 	add_builtin(env, "begin",      		atom_begin);
 	add_builtin(env, "define",			atom_define);
+
 	
 	add_builtin(env, "eqv?",			atom_eqv_q);
 	add_builtin(env, "eq?",				atom_eq_q);

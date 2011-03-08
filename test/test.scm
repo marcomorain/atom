@@ -155,3 +155,10 @@ bools
 		(fizz-buzz (- count 1))))))
 (fizz-buzz 100)
 
+(define c "ok")
+c
+(let ((a 1)
+			(b 2)
+			(c "foobar"))
+	c)
+c
