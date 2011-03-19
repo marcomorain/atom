@@ -17,11 +17,11 @@
 * and
 * or
 * begin
+* let
+* let*
 
 #### Not Done
 * case
-* let
-* let*
 * letrec
 * do
 * let (named)
