@@ -1350,7 +1350,7 @@ static Cell* atom_quote(Environment* env, Cell* params)
 // the result of the expression is unspecified.
 static Cell* atom_if(Environment* env, Cell* params)
 {
-	Cell* test = eval(env, car(params));
+	Cell* test = nth_param_any(env, params, 1);
 	
 	if (test->type == TYPE_BOOLEAN &&
 		test->data.boolean == false)
@@ -1648,7 +1648,7 @@ static Cell* atom_define(Environment* env, Cell* params)
 
 static Cell* atom_error(Environment* env, Cell* params)
 {
-	Cell* message = eval(env, car(params));
+	Cell* message = nth_param_any(env, params, 1);
 	
 	const char* str = "Error";
 	
@@ -1786,7 +1786,46 @@ static Cell* atom_modulo(Environment* env, Cell* params)
 	return make_number(env, fmod(a->data.number, b->data.number));
 }
 
-static bool eq_helper(const Cell* obj1, const Cell* obj2)
+static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, bool recurse_compound);
+
+static bool pair_equal(const Cell* obj1, const Cell* obj2, bool recursive)
+{	
+	if (obj1 == obj2)   return true;
+	if (!obj1 || !obj2) return false; // TODO: Test for nulls / empty lists
+	if (!recursive)     return false;
+	
+	if (!eq_helper(car(obj1), car(obj2), true, true)) return false;
+	
+	return pair_equal(cdr(obj1), cdr(obj2), true);
+}
+
+static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
+{
+	assert(obj1->type == TYPE_VECTOR);
+	assert(obj2->type == TYPE_VECTOR);
+	
+	if (obj1 == obj2) return true;
+	if (!recursive)   return false;
+	
+	const int length = obj1->data.vector.length;
+	
+	// if different lengths, return false
+	if (obj2->data.vector.length != length) return false;
+			
+	Cell* const* const a = obj1->data.vector.data;
+	Cell* const* const b = obj2->data.vector.data;
+			
+	for (int i=0; i<length; i++)
+	{
+		if (!eq_helper(a[i], b[i], true, true))
+		{
+			return false;
+		}
+	}
+	return true;
+}
+
+static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, bool recurse_compound)
 {
 	const int type = obj1->type;
 
@@ -1811,9 +1850,14 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2)
 		return obj1->data.number == obj2->data.number;
 			
 		case TYPE_PAIR:
+		return pair_equal(obj1, obj2, recurse_compound);
+
 		case TYPE_VECTOR:
+		return vector_equal(obj1, obj2, recurse_compound);
+
 		case TYPE_STRING:
-		return obj1 == obj2;
+		return (obj1 == obj2) ||
+				(recurse_strings && (0 == strcmp(obj1->data.string, obj2->data.string)));
 
 		default:
 		// unhandled case
@@ -1825,39 +1869,38 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2)
 
 // (eqv? obj1 obj2) procedure
 // The eqv? procedure defines a useful equivalence relation on objects.
-// Briefly, it returns #t if obj1 and obj2 should normally be regarded as the
-// same object.
+// Briefly, it returns #t if obj1 and obj2 should normally be regarded as the same object.
 static Cell* atom_eqv_q(Environment* env, Cell* params)
 {
-	Cell* obj1 = eval(env, car(params));
-	Cell* obj2 = eval(env, car(cdr(params)));
-	
-	bool result = eq_helper(obj1, obj2);
-	
-	if (!result &&
-		obj1->type == TYPE_STRING &&
-		obj2->type == TYPE_STRING)
-	{
-		result = 0 == strcmp(obj1->data.string, obj2->data.string);
-	}
-	
-	return make_boolean(result);
+	Cell* obj1 = nth_param_any(env, params, 1);
+	Cell* obj2 = nth_param_any(env, params, 2);
+	return make_boolean(eq_helper(obj1, obj2, true, false));
 }
 
 // (eq? obj1 obj2)	procedure
-// Eq? is similar to eqv? except that in some cases it is capable of
-// discerning distinctions finer than those detectable by eqv?.
-// Eq? and eqv? are guaranteed to have the same behavior on symbols, booleans,
-// the empty list, pairs, procedures, and non-empty strings and vectors.
-// Eq?’s behavior on numbers and characters is implementation-dependent, but
-// it will always return either true or false, and will return true only when
-// eqv? would also return true. Eq? may also behave differently from eqv? on
-// empty vectors and empty strings.
+// Eq? is similar to eqv? except that in some cases it is capable of discerning distinctions finer
+// than those detectable by eqv?.
+// Eq? and eqv? are guaranteed to have the same behavior on symbols, booleans, the empty list, pairs,
+// procedures, and non-empty strings and vectors.
+// Eq?’s behavior on numbers and characters is implementation-dependent, but it will always return
+// either true or false, and will return true only when eqv? would also return true. Eq? may also
+// behave differently from eqv? on empty vectors and empty strings.
 static Cell* atom_eq_q(Environment* env, Cell* params)
 {
-	Cell* obj1 = eval(env, car(params));
-	Cell* obj2 = eval(env, car(cdr(params)));
-	return make_boolean(eq_helper(obj1, obj2));
+	Cell* obj1 = nth_param_any(env, params, 1);
+	Cell* obj2 = nth_param_any(env, params, 2);
+	return make_boolean(eq_helper(obj1, obj2, false, false));
+}
+
+// (equal? obj1 obj2)	library procedure
+// Equal? recursively compares the contents of pairs, vectors, and strings, applying eqv? on other
+// objects such as numbers and symbols. A rule of thumb is that objects are generally equal? if they
+// print the same. Equal? may fail to terminate if its arguments are circular data structures.
+static Cell* atom_equal_q(Environment* env, Cell* params)
+{
+	Cell* obj1 = nth_param_any(env, params, 1);
+	Cell* obj2 = nth_param_any(env, params, 2);
+	return make_boolean(eq_helper(obj1, obj2, true, true));
 }
 
 static Cell* atom_number_q(Environment* env, Cell* params)
@@ -1867,7 +1910,7 @@ static Cell* atom_number_q(Environment* env, Cell* params)
 
 static Cell* atom_integer_q(Environment* env, Cell* params)
 {
-	Cell* obj = eval(env, car(params));
+	Cell* obj = nth_param_any(env, params, 1);
 	
 	bool integer =	obj->type == TYPE_NUMBER &&
 					is_integer(obj->data.number);
@@ -1998,8 +2041,8 @@ static Cell* atom_pair_q(Environment* env, Cell* params)
 
 static Cell* atom_cons(Environment* env, Cell* params)
 {
-	Cell* first  = eval(env, car(params));
-	Cell* second = eval(env, car(cdr(params)));
+	Cell* first  = nth_param_any(env, params, 1);
+	Cell* second = nth_param_any(env, params, 2);
 	return cons(env, first, second);
 }
 
@@ -2047,7 +2090,7 @@ static Cell* atom_set_cdr_b(Environment* env, Cell* params)
 // Returns #t if obj is the empty list, otherwise returns #f.
 static Cell* atom_null_q(Environment* env, Cell* params)
 {
-	Cell* obj = eval(env, car(params));
+	Cell* obj = nth_param_any(env, params, 1);
 	return make_boolean(obj->type == TYPE_PAIR &&
 						obj->data.pair.car == NULL &&
 						obj->data.pair.cdr == NULL);
@@ -2058,7 +2101,7 @@ static Cell* atom_null_q(Environment* env, Cell* params)
 // lists have finite length and are terminated by the empty list.
 static Cell* atom_list_q(Environment* env, Cell* params)
 {
-	Cell* obj = eval(env, car(params));
+	Cell* obj = nth_param_any(env, params, 1);
 	
 	if (obj->type == TYPE_PAIR)
 	{
@@ -2156,8 +2199,7 @@ static Cell* atom_symbol_q(Environment* env, Cell* params)
 // returned by this procedure.
 static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 {
-	const Cell* symbol = car(params);
-	type_check(TYPE_SYMBOL, symbol->type);
+	const Cell* symbol = nth_param(env, params, 1, TYPE_SYMBOL);
 	const char* data = symbol->data.symbol;
 	size_t length = strlen(data);
 	Cell* result = make_cell(env, TYPE_STRING);
@@ -2175,8 +2217,7 @@ static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 static Cell* atom_string_to_symbol(Environment* env, Cell* params)
 {
 	// todo: this is a copy-and-paste of symbol->string
-	const Cell* symbol = car(params);
-	type_check(TYPE_STRING, symbol->type);
+	const Cell* symbol = nth_param(env, params, 1, TYPE_STRING);
 	const char* data = symbol->data.string;
 	size_t length = strlen(data);
 	Cell* result = make_cell(env, TYPE_SYMBOL);
@@ -2712,6 +2753,7 @@ Environment* atom_api_open()
 	
 	add_builtin(env, "eqv?",			atom_eqv_q);
 	add_builtin(env, "eq?",				atom_eq_q);
+	add_builtin(env, "equal?",			atom_eq_q);
 	add_builtin(env, "number?",    		atom_number_q);
 	add_builtin(env, "complex?",   		always_false);
 	add_builtin(env, "real?",      		atom_number_q);
