@@ -43,8 +43,6 @@
 ##### Done
 * eqv?
 * eq?
-
-##### Not Done
 * equal?
 
 #### 6.2. Numbers
@@ -112,6 +110,7 @@
 * string->number
 
 ## Booleans
+##### Done
 * not
 * boolean?
 
@@ -230,7 +229,7 @@
 * dynamic-wind
 
 ### 6.5 Eval
-##### Not Done
+##### Done
 ##### Not Done
 * eval
 * scheme-report-environment

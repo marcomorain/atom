@@ -1000,6 +1000,7 @@ Cell* parse_list(TokenList& tokens)
 
 	for (;;)
 	{
+		
 		if (!tokens.peek())
 		{
 			signal_error("Unexpected end of input.");
@@ -1007,9 +1008,11 @@ Cell* parse_list(TokenList& tokens)
 		
 		if (tokens.peek()->type == TOKEN_DOT)
 		{
+			
 			tokens.skip();
 			Cell* cell = parse_datum(tokens);
 
+			
 			if (!cell)
 			{
 				signal_error("expecting a datum after a dot");
