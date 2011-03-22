@@ -1,7 +1,7 @@
 #pragma once
-struct Environment;
+struct Continuation;
 
-Environment* atom_api_open();
-void atom_api_close(Environment* env);
-void atom_api_loadfile(Environment* env, const char* filename);
-void atom_api_repl(Environment* env);
+Continuation* atom_api_open();
+void atom_api_close(Continuation* env);
+void atom_api_loadfile(Continuation* env, const char* filename);
+void atom_api_repl(Continuation* env);

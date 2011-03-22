@@ -44,6 +44,7 @@ const static char* typenames [] = {
 };
 
 struct Environment;
+struct Continuation;
 struct Cell;
 
 typedef Cell* (*Function) (Environment* env, Cell* params);
@@ -220,12 +221,12 @@ struct Environment
 		Node*		next;
 	};
 
+	Continuation* cont;
 	Environment* parent;
 	Node**		 data;
 	unsigned	 mask;
-	Cell*		 cells;
 
-	void init(int size, Environment* parent_env)
+	void init(Continuation* c, int size, Environment* parent_env)
 	{
 		assert(power_of_two(size));
 		mask = size-1;
@@ -233,7 +234,14 @@ struct Environment
 		data = (Node**)malloc(num_bytes);
 		memset(data, 0, num_bytes);
 		parent = parent_env;
+		cont = c;
 	}
+};
+
+struct Continuation
+{
+	Environment*	env;
+	Cell*			cells;
 };
 
 static Cell* make_cell(Environment* env, int type)
@@ -244,8 +252,8 @@ static Cell* make_cell(Environment* env, int type)
 
 	// stick on the first item in the linked list
 	while(env->parent) env = env->parent;
-	result->next = env->cells;
-	env->cells = result;
+	result->next = env->cont->cells;
+	env->cont->cells = result;
 
 	return result;	
 }
@@ -310,7 +318,7 @@ static void collect_garbage(Environment* env)
 	Cell* remaining = NULL;
 	Cell* next = NULL;
 	
-	for (Cell* cell = env->cells; cell; cell = next)
+	for (Cell* cell = env->cont->cells; cell; cell = next)
 	{
 		next = cell->next;
 		
@@ -326,7 +334,7 @@ static void collect_garbage(Environment* env)
 		}
 	}
 	
-	env->cells = remaining;
+	env->cont->cells = remaining;
 }
 
 static Cell* make_boolean(bool value)
@@ -674,20 +682,20 @@ bool is_special_initial(char c)
 {
 	switch (c)
 	{
-	case '!':
-	case '$':
-	case '%':
-	case '&':
-	case '*':
-	case '/':
-	case ':':
-	case '<':
-	case '=':
-	case '>':
-	case '?':
-	case '^':
-	case '_':
-	case '~':
+		case '!':
+		case '$':
+		case '%':
+		case '&':
+		case '*':
+		case '/':
+		case ':':
+		case '<':
+		case '=':
+		case '>':
+		case '?':
+		case '^':
+		case '_':
+		case '~':
 		return true;
 	}
 
@@ -1538,10 +1546,10 @@ static Cell* atom_or(Environment* env, Cell* params)
 }
 
 
-static Environment* create_environment(Environment* parent)
+static Environment* create_environment(Continuation* cont, Environment* parent)
 {
 	Environment* env = (Environment*)malloc(sizeof(Environment));
-	env->init(1, parent);
+	env->init(cont, 1, parent);
 	return env;
 }
 
@@ -1557,7 +1565,7 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 		signal_error("No expression in body");
 	}
 	
-	Environment* child = create_environment(env);
+	Environment* child = create_environment(env->cont, env);
 	
 	Environment* target = star ? child : env;
 
@@ -2539,7 +2547,7 @@ static Cell* atom_newline(Environment* env, Cell* params)
 static Cell* atom_load(Environment* env, Cell* params)
 {
 	Cell* filename = nth_param(env, params, 1, TYPE_STRING);
-	atom_api_loadfile(env, filename->data.string);
+	atom_api_loadfile(env->cont, filename->data.string);
 	return make_boolean(true);	
 }
 
@@ -2562,12 +2570,14 @@ static Cell* always_false(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
-static void atom_api_load(Environment* env, const char* data, size_t length)
+static void atom_api_load(Continuation* cont, const char* data, size_t length)
 {
 	Input input;
 	input.init(data);
 	TokenList tokens;
 	input.tokens = &tokens;
+	
+	Environment* env = cont->env;
 
 	tokens.init(env, 1000);
 
@@ -2599,7 +2609,7 @@ static void atom_api_load(Environment* env, const char* data, size_t length)
 	collect_garbage(env);
 }
 
-void atom_api_loadfile(Environment* env, const char* filename)
+void atom_api_loadfile(Continuation* cont, const char* filename)
 {
 	FILE* file = fopen(filename, "r");
 	
@@ -2616,7 +2626,7 @@ void atom_api_loadfile(Environment* env, const char* filename)
 	buffer[read] = 0;
 	fclose (file);
 	
-	atom_api_load(env, buffer, read);
+	atom_api_load(cont, buffer, read);
 	
 	free(buffer);
 }
@@ -2678,7 +2688,7 @@ tailcall:
 				return f(env, cdr(cell));
 			}
 			
-			Environment* new_env = create_environment(proc->env);
+			Environment* new_env = create_environment(proc->env->cont, proc->env);
 			
 			Cell* params = cdr(cell);
 			for (const Cell* formals = proc->formals; formals; formals = cdr(formals))
@@ -2736,9 +2746,12 @@ static void add_builtin(Environment* env, const char* name, Function function)
 	environment_define(env, name, cell);
 }
 
-Environment* atom_api_open()
+Continuation* atom_api_open()
 {
-	Environment* env = create_environment(NULL);
+	Continuation* cont = (Continuation*)malloc(sizeof(Continuation));
+	Environment* env   = create_environment(cont, NULL);
+	cont->env          = env;
+	cont->cells        = NULL;
 	
 	add_builtin(env, "quote",			atom_quote);
 	add_builtin(env, "lambda",     		atom_lambda);
@@ -2831,19 +2844,20 @@ Environment* atom_api_open()
 	
 	add_builtin(env, "error",	   		atom_error);
 	
-	return env;	
+	return cont;	
 }
 
 
-void atom_api_close(Environment* env)
+void atom_api_close(Continuation* cont)
 {
+	free(cont);
 }
 
-void atom_api_repl(Environment* env)
+void atom_api_repl(Continuation* cont)
 {
 	std::string line;
 	std::getline (std::cin, line);
-	atom_api_load(env, line.c_str(), line.length());
+	atom_api_load(cont, line.c_str(), line.length());
 }
 
 
@@ -2855,7 +2869,7 @@ static bool match(const char* input, const char* a, const char* b)
 
 int main (int argc, char * const argv[])
 {
-	Environment* atom = atom_api_open();
+	Continuation* atom = atom_api_open();
 	
 	bool repl = false;
 	bool file = false;
