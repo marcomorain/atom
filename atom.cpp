@@ -6,6 +6,7 @@
 #include <cassert>
 #include <stdio.h>
 #include <stdarg.h>
+#include <setjmp.h>
 
 // fmod (in atom_modulo) brings in a dependancy on math.h
 // todo: split / remove break?
@@ -181,25 +182,6 @@ static void print(const Cell* cell)
 	printf("\n");
 }
 
-static void signal_error(const char* message, ...)
-{
-	va_list args;
-	va_start(args, message);
-	fprintf(stderr, "Error: ");
-	vfprintf(stderr, message, args);
-	fprintf(stderr, "\n");
-	va_end(args);
-	exit(-1);
-}
-
-static void type_check(int expected, int actual)
-{
-	if (actual != expected)
-	{
-		signal_error("%s expected, got %s", typenames[expected], typenames[actual]);
-	}
-}
-
 
 static bool power_of_two(int v)
 {
@@ -238,11 +220,38 @@ struct Environment
 	}
 };
 
+
+struct JumpBuffer
+{
+	jmp_buf     buffer;
+	JumpBuffer* prev;
+};
+
 struct Continuation
 {
 	Environment*	env;
 	Cell*			cells;
+	JumpBuffer*		escape;
 };
+
+static void signal_error(Continuation* cont, const char* message, ...)
+{
+	va_list args;
+	va_start(args, message);
+	fprintf(stderr, "Error: ");
+	vfprintf(stderr, message, args);
+	fprintf(stderr, "\n");
+	va_end(args);
+	longjmp(cont->escape->buffer, 1);
+}
+
+static void type_check(Continuation* cont, int expected, int actual)
+{
+	if (actual != expected)
+	{
+		signal_error(cont, "%s expected, got %s", typenames[expected], typenames[actual]);
+	}
+}
 
 static Cell* make_cell(Environment* env, int type)
 {
@@ -358,8 +367,8 @@ static Cell* make_character(Environment* env, char c)
 
 static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
 {
-	type_check(TYPE_PAIR, formals->type);
-	type_check(TYPE_PAIR, body->type);
+	type_check(env->cont, TYPE_PAIR, formals->type);
+	type_check(env->cont, TYPE_PAIR, body->type);
 
 	Cell* proc = make_cell(env, TYPE_PROCEDURE);
 	proc->data.procedure.formals = formals;
@@ -620,12 +629,15 @@ struct Input
 	unsigned	column;
 	const char* data;
 	TokenList*	tokens;
+	Continuation* cont;
 
-	void init(const char* d)
+	void init(Continuation* c, const char* d)
 	{
 		line	= 1;
 		column	= 1;
 		data	= d;
+		cont    = c;
+		
 	}
 	
 	char get(void)  const
@@ -756,10 +768,10 @@ static void read_character(Input& input)
 	{
 		case 's':
 		if (input.next() == 'p'){
-			if (input.next() != 'a') signal_error("space expected");
-			if (input.next() != 'c') signal_error("space expected");
-			if (input.next() != 'e') signal_error("space expected");
-			if (!is_delimeter(input.next())) signal_error("space expected");
+			if (input.next() != 'a') signal_error(input.cont, "space expected");
+			if (input.next() != 'c') signal_error(input.cont, "space expected");
+			if (input.next() != 'e') signal_error(input.cont, "space expected");
+			if (!is_delimeter(input.next())) signal_error(input.cont, "space expected");
 			input.tokens->add_character(' ');
 			return;
 		}
@@ -767,12 +779,12 @@ static void read_character(Input& input)
 
 		case 'n':
 			if (input.next() == 'e'){
-				if (input.next() != 'w') signal_error("newline expected");
-				if (input.next() != 'l') signal_error("newline expected");
-				if (input.next() != 'i') signal_error("newline expected");
-				if (input.next() != 'n') signal_error("newline expected");
-				if (input.next() != 'e') signal_error("newline expected");
-				if (!is_delimeter(input.next())) signal_error("newline expected");
+				if (input.next() != 'w') signal_error(input.cont, "newline expected");
+				if (input.next() != 'l') signal_error(input.cont, "newline expected");
+				if (input.next() != 'i') signal_error(input.cont, "newline expected");
+				if (input.next() != 'n') signal_error(input.cont, "newline expected");
+				if (input.next() != 'e') signal_error(input.cont, "newline expected");
+				if (!is_delimeter(input.next())) signal_error(input.cont, "newline expected");
 				input.tokens->add_character('\n'); // newline
 				return;
 			}
@@ -789,7 +801,7 @@ success:
 		return;
 	}
 
-	signal_error("delimeter expected");
+	signal_error(input.cont, "delimeter expected");
 }
 
 // Convert an ascii digit, '0' to '9' into
@@ -842,7 +854,7 @@ void read_string(Input& input)
 				input.tokens->buffer_push(c);
 				continue;
 			}
-			signal_error("malformed string");
+			signal_error(input.cont, "malformed string");
 		}
 
 		if (isprint(c))
@@ -851,7 +863,7 @@ void read_string(Input& input)
 			continue;
 		}
 
-		signal_error("unexpected character in string");
+		signal_error(input.cont, "unexpected character in string");
 	}
 }
 
@@ -874,7 +886,7 @@ void read_identifier(Input& input)
 			if (is_delimeter(c)) break;
 			if (!is_subsequent(c))
 			{
-				signal_error("malformed identifier at line %d column %d", input.line, input.column);
+				signal_error(input.cont, "malformed identifier at line %d column %d", input.line, input.column);
 			}
 			input.tokens->buffer_push(c);
 		}
@@ -886,7 +898,7 @@ void read_identifier(Input& input)
 	}
 	else
 	{
-		signal_error("malformed identifier at line %d column %d", input.line, input.column);
+		signal_error(input.cont, "malformed identifier at line %d column %d", input.line, input.column);
 	}
 
 	input.tokens->add_identifier();
@@ -952,12 +964,13 @@ Cell* parse_vector(TokenList& tokens)
 Cell* parse_abreviation(TokenList& tokens)
 {
 	const Token* t = tokens.peek();
+	
+	Environment* env = tokens.env;
 
-	if (!t) signal_error("unexpected end of input");
+	if (!t) signal_error(env->cont, "unexpected end of input");
 
 	if(t->type == TOKEN_QUOTE)
 	{
-		Environment* env = tokens.env;
 		
 		Cell* quote        = make_cell(tokens.env, TYPE_SYMBOL);
 		quote->data.symbol = "quote";
@@ -990,6 +1003,9 @@ Cell* parse_abreviation(TokenList& tokens)
 
 Cell* parse_list(TokenList& tokens)
 {
+	// todo: pass this in
+	Continuation* cont = tokens.env->cont;
+	
 	if (!tokens.peek()) return NULL;
 	
 	if (tokens.peek()->type != TOKEN_LIST_START)
@@ -1011,7 +1027,7 @@ Cell* parse_list(TokenList& tokens)
 		
 		if (!tokens.peek())
 		{
-			signal_error("Unexpected end of input.");
+			signal_error(cont, "Unexpected end of input.");
 		}
 		
 		if (tokens.peek()->type == TOKEN_DOT)
@@ -1023,14 +1039,14 @@ Cell* parse_list(TokenList& tokens)
 			
 			if (!cell)
 			{
-				signal_error("expecting a datum after a dot");
+				signal_error(cont, "expecting a datum after a dot");
 			}
 
 			set_cdr(list, cell);
 
 			if (tokens.peek()->type != TOKEN_LIST_END)
 			{
-				signal_error("expecting )");
+				signal_error(cont, "expecting )");
 			}
 
 			tokens.skip();
@@ -1046,7 +1062,7 @@ Cell* parse_list(TokenList& tokens)
 
 		if (!car)
 		{
-			signal_error("is this unexpected end of input? todo");
+			signal_error(cont, "is this unexpected end of input? todo");
 		}
 
 		Cell* rest = cons(tokens.env, car, NULL);
@@ -1221,7 +1237,7 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 		return environment_get(env->parent, symbol);
 	}
 		
-	signal_error("reference to undefined identifier: %s", str);
+	signal_error(env->cont, "reference to undefined identifier: %s", str);
 	return NULL;
 	
 }
@@ -1267,7 +1283,7 @@ void environment_set(Environment* env, const char* symbol, Cell* value)
 	
 	} while (env);
 		
-	signal_error("No binding for %s in any scope.", symbol);
+	signal_error(env->cont, "No binding for %s in any scope.", symbol);
 }
 
 static Cell* eval(Environment* env, Cell* cell);
@@ -1287,13 +1303,13 @@ static Cell* nth_param_any(Environment* env, Cell* params, int n)
 	{
 		if (!(params = cdr(params)))
 		{
-			signal_error("Too few parameters passed (%d expected)", n);
+			signal_error(env->cont, "Too few parameters passed (%d expected)", n);
 		}
 	}
 	
 	if (!params)
 	{
-		signal_error("Too few parameters passed (%d expected)", n);
+		signal_error(env->cont, "Too few parameters passed (%d expected)", n);
 	}
 	
 	return eval(env, car(params));
@@ -1305,7 +1321,7 @@ static Cell* nth_param(Environment* env, Cell* params, int n, int type)
 {
 	Cell* result = nth_param_any(env, params, n);
 	// todo: this error message should include 'n'
-	type_check(type, result->type);
+	type_check(env->cont, type, result->type);
 	return result;
 }
 
@@ -1315,7 +1331,7 @@ static int nth_param_integer(Environment* env, Cell* params, int n)
 	if (!is_integer(param->data.number))
 	{
 		// todo: better error message
-		signal_error("Not an integer");
+		signal_error(env->cont, "Not an integer");
 	}
 	return (int)param->data.number;
 }
@@ -1391,7 +1407,7 @@ static Cell* atom_if(Environment* env, Cell* params)
 static Cell* atom_set_b(Environment* env, Cell* params)
 {
 	Cell* variable   = car(params);
-	type_check(TYPE_SYMBOL, variable->type);
+	type_check(env->cont, TYPE_SYMBOL, variable->type);
 	Cell* expression = eval(env, car(cdr(params)));
 	
 	// @todo: seperate env->set and env->define
@@ -1500,7 +1516,7 @@ static Cell* atom_and(Environment* env, Cell* params)
 {
 	if (!car(params))
 	{
-		signal_error("syntax error. at least 1 test exptected in (and ...)");
+		signal_error(env->cont, "syntax error. at least 1 test exptected in (and ...)");
 	}
 
 	Cell* last_result;
@@ -1527,7 +1543,7 @@ static Cell* atom_or(Environment* env, Cell* params)
 {
 	if (!car(params))
 	{
-		signal_error("syntax error. at least 1 test exptected in (or ...)");
+		signal_error(env->cont, "syntax error. at least 1 test exptected in (or ...)");
 	}
 
 	for (Cell* cell = params; cell; cell = cdr(cell))
@@ -1562,7 +1578,7 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 	
 	if (!body)
 	{
-		signal_error("No expression in body");
+		signal_error(env->cont, "No expression in body");
 	}
 	
 	Environment* child = create_environment(env->cont, env);
@@ -1573,7 +1589,7 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 	{
 		Cell* pair = car(b);
 		Cell* symbol = car(pair);
-		type_check(TYPE_SYMBOL, symbol->type);
+		type_check(env->cont, TYPE_SYMBOL, symbol->type);
 		Cell* init   = eval(target, car(cdr(pair)));
 		environment_define(child, symbol->data.symbol, init);
 	}
@@ -1646,11 +1662,11 @@ static Cell* atom_define(Environment* env, Cell* params)
 		
 		default:
 		// todo: make this a syntax error.
-		signal_error("symbol or pair expected as parameter 1 to define");
+		signal_error(env->cont, "symbol or pair expected as parameter 1 to define");
 	}
 	
 	assert(variable && value);
-	type_check(TYPE_SYMBOL, variable->type);
+	type_check(env->cont, TYPE_SYMBOL, variable->type);
 	environment_define(env, variable->data.symbol, value);
 	// undefined result.
 	return make_boolean(false);
@@ -1668,7 +1684,7 @@ static Cell* atom_error(Environment* env, Cell* params)
 	{
 		str = message->data.string;
 	}
-	signal_error("%s", str);
+	signal_error(env->cont, "%s", str);
 	return NULL;
 }
 
@@ -1713,7 +1729,7 @@ static Cell* plus_mul_helper(Environment* env,
 		
 		Cell* value = eval(env, n);
 
-		type_check(TYPE_NUMBER, value->type);
+		type_check(env->cont, TYPE_NUMBER, value->type);
 			
 		if (is_add)
 		{
@@ -1752,7 +1768,7 @@ static Cell* sub_div_helper(Environment* env, Cell* params, bool is_sub)
 		for (Cell* cell = cdr(params); cell; cell = cdr(cell))
 		{
 			Cell* num = eval(env, car(cell));
-			type_check(TYPE_NUMBER, num->type);
+			type_check(env->cont, TYPE_NUMBER, num->type);
 			
 			if (is_sub)
 			{
@@ -2003,7 +2019,7 @@ static Cell* min_max_helper(Environment* env, Cell* params, bool is_min)
 	for (Cell* x = cdr(params); x; x = cdr(x))
 	{
 		Cell* n = eval(env, car(x));
-		type_check(TYPE_NUMBER, n->type);
+		type_check(env->cont, TYPE_NUMBER, n->type);
 		
 		if (is_min)
 		{
@@ -2153,7 +2169,7 @@ static Cell* atom_length(Environment* env, Cell* params)
 
 	for (Cell* list = eval(env, car(params)); list; list = list->data.pair.cdr)
 	{
-		type_check(TYPE_PAIR, list->type);
+		type_check(env->cont, TYPE_PAIR, list->type);
 		length++;
 	}
 	
@@ -2170,7 +2186,7 @@ static Cell* atom_append(Environment* env, Cell* params)
 	// for each list
 	for (Cell* head = eval(env, car(params)); head; head = head->data.pair.cdr)
 	{
-		type_check(TYPE_PAIR, head->type);
+		type_check(env->cont, TYPE_PAIR, head->type);
 		
 		// append all of the items in the list
 		for (Cell* obj = head; obj; obj = cdr(obj))
@@ -2294,13 +2310,13 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 	
 	if (second)
 	{
-		type_check(TYPE_CHARACTER, second->type);
+		type_check(env->cont, TYPE_CHARACTER, second->type);
 		fill = second->data.character;
 	}
 	
 	if (k < 0)
 	{
-		signal_error("positive integer length required");
+		signal_error(env->cont, "positive integer length required");
 	}
 	
 	Cell* result = make_cell(env, TYPE_STRING);
@@ -2335,7 +2351,7 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 	// todo: watch this cast.
 	if (k < 0 || k < (int)strlen(string->data.string))
 	{
-		signal_error("k is not a valid index of the given string");
+		signal_error(env->cont, "k is not a valid index of the given string");
 	}
 	
 	return make_character(env, string->data.string[k]);
@@ -2358,7 +2374,7 @@ static Cell* atom_string_set(Environment* env, Cell* params)
 	// todo: strings should carry a length
 	if (k < 0 || k >= (int)strlen(data))
 	{
-		signal_error("invalid string index");
+		signal_error(env->cont, "invalid string index");
 	}
 	
 	data[k] = c->data.character;
@@ -2415,7 +2431,7 @@ static Cell* atom_vector_ref(Environment* env, Cell* params)
 	
 	if (!valid_vector_index(v, k))
 	{
-		signal_error("Invalid vector index");
+		signal_error(env->cont, "Invalid vector index");
 	}
 	
 	Cell* result = v->data.vector.data[k];
@@ -2424,7 +2440,7 @@ static Cell* atom_vector_ref(Environment* env, Cell* params)
 	if (!result)
 	{
 		// todo: format error message better
-		signal_error("Cannot access unitialized vector");
+		signal_error(env->cont, "Cannot access unitialized vector");
 	}
 	return result;
 }
@@ -2441,7 +2457,7 @@ static Cell* atom_vector_set_b(Environment* env, Cell* params)
 	if (!valid_vector_index(vector, k))
 	{	
 		// todo: better error message.	
-		signal_error("Invalid vector index k");
+		signal_error(env->cont, "Invalid vector index k");
 	}
 	
 	vector->data.vector.data[k] = obj;
@@ -2573,7 +2589,7 @@ static Cell* always_false(Environment* env, Cell* params)
 static void atom_api_load(Continuation* cont, const char* data, size_t length)
 {
 	Input input;
-	input.init(data);
+	input.init(cont, data);
 	TokenList tokens;
 	input.tokens = &tokens;
 	
@@ -2587,7 +2603,21 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 	}
 
 	tokens.start_parse();
-
+	
+	JumpBuffer* prev = cont->escape;
+	JumpBuffer  jb;
+	
+	int error = setjmp(jb.buffer);
+	
+	if (error)
+	{
+		printf("Recovering from an error\n");
+		goto cleanup;
+	}
+	
+	jb.prev = cont->escape;
+	cont->escape = &jb;
+	
 	for(;;)
 	{
 		Cell* cell = parse_datum(tokens);
@@ -2604,9 +2634,13 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 		print(result);
 	}
 
-	tokens.destroy();
-	
+cleanup:
+
+	tokens.destroy();	
 	collect_garbage(env);
+	
+	// restore the old jump buffer
+	cont->escape = prev;
 }
 
 void atom_api_loadfile(Continuation* cont, const char* filename)
@@ -2615,7 +2649,7 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	
 	if (!file)
 	{
-		signal_error("Error opening file %s", filename);
+		signal_error(cont, "Error opening file %s", filename);
 	}
 	
 	fseek (file, 0, SEEK_END);
@@ -2664,7 +2698,7 @@ tailcall:
 		{
 			Cell* symbol = car(cell);
 			
-			type_check(TYPE_SYMBOL, symbol->type);
+			type_check(env->cont, TYPE_SYMBOL, symbol->type);
 			
 			//for (int i=0; i<level; i++) printf("  ");
 			//printf("Calling function %s\n", symbol->data.symbol);
@@ -2673,12 +2707,12 @@ tailcall:
 			
 			if (!function)
 			{
-				signal_error("Undefined symbol '%s'", symbol->data.symbol);
+				signal_error(env->cont, "Undefined symbol '%s'", symbol->data.symbol);
 			}
 
 			if (function->type != TYPE_PROCEDURE)
 			{
-				signal_error("%s is not a function", symbol->data.symbol);
+				signal_error(env->cont, "%s is not a function", symbol->data.symbol);
 			}
 			
 			const Cell::Procedure* proc = &function->data.procedure;
@@ -2752,6 +2786,7 @@ Continuation* atom_api_open()
 	Environment* env   = create_environment(cont, NULL);
 	cont->env          = env;
 	cont->cells        = NULL;
+	cont->escape       = NULL;
 	
 	add_builtin(env, "quote",			atom_quote);
 	add_builtin(env, "lambda",     		atom_lambda);
@@ -2886,7 +2921,7 @@ int main (int argc, char * const argv[])
 			i++;
 			if (i == argc)
 			{
-				signal_error("filename expected");
+				signal_error(atom, "filename expected");
 			}
 			file = true;
 			filename = argv[i];
