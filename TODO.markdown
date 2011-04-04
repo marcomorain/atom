@@ -64,10 +64,10 @@
 * -
 * /
 * modulo
-
-##### Not Done
 * exact? 
 * inexact?
+
+##### Not Done
 * zero?
 * positive?
 * negative?
