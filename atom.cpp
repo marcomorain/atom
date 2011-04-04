@@ -2961,13 +2961,13 @@ int main (int argc, char * const argv[])
 	
 	if (!file)
 	{
-		filename = "/Users/marcomorain/dev/scheme/test/test.scm";
+		filename = "/Users/marcomorain/dev/scheme/test/r5rs.scm";
 	}
 
 	atom_api_loadfile(atom, filename);
 
 	atom_api_close(atom);
 
-	system ("pause");
+	//system ("pause");
 	return 0;
 }
