@@ -232,6 +232,7 @@ struct Continuation
 	Environment*	env;
 	Cell*			cells;
 	JumpBuffer*		escape;
+	int				cell_allocated;
 };
 
 static void signal_error(Continuation* cont, const char* message, ...)
@@ -263,6 +264,7 @@ static Cell* make_cell(Environment* env, int type)
 	while(env->parent) env = env->parent;
 	result->next = env->cont->cells;
 	env->cont->cells = result;
+	env->cont->cell_allocated++;
 
 	return result;	
 }
@@ -322,6 +324,8 @@ static void collect_garbage(Environment* env)
 {
 	while(env->parent) env = env->parent;
 	
+	printf("Before GC: %d cells allocated\n", env->cont->cell_allocated);
+	
 	mark_environment(env);
 	
 	Cell* remaining = NULL;
@@ -339,11 +343,15 @@ static void collect_garbage(Environment* env)
 		}
 		else
 		{
+			env->cont->cell_allocated--;
 			free(cell);
 		}
 	}
 	
 	env->cont->cells = remaining;
+
+	printf("After GC: %d cells allocated\n", env->cont->cell_allocated);
+	
 }
 
 static Cell* make_boolean(bool value)
@@ -2782,11 +2790,12 @@ static void add_builtin(Environment* env, const char* name, Function function)
 
 Continuation* atom_api_open()
 {
-	Continuation* cont = (Continuation*)malloc(sizeof(Continuation));
-	Environment* env   = create_environment(cont, NULL);
-	cont->env          = env;
-	cont->cells        = NULL;
-	cont->escape       = NULL;
+	Continuation* cont   = (Continuation*)malloc(sizeof(Continuation));
+	Environment* env     = create_environment(cont, NULL);
+	cont->env            = env;
+	cont->cells          = NULL;
+	cont->escape         = NULL;
+	cont->cell_allocated = 0;
 	
 	add_builtin(env, "quote",			atom_quote);
 	add_builtin(env, "lambda",     		atom_lambda);
