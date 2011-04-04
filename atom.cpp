@@ -31,6 +31,7 @@ enum CellType
 	TYPE_VECTOR,
 	TYPE_SYMBOL,
 	TYPE_PROCEDURE,
+	TYPE_INPUT_PORT,
 };
 
 const static char* typenames [] = {
@@ -87,6 +88,7 @@ struct Cell
 		const char*  symbol;
 		Vector		 vector;
 		Procedure    procedure;
+		FILE*		 input_port;
 	};
 	
 	CellType type;
@@ -232,7 +234,8 @@ struct Continuation
 	Environment*	env;
 	Cell*			cells;
 	JumpBuffer*		escape;
-	int				cell_allocated;
+	int				allocated;
+	FILE*			input;
 };
 
 static void signal_error(Continuation* cont, const char* message, ...)
@@ -261,12 +264,18 @@ static Cell* make_cell(Environment* env, int type)
 	result->type = (CellType)type;
 
 	// stick on the first item in the linked list
-	while(env->parent) env = env->parent;
 	result->next = env->cont->cells;
 	env->cont->cells = result;
-	env->cont->cell_allocated++;
+	env->cont->allocated++;
 
 	return result;	
+}
+
+static Cell* make_input_port(Environment* env, FILE* port)
+{
+	Cell* cell = make_cell(env, TYPE_INPUT_PORT);
+	cell->data.input_port = port;
+	return cell;
 }
 
 static void mark(Cell* cell);
@@ -320,18 +329,16 @@ static void mark(Cell* cell)
 	}
 }
 
-static void collect_garbage(Environment* env)
+static void collect_garbage(Continuation* cont)
 {
-	while(env->parent) env = env->parent;
+	printf("Before GC: %d cells allocated\n", cont->allocated);
 	
-	printf("Before GC: %d cells allocated\n", env->cont->cell_allocated);
-	
-	mark_environment(env);
+	mark_environment(cont->env);
 	
 	Cell* remaining = NULL;
 	Cell* next = NULL;
 	
-	for (Cell* cell = env->cont->cells; cell; cell = next)
+	for (Cell* cell = cont->cells; cell; cell = next)
 	{
 		next = cell->next;
 		
@@ -343,14 +350,14 @@ static void collect_garbage(Environment* env)
 		}
 		else
 		{
-			env->cont->cell_allocated--;
+			cont->allocated--;
 			free(cell);
 		}
 	}
 	
-	env->cont->cells = remaining;
+	cont->cells = remaining;
 
-	printf("After GC: %d cells allocated\n", env->cont->cell_allocated);
+	printf("After GC: %d cells allocated\n", cont->allocated);
 	
 }
 
@@ -2521,6 +2528,38 @@ static Cell* atom_apply(Environment* env, Cell* params)
 	return eval(env, caller);
 }
 
+
+// (char-ready?)		procedure
+// (char-ready? port)	procedure
+// Returns #t if a character is ready on the input port and returns #f
+// otherwise. If char-ready returns #t then the next read-char operation
+// on the given port is guaranteed not to hang. If the port is at end of file
+// then char-ready? returns #t. Port may be omitted, in which case it defaults
+// to the value returned by current-input-port.
+static Cell* atom_char_ready_q(Environment* env, Cell* params)
+{
+	// TODO: second parameter
+	FILE* input = env->cont->input;
+	
+	char c = getc(input);
+	
+	if (c == EOF) goto no_input;
+	c = ungetc(c, input);
+	if (c == EOF) goto no_input; 
+	return make_boolean(true);
+	
+no_input:
+	return make_boolean(false);
+	
+}
+
+// (current-input-port) procedure
+// Returns the current default input port.
+static Cell* atom_current_input_port(Environment* env, Cell* params)
+{
+	return make_input_port(env, env->cont->input);
+}
+
 // (write obj) library procedure
 // (write obj port)	library procedure
 // Writes a written representation of obj to the given port. Strings that
@@ -2660,7 +2699,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 cleanup:
 
 	tokens.destroy();	
-	collect_garbage(env);
+	collect_garbage(cont);
 	
 	// restore the old jump buffer
 	cont->escape = prev;
@@ -2805,12 +2844,13 @@ static void add_builtin(Environment* env, const char* name, Function function)
 
 Continuation* atom_api_open()
 {
-	Continuation* cont   = (Continuation*)malloc(sizeof(Continuation));
-	Environment* env     = create_environment(cont, NULL);
-	cont->env            = env;
-	cont->cells          = NULL;
-	cont->escape         = NULL;
-	cont->cell_allocated = 0;
+	Continuation* cont	= (Continuation*)malloc(sizeof(Continuation));
+	Environment* env    = create_environment(cont, NULL);
+	cont->env           = env;
+	cont->cells         = NULL;
+	cont->escape        = NULL;
+	cont->allocated		= 0;
+	cont->input     	= stdin;
 	
 	add_builtin(env, "quote",			atom_quote);
 	add_builtin(env, "lambda",     		atom_lambda);
@@ -2895,6 +2935,11 @@ Continuation* atom_api_open()
 	add_builtin(env, "procedure?", 		atom_procedure_q);
 	add_builtin(env, "apply",	   		atom_apply);
 	
+	// input
+	
+	add_builtin(env, "char-ready?",		   atom_char_ready_q);
+	add_builtin(env, "current-input-port", atom_current_input_port);
+	
 	// output
 	add_builtin(env, "write",      		atom_write);
 	add_builtin(env, "display",	   		atom_display);
@@ -2954,10 +2999,7 @@ int main (int argc, char * const argv[])
 		}
 	}
 
-	while (repl)
-	{
-		atom_api_repl(atom);
-	}
+
 	
 	if (!file)
 	{
@@ -2965,6 +3007,11 @@ int main (int argc, char * const argv[])
 	}
 
 	atom_api_loadfile(atom, filename);
+
+	while (repl)
+	{
+		atom_api_repl(atom);
+	}
 
 	atom_api_close(atom);
 
