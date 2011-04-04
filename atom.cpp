@@ -1821,6 +1821,20 @@ static Cell* atom_modulo(Environment* env, Cell* params)
 	return make_number(env, fmod(a->data.number, b->data.number));
 }
 
+// These numerical predicates provide tests for the exactness of a quantity.
+// For any Scheme number, precisely one of these predicates is true.
+static Cell* atom_exact_q(Environment* env, Cell* params)
+{
+	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
+	return make_boolean(false);
+}
+
+static Cell* atom_inexact_q(Environment* env, Cell* params)
+{
+	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
+	return make_boolean(true);
+}
+
 static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, bool recurse_compound);
 
 static bool pair_equal(const Cell* obj1, const Cell* obj2, bool recursive)
@@ -2824,6 +2838,8 @@ Continuation* atom_api_open()
 	add_builtin(env, "-",				atom_sub);
 	add_builtin(env, "/",				atom_div);
 	add_builtin(env, "modulo",			atom_modulo);
+	add_builtin(env, "exact?",			atom_exact_q);
+	add_builtin(env, "inexact?",		atom_inexact_q);
 	add_builtin(env, "=",				atom_comapre_equal);
 	add_builtin(env, "<",				atom_compare_less);
 	add_builtin(env, ">",				atom_compare_greater);
