@@ -2609,23 +2609,9 @@ static Cell* always_false(Environment* env, Cell* params)
 }
 
 static void atom_api_load(Continuation* cont, const char* data, size_t length)
-{
-	Input input;
-	input.init(cont, data);
-	TokenList tokens;
-	input.tokens = &tokens;
-	
+{	
 	Environment* env = cont->env;
 
-	tokens.init(env, 1000);
-
-	while (input.get())
-	{
-		read_token(input);
-	}
-
-	tokens.start_parse();
-	
 	JumpBuffer* prev = cont->escape;
 	JumpBuffer  jb;
 	
@@ -2637,8 +2623,24 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 		goto cleanup;
 	}
 	
+	
 	jb.prev = cont->escape;
 	cont->escape = &jb;
+	
+	Input input;
+	input.init(cont, data);
+	TokenList tokens;
+	input.tokens = &tokens;
+	
+	
+	tokens.init(env, 1000);
+
+	while (input.get())
+	{
+		read_token(input);
+	}
+
+	tokens.start_parse();
 	
 	for(;;)
 	{
@@ -2649,11 +2651,10 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 			break;
 		}
 
-		printf("> ");
-		print(cell);
+		//printf("> ");
+		//print(cell);
 		const Cell* result = eval(env, cell);
-
-		print(result);
+		//print(result);
 	}
 
 cleanup:
