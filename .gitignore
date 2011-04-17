@@ -1,4 +1,6 @@
+/build/scheme.build*
 /scheme.1
 /a.out
 /a.out.dSYM/
-/build/
+
+/build/Debug/scheme
