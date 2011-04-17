@@ -8,19 +8,6 @@
 
 ## Report
 ### Chapter 4: Expressions
-#### Done 
-* quote
-* lambda
-* if
-* set!
-* cond
-* and
-* or
-* begin
-* let
-* let*
-
-#### Not Done
 * case
 * letrec
 * do
@@ -32,42 +19,11 @@
 * syntax-rules
 
 ### Chapter 5: Program structure
-#### Done
-* define
-
-#### Not Done
 * define-syntax
 
 ### Chapter 6: Standard Procedures
 #### 6.1. Equivalence predicates
-##### Done
-* eqv?
-* eq?
-* equal?
-
 #### 6.2. Numbers
-##### Done
-* number?
-* complex?
-* real?
-* rational?
-* integer?
-* =
-* <
-* >
-* <=
-* >=
-* max
-* min
-* +
-* *
-* -
-* /
-* modulo
-* exact? 
-* inexact?
-
-##### Not Done
 * zero?
 * positive?
 * negative?
@@ -105,31 +61,11 @@
 
 ## 6.2.6  Numerical input and output
 
-##### Not Done
 * number->string
 * string->number
 
 ## Booleans
-##### Done
-* not
-* boolean?
-
 ## Pairs and lists
-##### Done
-* pair?
-* cons
-* car
-* cdr
-* set-car!
-* set-cdr!
-* caar - cddddr
-* null?
-* list?
-* list
-* length
-* append
-
-##### Not Done
 * reverse
 * list-tail
 * list-ref
@@ -141,18 +77,7 @@
 * assoc
 
 ## 6.3.3 Symbols
-##### Done
-* symbol?
-* symbol->string
-* string->symbol
-
 ## 6.3.4. Characters
-##### Done
-* char?
-* char->integer
-* integer->char
-
-##### Not Done
 * char=?
 * char<?
 * char>?
@@ -172,15 +97,6 @@
 * char-downcase
 
 ## 6.3.5 Strings
-
-##### Done
-* string?
-* make-string
-* string-length
-* string-ref
-* string-set!
-
-##### Not Done
 * string
 * string=?
 * string-ci=?
@@ -200,26 +116,11 @@
 * string-fill!
 
 ## 6.3.6 Vectors
-
-##### Done
-* vector?
-* make-vector
-* vector-length
-* vector-ref
-* vector-set!
-* vector->fill!
-
-##### Not Done
 * vector
 * vector->list
 * list->vector
 
 ### 6.4 Control Features
-##### Done
-* procedure?
-* apply?
-
-##### Not Done
 * map
 * for-each
 * force
@@ -229,16 +130,12 @@
 * dynamic-wind
 
 ### 6.5 Eval
-##### Done
-##### Not Done
 * eval
 * scheme-report-environment
 * null-environment
 * interaction-environment
 
 ### 6.6.1 Ports
-##### Not Done
-##### Not Done
 * call-with-input-file
 * call-with-output-file
 * input-port?
@@ -253,8 +150,6 @@
 * close-output-file
 
 ### 6.6.3 Input
-##### Done
-##### Not Done
 * read
 * read-char
 * peek-char
@@ -262,19 +157,8 @@
 * char-ready?
 
 ### 6.6.3 Output
-
-##### Done
-* write
-* display
-* newline
-
-##### Not Done
 * write-char
 
 ### 6.6.4 Output
-##### Done
-* load
-
-##### Not Done
 * transcript-on
 * transcript-off
