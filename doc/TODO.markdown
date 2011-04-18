@@ -138,16 +138,6 @@
 ### 6.6.1 Ports
 * call-with-input-file
 * call-with-output-file
-* input-port?
-* output-port?
-* current-input-port
-* current-output-port
-* with-input-from-file
-* with-output-to-file
-* open-input-file
-* open-output-file
-* close-input-file
-* close-output-file
 
 ### 6.6.3 Input
 * read

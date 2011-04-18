@@ -366,7 +366,7 @@ static void mark(Cell* cell)
 
 static void collect_garbage(Continuation* cont)
 {
-	printf("Before GC: %d cells allocated\n", cont->allocated);
+    const int cells_before = cont->allocated;
 	
 	mark_environment(cont->env);
 	
@@ -388,15 +388,21 @@ static void collect_garbage(Continuation* cont)
 		    switch(cell->type)
 		    {
 		        case TYPE_INPUT_PORT:
-                fclose(cell->data.input_port);
+                if (cell->data.input_port != stdin)
+                {
+                    fclose(cell->data.input_port);
+                }
                 break;
                 
                 case TYPE_OUTPUT_PORT:
-                fclose(cell->data.output_port);
+                if (cell->data.output_port != stdout)
+                {
+                    fclose(cell->data.output_port);
+                }
                 break;
                 
                 case TYPE_STRING:
-                free(cell->data.string);
+                //free(cell->data.string);
                 break;
                 
                 case TYPE_VECTOR:
@@ -413,7 +419,8 @@ static void collect_garbage(Continuation* cont)
 	
 	cont->cells = remaining;
 
-	printf("After GC: %d cells allocated\n", cont->allocated);
+	printf("GC: %d cells collected. %d remain allocated\n",
+           cells_before - cont->allocated, cont->allocated);
 	
 }
 
@@ -2627,17 +2634,78 @@ static FILE* get_output_port(Environment* env, Cell* params, int n)
 
 
 // (input-port?  obj) procedure
-// Returns #t if obj is an input port or output port respec- tively, otherwise returns #f.
+// Returns #t if obj is an input port or output port respectively,
+// otherwise returns #f.
 static Cell* atom_input_port_q(Environment* env, Cell* params)
 {
     return type_q_helper(env, params, TYPE_INPUT_PORT);
 }
 
 // (output-port? obj) procedure
-// Returns #t if obj is an input port or output port respec- tively, otherwise returns #f.
+// Returns #t if obj is an input port or output port respectively,
+// otherwise returns #f.
 static Cell* atom_output_port_q(Environment* env, Cell* params)
 {
     return type_q_helper(env, params, TYPE_OUTPUT_PORT);
+}
+
+// Grab a string from a given param, and open that file in the given mode.
+static FILE* file_open_helper(Environment* env, Cell* params, const char* mode)
+{
+    Cell* filename = nth_param(env, params, 1, TYPE_STRING);
+    
+    const char* f = filename->data.string;
+    
+    FILE* file = fopen(f, "r");
+    
+    if (!file)
+    {
+        signal_error(env->cont, "Error opening file: %s", f);
+    }
+    
+    return file;
+}
+
+// (open-input-file filename) procedure
+// Takes a string naming an existing file and returns an input port capable of
+// delivering characters from the file. If the file cannot be opened, an error
+// is signalled.
+static Cell* atom_open_input_file(Environment* env, Cell* params)
+{
+    return make_input_port(env, file_open_helper(env, params, "r"));
+}
+
+// (open-output-file filename) procedure
+// Takes a string naming an output file to be created and returns an output port
+// capable of writing characters to a new file by that name. If the file cannot
+// be opened, an error is signalled. If a file with the given name already exists,
+// the effect is unspecified.
+static Cell* atom_open_output_file(Environment* env, Cell* params)
+{
+    return make_output_port(env, file_open_helper(env, params, "w"));
+}
+
+
+// (close-input-port port) procedure 
+// Closes the file associated with port, rendering the port incapable of delivering
+// or accepting characters.	These routines have no effect if the file has already
+// been closed. The value returned is unspecified.
+static Cell* atom_close_input_port(Environment* env, Cell* params)
+{
+    Cell* port = nth_param(env, params, 1, TYPE_INPUT_PORT);
+    fclose(port->data.input_port);
+    return make_boolean(false);
+}
+
+// (close-output-port port) procedure
+// Closes the file associated with port, rendering the port incapable of delivering
+// or accepting characters.	These routines have no effect if the file has already
+// been closed. The value returned is unspecified.
+static Cell* atom_close_output_port(Environment* env, Cell* params)
+{
+    Cell* port = nth_param(env, params, 1, TYPE_OUTPUT_PORT);
+    fclose(port->data.input_port);
+    return make_boolean(false);
 }
 
 // (current-input-port) procedure
@@ -3038,6 +3106,12 @@ Continuation* atom_api_open()
 	// control
 	add_builtin(env, "procedure?", 		atom_procedure_q);
 	add_builtin(env, "apply",	   		atom_apply);
+    
+    add_builtin(env, "close-input-port",  atom_close_input_port);
+    add_builtin(env, "close-output-port", atom_close_output_port);
+    
+    add_builtin(env, "open-input-file",   atom_open_input_file);
+    add_builtin(env, "open-output-file",  atom_open_output_file);
 	
 	// io
     add_builtin(env, "input-port?",     atom_input_port_q);
@@ -3111,18 +3185,27 @@ int main (int argc, char * const argv[])
 	
 	if (!file)
 	{
-		filename = "/Users/marcomorain/dev/scheme/test/r5rs.scm";
+		filename = "/Users/marcomorain/dev/scheme/test/bug.scm";
 	}
+    
+    printf("Loading input from %s\n", filename);
 
 	atom_api_loadfile(atom, filename);
 
 	while (repl)
 	{
+        printf("Now doing the REPL\n");
 		atom_api_repl(atom);
 	}
+    
+    if (!repl)
+    {
+        printf("File done, no REPL.\n");
+    }
 
 	atom_api_close(atom);
+    
+    printf("atom shutdwn ok\n");
 
-	//system ("pause");
 	return 0;
 }
