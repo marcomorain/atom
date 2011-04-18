@@ -1,0 +1,207 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 46;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		8FB6669D135BCB15000DE583 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8FB6669C135BCB15000DE583 /* main.cpp */; };
+		8FB666A6135BCBD4000DE583 /* atom.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8FB666A4135BCBD4000DE583 /* atom.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8FB66696135BCB15000DE583 /* CopyFiles */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = /usr/share/man/man1/;
+			dstSubfolderSpec = 0;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 1;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFileReference section */
+		8FB66698135BCB15000DE583 /* atom */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = atom; sourceTree = BUILT_PRODUCTS_DIR; };
+		8FB6669C135BCB15000DE583 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
+		8FB6669E135BCB15000DE583 /* atom.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = atom.1; sourceTree = "<group>"; };
+		8FB666A4135BCBD4000DE583 /* atom.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = atom.cpp; path = ../../src/atom.cpp; sourceTree = "<group>"; };
+		8FB666A5135BCBD4000DE583 /* atom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atom.h; path = ../../src/atom.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		8FB66695135BCB15000DE583 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		8FB6668D135BCB14000DE583 = {
+			isa = PBXGroup;
+			children = (
+				8FB6669B135BCB15000DE583 /* atom */,
+				8FB66699135BCB15000DE583 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		8FB66699135BCB15000DE583 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				8FB66698135BCB15000DE583 /* atom */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		8FB6669B135BCB15000DE583 /* atom */ = {
+			isa = PBXGroup;
+			children = (
+				8FB666A4135BCBD4000DE583 /* atom.cpp */,
+				8FB666A5135BCBD4000DE583 /* atom.h */,
+				8FB6669C135BCB15000DE583 /* main.cpp */,
+				8FB6669E135BCB15000DE583 /* atom.1 */,
+			);
+			path = atom;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		8FB66697135BCB15000DE583 /* atom */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 8FB666A1135BCB15000DE583 /* Build configuration list for PBXNativeTarget "atom" */;
+			buildPhases = (
+				8FB66694135BCB15000DE583 /* Sources */,
+				8FB66695135BCB15000DE583 /* Frameworks */,
+				8FB66696135BCB15000DE583 /* CopyFiles */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = atom;
+			productName = atom;
+			productReference = 8FB66698135BCB15000DE583 /* atom */;
+			productType = "com.apple.product-type.tool";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		8FB6668F135BCB14000DE583 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				ORGANIZATIONNAME = yTR3m9aXwX;
+			};
+			buildConfigurationList = 8FB66692135BCB14000DE583 /* Build configuration list for PBXProject "atom" */;
+			compatibilityVersion = "Xcode 3.2";
+			developmentRegion = English;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+			);
+			mainGroup = 8FB6668D135BCB14000DE583;
+			productRefGroup = 8FB66699135BCB15000DE583 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				8FB66697135BCB15000DE583 /* atom */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		8FB66694135BCB15000DE583 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8FB6669D135BCB15000DE583 /* main.cpp in Sources */,
+				8FB666A6135BCBD4000DE583 /* atom.cpp in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		8FB6669F135BCB15000DE583 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = DEBUG;
+				GCC_SYMBOLS_PRIVATE_EXTERN = NO;
+				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+			};
+			name = Debug;
+		};
+		8FB666A0135BCB15000DE583 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ARCHS = "$(ARCHS_STANDARD_32_64_BIT)";
+				GCC_C_LANGUAGE_STANDARD = gnu99;
+				GCC_VERSION = com.apple.compilers.llvm.clang.1_0;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 10.6;
+				SDKROOT = macosx;
+			};
+			name = Release;
+		};
+		8FB666A2135BCB15000DE583 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				COPY_PHASE_STRIP = NO;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Debug;
+		};
+		8FB666A3135BCB15000DE583 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				COPY_PHASE_STRIP = YES;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				GCC_ENABLE_OBJC_EXCEPTIONS = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		8FB66692135BCB14000DE583 /* Build configuration list for PBXProject "atom" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8FB6669F135BCB15000DE583 /* Debug */,
+				8FB666A0135BCB15000DE583 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		8FB666A1135BCB15000DE583 /* Build configuration list for PBXNativeTarget "atom" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				8FB666A2135BCB15000DE583 /* Debug */,
+				8FB666A3135BCB15000DE583 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 8FB6668F135BCB14000DE583 /* Project object */;
+}
