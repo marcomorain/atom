@@ -7,7 +7,6 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		8FB6669D135BCB15000DE583 /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8FB6669C135BCB15000DE583 /* main.cpp */; };
 		8FB666A6135BCBD4000DE583 /* atom.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8FB666A4135BCBD4000DE583 /* atom.cpp */; };
 /* End PBXBuildFile section */
 
@@ -25,7 +24,6 @@
 
 /* Begin PBXFileReference section */
 		8FB66698135BCB15000DE583 /* atom */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = atom; sourceTree = BUILT_PRODUCTS_DIR; };
-		8FB6669C135BCB15000DE583 /* main.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = main.cpp; sourceTree = "<group>"; };
 		8FB6669E135BCB15000DE583 /* atom.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = atom.1; sourceTree = "<group>"; };
 		8FB666A4135BCBD4000DE583 /* atom.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = atom.cpp; path = ../../src/atom.cpp; sourceTree = "<group>"; };
 		8FB666A5135BCBD4000DE583 /* atom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atom.h; path = ../../src/atom.h; sourceTree = "<group>"; };
@@ -63,7 +61,6 @@
 			children = (
 				8FB666A4135BCBD4000DE583 /* atom.cpp */,
 				8FB666A5135BCBD4000DE583 /* atom.h */,
-				8FB6669C135BCB15000DE583 /* main.cpp */,
 				8FB6669E135BCB15000DE583 /* atom.1 */,
 			);
 			path = atom;
@@ -119,7 +116,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8FB6669D135BCB15000DE583 /* main.cpp in Sources */,
 				8FB666A6135BCBD4000DE583 /* atom.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -200,6 +196,7 @@
 				8FB666A3135BCB15000DE583 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
 	};
