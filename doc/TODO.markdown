@@ -157,7 +157,3 @@
 * char-ready?
 
 ### 6.6.3 Output
-
-### 6.6.4 Output
-* transcript-on
-* transcript-off
