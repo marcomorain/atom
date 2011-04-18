@@ -402,7 +402,7 @@ static void collect_garbage(Continuation* cont)
                 break;
                 
                 case TYPE_STRING:
-                //free(cell->data.string);
+                free(cell->data.string);
                 break;
                 
                 case TYPE_VECTOR:
