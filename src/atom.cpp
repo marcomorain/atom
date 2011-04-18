@@ -182,6 +182,14 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 
 		if (is_car) fprintf(output, ")");
 		break;
+		
+    case TYPE_INPUT_PORT:
+        fprintf(output, "#<input port %p>", cell->data.input_port);
+        break;
+        
+    case TYPE_OUTPUT_PORT:
+        fprintf(output, "#<ouput port %p>", cell->data.input_port);
+        break;
 	
 	default:
 		assert(false);
@@ -326,6 +334,8 @@ static void mark(Cell* cell)
 		case TYPE_NUMBER:
 		case TYPE_STRING:
 		case TYPE_SYMBOL:
+        case TYPE_INPUT_PORT:
+        case TYPE_OUTPUT_PORT:
 			break;
 		
 		case TYPE_PAIR:
@@ -391,6 +401,9 @@ static void collect_garbage(Continuation* cont)
                 
                 case TYPE_VECTOR:
                 free(cell->data.vector.data);
+                break;
+                
+                default:
                 break;
 		    }
 			cont->allocated--;
@@ -1280,7 +1293,7 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 {
 	assert(symbol->type == TYPE_SYMBOL);
 	const char* str = symbol->data.symbol;
-	unsigned hash = env->mask & MurmurHash2(str, strlen(str));
+	unsigned hash = env->mask & MurmurHash2(str, (int)strlen(str));
 
 	for (Environment::Node* node = env->data[hash]; node; node = node->next)
 	{
@@ -1302,7 +1315,7 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 
 void environment_define(Environment* env, const char* symbol, Cell* value)
 {
-	unsigned index = env->mask & MurmurHash2(symbol, strlen(symbol));
+	unsigned index = env->mask & MurmurHash2(symbol, (int)strlen(symbol));
 
 	for (Environment::Node* node = env->data[index]; node; node = node->next)
 	{
@@ -1322,7 +1335,7 @@ void environment_define(Environment* env, const char* symbol, Cell* value)
 
 void environment_set(Environment* env, const char* symbol, Cell* value)
 {
-	unsigned hash = MurmurHash2(symbol, strlen(symbol));
+	unsigned hash = MurmurHash2(symbol, (int)strlen(symbol));
 		
 	do {
 		
@@ -1901,13 +1914,13 @@ static Cell* atom_modulo(Environment* env, Cell* params)
 // For any Scheme number, precisely one of these predicates is true.
 static Cell* atom_exact_q(Environment* env, Cell* params)
 {
-	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
+	nth_param(env, params, 1, TYPE_NUMBER);
 	return make_boolean(false);
 }
 
 static Cell* atom_inexact_q(Environment* env, Cell* params)
 {
-	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
+	nth_param(env, params, 1, TYPE_NUMBER);
 	return make_boolean(true);
 }
 
@@ -2634,6 +2647,11 @@ static Cell* atom_current_input_port(Environment* env, Cell* params)
 	return make_input_port(env, env->cont->input);
 }
 
+static Cell* atom_current_output_port(Environment*  env, Cell* params)
+{
+    return make_output_port(env, env->cont->output);
+}
+
 // (write obj) library procedure
 // (write obj port)	library procedure
 // Writes a written representation of obj to the given port. Strings that
@@ -2776,7 +2794,8 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 
 		//printf("> ");
 		//print(cell);
-		const Cell* result = eval(env, cell);
+		//const Cell* result =
+        eval(env, cell);
 		//print(result);
 	}
 
@@ -3025,7 +3044,8 @@ Continuation* atom_api_open()
     add_builtin(env, "output-port?",    atom_output_port_q);
 	
 	// input
-	add_builtin(env, "current-input-port", atom_current_input_port);
+	add_builtin(env, "current-input-port",  atom_current_input_port);
+	add_builtin(env, "current-output-port", atom_current_output_port);
 	
 	// output
 	add_builtin(env, "write",      		atom_write);
