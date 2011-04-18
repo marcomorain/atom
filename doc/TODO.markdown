@@ -157,7 +157,6 @@
 * char-ready?
 
 ### 6.6.3 Output
-* write-char
 
 ### 6.6.4 Output
 * transcript-on

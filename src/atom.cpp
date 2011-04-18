@@ -32,6 +32,7 @@ enum CellType
 	TYPE_SYMBOL,
 	TYPE_PROCEDURE,
 	TYPE_INPUT_PORT,
+	TYPE_OUTPUT_PORT
 };
 
 const static char* typenames [] = {
@@ -89,6 +90,7 @@ struct Cell
 		Vector		 vector;
 		Procedure    procedure;
 		FILE*		 input_port;
+        FILE*        output_port;
 	};
 	
 	CellType type;
@@ -117,60 +119,68 @@ enum Type
 	TOKEN_DOT
 };
 
-static void print_rec(const Cell* cell, int is_car)
+static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 {
 	if (!cell) return;
 
 	switch(cell->type)
 	{
 	case TYPE_BOOLEAN:
-		printf("#%c", (cell->data.boolean ? 't' : 'f'));
+		fprintf(output, "#%c", (cell->data.boolean ? 't' : 'f'));
 		break;
 
 	case TYPE_NUMBER:
-		printf("%lg", cell->data.number);
+		fprintf(output, "%lg", cell->data.number);
 		break;
 
 	case TYPE_CHARACTER:
 		{
 			char c = cell->data.character;
-			switch(c)
-			{
-				case ' ':
-				printf("#\\space");
-				break;
+			
+		    if (human)
+		    {
+                fputc(c, output);
+		    }
+		    else
+		    {
+		        switch(c)
+			    {
+				    case ' ':
+    				fprintf(output, "#\\space");
+    				break;
 				
-				case '\n':
-				printf("#\\newline");
-				break;
+    				case '\n':
+    				fprintf(output, "#\\newline");
+    				break;
 				
-				default:
-				printf("#\\%c", c);
-				break;
+    				default:
+    				fprintf(output, "#\\%c", c);
+    				break;
+    			}
 			}
 			break;
 		}
 
 	case TYPE_STRING:
-		printf("\"%s\"", cell->data.string);
+		fprintf(output, human ? "%s" : "\"%s\"", cell->data.string);
 		break;
 
 	case TYPE_SYMBOL:
-		printf("%s", cell->data.symbol);
+		fprintf(output, "%s", cell->data.symbol);
 		break;
 
 	case TYPE_PAIR:
-		if (is_car) printf("(");
-		print_rec(cell->data.pair.car, 1);
+		if (is_car) fprintf(output, "(");
+		print_rec(output, cell->data.pair.car, human, 1);
 		
 		if (Cell* c = cell->data.pair.cdr)
 		{
-			printf(" ");
-			if (c->type != TYPE_PAIR) printf(". ");
-			print_rec(c, 0);
+			fprintf(output, " ");
+			if (c->type != TYPE_PAIR) fprintf(output, ". ");
+			print_rec(output, c, human, 0);
 		}
 
-		if (is_car) printf(")");
+		if (is_car) fprintf(output, ")");
 		break;
 	
 	default:
@@ -178,10 +188,10 @@ static void print_rec(const Cell* cell, int is_car)
 	}
 }
 
-static void print(const Cell* cell)
+static void print(FILE* output, const Cell* cell, bool human)
 {
-	print_rec(cell, 1);
-	printf("\n");
+	print_rec(output, cell, human, 1);
+	fprintf(output, "\n");
 }
 
 
@@ -236,6 +246,7 @@ struct Continuation
 	JumpBuffer*		escape;
 	int				allocated;
 	FILE*			input;
+    FILE*           output;
 };
 
 static void signal_error(Continuation* cont, const char* message, ...)
@@ -271,11 +282,22 @@ static Cell* make_cell(Environment* env, int type)
 	return result;	
 }
 
-static Cell* make_input_port(Environment* env, FILE* port)
+static Cell* make_io_port(Environment* env, int type, FILE* port)
 {
-	Cell* cell = make_cell(env, TYPE_INPUT_PORT);
+	Cell* cell = make_cell(env, type);
 	cell->data.input_port = port;
 	return cell;
+}
+
+
+static Cell* make_input_port(Environment* env, FILE* port)
+{
+    return make_io_port(env, TYPE_INPUT_PORT, port);
+}
+
+static Cell* make_output_port(Environment* env, FILE* port)
+{
+    return make_io_port(env, TYPE_OUTPUT_PORT, port);
 }
 
 static void mark(Cell* cell);
@@ -1309,25 +1331,51 @@ static Cell* type_q_helper(Environment* env, Cell* params, int type)
 	return make_boolean(obj->type == type);
 }
 
-// return the nth parameter to a function.
-// n is indexed from 1 for the first parameter, 2 for the second.
 
-static Cell* nth_param_any(Environment* env, Cell* params, int n)
+static Cell* nth_param_any_optional(Environment* env, Cell* params, int n)
 {
 	for (int i=1; i<n; i++)
 	{
 		if (!(params = cdr(params)))
 		{
-			signal_error(env->cont, "Too few parameters passed (%d expected)", n);
+            return NULL;
 		}
 	}
 	
 	if (!params)
 	{
-		signal_error(env->cont, "Too few parameters passed (%d expected)", n);
+        return NULL;
 	}
 	
 	return eval(env, car(params));
+}
+
+// return the nth parameter to a function.
+// n is indexed from 1 for the first parameter, 2 for the second.
+
+static Cell* nth_param_any(Environment* env, Cell* params, int n)
+{
+    Cell* result = nth_param_any_optional(env, params, n);
+    
+    if (!result)
+    {
+        signal_error(env->cont, "Too few parameters passed (%d expected)", n);
+    }
+    
+    return result;
+}
+
+static Cell* nth_param_optional(Environment* env, Cell* params, int n, int type)
+{
+   	Cell* result = nth_param_any_optional(env, params, n);
+	// todo: this error message should include 'n'
+	
+	if (result)
+	{
+	    type_check(env->cont, type, result->type);    
+	}
+
+	return result; 
 }
 
 // The same as nth_param_any, with an added type check.
@@ -2528,30 +2576,21 @@ static Cell* atom_apply(Environment* env, Cell* params)
 	return eval(env, caller);
 }
 
-
-// (char-ready?)		procedure
-// (char-ready? port)	procedure
-// Returns #t if a character is ready on the input port and returns #f
-// otherwise. If char-ready returns #t then the next read-char operation
-// on the given port is guaranteed not to hang. If the port is at end of file
-// then char-ready? returns #t. Port may be omitted, in which case it defaults
-// to the value returned by current-input-port.
-static Cell* atom_char_ready_q(Environment* env, Cell* params)
+// output functions helper
+// Many of the output functions take an optional port parameter, which if not present defaults to the output
+// from current-output-port.
+// This function encapsulates that logic.
+// Given an env, params and a param number, it returns the specified output port, or the current output port
+// It will throw an error if the param is present, but not the correct type.
+static FILE* get_output_port(Environment* env, Cell* params, int n)
 {
-	// TODO: second parameter
-	FILE* input = env->cont->input;
-	
-	char c = getc(input);
-	
-	if (c == EOF) goto no_input;
-	c = ungetc(c, input);
-	if (c == EOF) goto no_input; 
-	return make_boolean(true);
-	
-no_input:
-	return make_boolean(false);
-	
+    if (Cell* port = nth_param_optional(env, params, n, TYPE_OUTPUT_PORT))
+    {
+        return port->data.output_port;
+    }
+    return env->cont->output;
 }
+
 
 // (current-input-port) procedure
 // Returns the current default input port.
@@ -2563,7 +2602,7 @@ static Cell* atom_current_input_port(Environment* env, Cell* params)
 // (write obj) library procedure
 // (write obj port)	library procedure
 // Writes a written representation of obj to the given port. Strings that
-// appear in the written representation are en- closed in doublequotes,
+// appear in the written representation are enclosed in doublequotes,
 // and within those strings backslash and doublequote characters are
 // escaped by backslashes. Character objects are written using the 'hash-slash'
 // notation.
@@ -2572,11 +2611,10 @@ static Cell* atom_current_input_port(Environment* env, Cell* params)
 // returned by current-output-port.
 static Cell* atom_write(Environment* env, Cell* params)
 {
-	// todo: handle ports
-	Cell* obj = eval(env, car(params));
-	print(obj);
-	return obj; // unspecified
+	print(get_output_port(env, params, 2), nth_param_any(env, params, 1), false);
+    return make_boolean(false);
 }
+
 
 // (display	obj)
 // (display obj port)
@@ -2589,13 +2627,11 @@ static Cell* atom_write(Environment* env, Cell* params)
 // value returned by current-output-port.
 static Cell* atom_display(Environment* env, Cell* params)
 {
-	// @todo: handle port
-	// @todo: this should produce human readable output
-	// so no quotes on strings, etc.
-	Cell* obj = eval(env, car(params));
-	print(obj);
-	return obj; // unspecified
+	print(get_output_port(env, params, 2), nth_param_any(env, params, 1), true);
+    return make_boolean(false);
 }
+
+
 
 // (newline)
 // (newline port)
@@ -2606,8 +2642,8 @@ static Cell* atom_display(Environment* env, Cell* params)
 // value returned by current-output-port.
 static Cell* atom_newline(Environment* env, Cell* params)
 {
-	printf("\n");
-	return params; // unspecified
+	fputc('\n', get_output_port(env, params, 1));	
+	return make_boolean(false); // unspecified
 }
 
 // 6.6.4. System interface
@@ -2626,6 +2662,18 @@ static Cell* atom_load(Environment* env, Cell* params)
 	Cell* filename = nth_param(env, params, 1, TYPE_STRING);
 	atom_api_loadfile(env->cont, filename->data.string);
 	return make_boolean(true);	
+}
+
+// (write-char char)      procedure
+// (write-char char port) procedure
+// Writes the character char (not an external representation of the character) to the given port and returns an
+// unspecified value. The port argument may be omitted, in which case it defaults to the value returned by
+// current-output-port.
+static Cell* atom_write_char(Environment* env, Cell* params)
+{
+    Cell* c = nth_param(env, params, 1, TYPE_CHARACTER);
+    fputc(c->data.character, get_output_port(env, params, 2));
+    return make_boolean(false);
 }
 
 // (transcript-on filename) optional procedure 
@@ -2851,6 +2899,7 @@ Continuation* atom_api_open()
 	cont->escape        = NULL;
 	cont->allocated		= 0;
 	cont->input     	= stdin;
+    cont->output        = stdout;
 	
 	add_builtin(env, "quote",			atom_quote);
 	add_builtin(env, "lambda",     		atom_lambda);
@@ -2936,14 +2985,13 @@ Continuation* atom_api_open()
 	add_builtin(env, "apply",	   		atom_apply);
 	
 	// input
-	
-	add_builtin(env, "char-ready?",		   atom_char_ready_q);
 	add_builtin(env, "current-input-port", atom_current_input_port);
 	
 	// output
 	add_builtin(env, "write",      		atom_write);
 	add_builtin(env, "display",	   		atom_display);
 	add_builtin(env, "newline",	   		atom_newline);
+    add_builtin(env, "write-char",      atom_write_char);
 	
 	// output
 	add_builtin(env, "load",	   		atom_load);
