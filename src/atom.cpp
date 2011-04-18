@@ -334,7 +334,10 @@ static void mark(Cell* cell)
 			break;
 			
 		case TYPE_VECTOR:
-			assert(0); // TODO
+            for(int i=0; i<cell->data.vector.length; i++)
+            {
+                mark(cell->data.vector.data[i]);
+            }
 			break;
 		
 		case TYPE_PROCEDURE:
@@ -372,6 +375,24 @@ static void collect_garbage(Continuation* cont)
 		}
 		else
 		{
+		    switch(cell->type)
+		    {
+		        case TYPE_INPUT_PORT:
+                fclose(cell->data.input_port);
+                break;
+                
+                case TYPE_OUTPUT_PORT:
+                fclose(cell->data.output_port);
+                break;
+                
+                case TYPE_STRING:
+                free(cell->data.string);
+                break;
+                
+                case TYPE_VECTOR:
+                free(cell->data.vector.data);
+                break;
+		    }
 			cont->allocated--;
 			free(cell);
 		}
@@ -2592,6 +2613,20 @@ static FILE* get_output_port(Environment* env, Cell* params, int n)
 }
 
 
+// (input-port?  obj) procedure
+// Returns #t if obj is an input port or output port respec- tively, otherwise returns #f.
+static Cell* atom_input_port_q(Environment* env, Cell* params)
+{
+    return type_q_helper(env, params, TYPE_INPUT_PORT);
+}
+
+// (output-port? obj) procedure
+// Returns #t if obj is an input port or output port respec- tively, otherwise returns #f.
+static Cell* atom_output_port_q(Environment* env, Cell* params)
+{
+    return type_q_helper(env, params, TYPE_OUTPUT_PORT);
+}
+
 // (current-input-port) procedure
 // Returns the current default input port.
 static Cell* atom_current_input_port(Environment* env, Cell* params)
@@ -2735,6 +2770,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 
 		if (!cell)
 		{
+            print(stdout, cell, false);
 			break;
 		}
 
@@ -2983,6 +3019,10 @@ Continuation* atom_api_open()
 	// control
 	add_builtin(env, "procedure?", 		atom_procedure_q);
 	add_builtin(env, "apply",	   		atom_apply);
+	
+	// io
+    add_builtin(env, "input-port?",     atom_input_port_q);
+    add_builtin(env, "output-port?",    atom_output_port_q);
 	
 	// input
 	add_builtin(env, "current-input-port", atom_current_input_port);
