@@ -1814,6 +1814,9 @@ static Cell* quasiquote_helper(Environment* env, Cell* list)
         {
             new_head = eval(env, car(cdr(head)));
         }
+        //else if (symbol_is(operation, "unquote-splicing"))
+        //{
+        //}
     }
     
     return cons(env, new_head, quasiquote_helper(env, rest));
@@ -2355,29 +2358,48 @@ static Cell* atom_length(Environment* env, Cell* params)
 	return make_number(env, (double)length);
 }
 
+
+static Cell* duplicate(Environment* env, Cell* list)
+{
+    if (list == NULL) return NULL;
+    assert(list->type == TYPE_PAIR);
+    return cons(env, car(list), cdr(list));
+}
+
+static Cell* append_destructive(Cell* a, Cell* b)
+{
+    if (!a) return b;
+    
+    Cell* current = a;
+    
+    for(;;)
+    {
+        if (cdr(current) == NULL)
+        {
+            set_cdr(current, b);
+            return a;
+        }
+        current = cdr(current);
+    }
+    assert(false);
+    return NULL;
+}
+
 // (append list ...)
 // Returns a list consisting of the elements of the first list followed by
 // the elements of the other lists.
 static Cell* atom_append(Environment* env, Cell* params)
 {
-	Cell* result = cons(env, NULL, NULL);
-	
-	// for each list
-	for (Cell* head = eval(env, car(params)); head; head = head->data.pair.cdr)
-	{
-		type_check(env->cont, TYPE_PAIR, head->type);
-		
-		// append all of the items in the list
-		for (Cell* obj = head; obj; obj = cdr(obj))
-		{
-			set_car(result, car(obj));
-			set_cdr(result, cons(env, NULL, NULL));
-			result = cdr(result);
-		}
-	}
-	
-	return result;
-	
+    Cell* result = NULL;
+    
+    for (int n=1;; n++)
+    {
+        Cell* list = nth_param_optional(env, params, n, TYPE_PAIR);
+        if (!list) break;
+        result = append_destructive(result, duplicate(env, list));
+    }
+    
+    return result;
 }
 
 // a bunh of functions are missing here....
