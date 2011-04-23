@@ -1,3 +1,5 @@
+`(list ,(+ 1 2) 4)
+
 (current-output-port)
 ; CRASH
 ;(input-port? 1)

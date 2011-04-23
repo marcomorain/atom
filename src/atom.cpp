@@ -99,8 +99,8 @@ struct Cell
 	bool	 mark;
 };
 
-static Cell cell_true  = { TYPE_BOOLEAN, {true } };
-static Cell cell_false = { TYPE_BOOLEAN, {false} };
+static Cell cell_true  = { TYPE_BOOLEAN, {true }, NULL, false };
+static Cell cell_false = { TYPE_BOOLEAN, {false}, NULL, false };
 
 enum Type
 {
@@ -626,6 +626,11 @@ public:
 	{
 		add_basic(TOKEN_DOT);
 	}
+    
+    void add_comma()
+    {
+        add_basic(TOKEN_COMMA);
+    }
 
 	void add_identifier(void)
 	{
@@ -996,6 +1001,7 @@ void read_token(Input& input)
 		case '\'': input.next(); input.tokens->add_quote();      break;
 		case '`':  input.next(); input.tokens->add_backtick();   break;
 		case '.':  input.next(); input.tokens->add_dot();        break;
+        case ',':  input.next(); input.tokens->add_comma();      break;
 
 		case '#':
 		{
@@ -1046,37 +1052,35 @@ Cell* parse_abreviation(TokenList& tokens)
 	Environment* env = tokens.env;
 
 	if (!t) signal_error(env->cont, "unexpected end of input");
-
-	if(t->type == TOKEN_QUOTE)
-	{
-		
-		Cell* quote        = make_cell(tokens.env, TYPE_SYMBOL);
-		quote->data.symbol = "quote";
-		tokens.skip();
-		return cons(env, quote,
-					cons(env, parse_datum(tokens),
-				        cons(env, NULL, NULL)));
-	}
-
-	if (t->type == TOKEN_BACKTICK)
-	{
-		tokens.skip();
-		return parse_datum(tokens);
-	}
-
-	if(t->type == TOKEN_COMMA)
-	{
-		tokens.skip();
-		return parse_datum(tokens);
-	}
-
-	if (t->type == TOKEN_COMMA_AT)
-	{
-		tokens.skip();
-		return parse_datum(tokens);
-	}
-
-	return NULL;
+    
+    const char* symbol = NULL;
+    switch(t->type)
+    {
+        case TOKEN_QUOTE:
+        symbol = "quote";
+        break;
+        
+        case TOKEN_BACKTICK:
+        symbol = "quasiquote";
+        break;
+        
+        case TOKEN_COMMA:
+        symbol = "unquote";
+        break;
+        
+        case TOKEN_COMMA_AT:
+        symbol = "unquote-splicing";
+        break;
+            
+        // If the token is not one of the above abreviations, then we early out
+        default:
+        return NULL;
+    }
+     
+    Cell* abreviation = make_cell(env, TYPE_SYMBOL);
+    abreviation->data.symbol = symbol;
+    tokens.skip();
+    return cons(env, abreviation, cons(env, parse_datum(tokens), NULL));
 }
 
 Cell* parse_list(TokenList& tokens)
@@ -1776,6 +1780,63 @@ static Cell* atom_define(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+static bool symbol_is(const Cell* symbol, const char* name)
+{
+    assert(symbol && symbol->type == TYPE_SYMBOL);
+    return 0 == strcmp(name, symbol->data.symbol);
+}
+
+// TODO: Handle literal vectors in quasiquote
+static Cell* quasiquote_helper(Environment* env, Cell* list)
+{
+    // break recursion
+    if (!list) return NULL;
+    
+    // If the object is not a list, then there is nothing to do
+    // TODO: vector literals
+    if (list->type != TYPE_PAIR) return list;
+    
+    // At the end of the function we are going to
+    // cons new_head onto recurse(rest)
+    // The function modifies new_head
+    Cell* head     = car(list);
+    Cell* rest     = cdr(list);
+    Cell* new_head = head;
+    
+    // TODO: make a proper empty list type, remove this line
+    if (!head) return NULL;
+    
+    if (head->type == TYPE_PAIR)
+    {
+        Cell* operation = car(head);
+        
+        if (symbol_is(operation, "unquote"))
+        {
+            new_head = eval(env, car(cdr(head)));
+        }
+    }
+    
+    return cons(env, new_head, quasiquote_helper(env, rest));
+}
+
+
+// (quasiquote <qq template>) syntax
+// `<qq template>             syntax
+// “Backquote” or “quasiquote” expressions are useful for constructing a list or
+// vector structure when most but not all of the desired structure is known in
+// advance. If no commas appear within the ⟨qq template⟩, the result of evaluating
+// `⟨qq template⟩ is equivalent to the result of evaluating ’⟨qq template⟩. If a
+// comma appears within the ⟨qq template⟩, however, the expression following the
+// comma is evaluated (“unquoted”) and its result is inserted into the structure
+// instead of the comma and the expression. If a comma appears followed immediately
+// by an atsign (@), then the following expression must evaluate to a list; the
+// opening and closing parentheses of the list are then “stripped away” and the
+// elements of the list are inserted in place of the comma at-sign expression
+// sequence. A comma at-sign should only appear within a list or vector ⟨qq template⟩.
+static Cell* atom_quasiquote(Environment* env, Cell* params)
+{
+    return quasiquote_helper(env, car(params));
+}
 
 static Cell* atom_error(Environment* env, Cell* params)
 {
@@ -1801,7 +1862,7 @@ static Cell* atom_lambda(Environment* env, Cell* params)
 
 // (begin <expression1> <expression> ...)	library syntax
 // The <expression>s are evaluated sequentially from left to right, and
-// the value(s) of the last <expression> is(are) re- turned. This expression
+// the value(s) of the last <expression> is(are) returned. This expression
 // type is used to sequence side ef- fects such as input and output.
 
 static Cell* atom_begin(Environment* env, Cell* params)
@@ -2861,10 +2922,10 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 		}
 
 		//printf("> ");
-		//print(cell);
-		//const Cell* result =
+		print(stdout, cell, false);
+		const Cell* result =
         eval(env, cell);
-		//print(result);
+		print(stdout, result, false);
 	}
 
 cleanup:
@@ -3036,11 +3097,11 @@ Continuation* atom_api_open()
 	add_builtin(env, "let*",			atom_let_s);
 	add_builtin(env, "begin",      		atom_begin);
 	add_builtin(env, "define",			atom_define);
-
+    add_builtin(env, "quasiquote",      atom_quasiquote);
 	
 	add_builtin(env, "eqv?",			atom_eqv_q);
 	add_builtin(env, "eq?",				atom_eq_q);
-	add_builtin(env, "equal?",			atom_eq_q);
+	add_builtin(env, "equal?",			atom_equal_q);
 	add_builtin(env, "number?",    		atom_number_q);
 	add_builtin(env, "complex?",   		always_false);
 	add_builtin(env, "real?",      		atom_number_q);
