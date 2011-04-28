@@ -627,6 +627,11 @@ public:
 		add_basic(TOKEN_DOT);
 	}
     
+    void add_comma_at()
+    {
+        add_basic(TOKEN_COMMA_AT);
+    }
+    
     void add_comma()
     {
         add_basic(TOKEN_COMMA);
@@ -1001,7 +1006,22 @@ void read_token(Input& input)
 		case '\'': input.next(); input.tokens->add_quote();      break;
 		case '`':  input.next(); input.tokens->add_backtick();   break;
 		case '.':  input.next(); input.tokens->add_dot();        break;
-        case ',':  input.next(); input.tokens->add_comma();      break;
+            
+        case ',':
+        {
+            input.next();
+            if(input.get() == '@')
+            {
+                input.next();
+                input.tokens->add_comma_at();
+            }
+            else
+            {
+                input.tokens->add_comma();
+            }
+            
+            break;
+        }
 
 		case '#':
 		{
@@ -1780,6 +1800,34 @@ static Cell* atom_define(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+
+static Cell* duplicate(Environment* env, Cell* list)
+{
+    if (list == NULL) return NULL;
+    assert(list->type == TYPE_PAIR);
+    return cons(env, car(list), cdr(list));
+}
+
+static Cell* append_destructive(Cell* a, Cell* b)
+{
+    if (!a) return b;
+    
+    Cell* current = a;
+    
+    for(;;)
+    {
+        if (cdr(current) == NULL)
+        {
+            set_cdr(current, b);
+            return a;
+        }
+        current = cdr(current);
+    }
+    assert(false);
+    return NULL;
+}
+
+
 static bool symbol_is(const Cell* symbol, const char* name)
 {
     assert(symbol && symbol->type == TYPE_SYMBOL);
@@ -1814,9 +1862,12 @@ static Cell* quasiquote_helper(Environment* env, Cell* list)
         {
             new_head = eval(env, car(cdr(head)));
         }
-        //else if (symbol_is(operation, "unquote-splicing"))
-        //{
-        //}
+        else if (symbol_is(operation, "unquote-splicing"))
+        {
+            new_head = eval(env, car(cdr(head)));
+            assert(new_head == NULL || new_head->type == TYPE_PAIR);
+            return append_destructive(new_head, quasiquote_helper(env, rest));
+        }
     }
     
     return cons(env, new_head, quasiquote_helper(env, rest));
@@ -2358,32 +2409,6 @@ static Cell* atom_length(Environment* env, Cell* params)
 	return make_number(env, (double)length);
 }
 
-
-static Cell* duplicate(Environment* env, Cell* list)
-{
-    if (list == NULL) return NULL;
-    assert(list->type == TYPE_PAIR);
-    return cons(env, car(list), cdr(list));
-}
-
-static Cell* append_destructive(Cell* a, Cell* b)
-{
-    if (!a) return b;
-    
-    Cell* current = a;
-    
-    for(;;)
-    {
-        if (cdr(current) == NULL)
-        {
-            set_cdr(current, b);
-            return a;
-        }
-        current = cdr(current);
-    }
-    assert(false);
-    return NULL;
-}
 
 // (append list ...)
 // Returns a list consisting of the elements of the first list followed by
