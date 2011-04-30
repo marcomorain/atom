@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		4943F915136C4E1E003E2ED1 /* libreadline.dylib in Frameworks */ = {isa = PBXBuildFile; fileRef = 4943F914136C4E1E003E2ED1 /* libreadline.dylib */; };
 		8FB666A6135BCBD4000DE583 /* atom.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8FB666A4135BCBD4000DE583 /* atom.cpp */; };
 /* End PBXBuildFile section */
 
@@ -23,6 +24,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		4943F914136C4E1E003E2ED1 /* libreadline.dylib */ = {isa = PBXFileReference; lastKnownFileType = "compiled.mach-o.dylib"; name = libreadline.dylib; path = usr/lib/libreadline.dylib; sourceTree = SDKROOT; };
 		8FB66698135BCB15000DE583 /* atom */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = atom; sourceTree = BUILT_PRODUCTS_DIR; };
 		8FB6669E135BCB15000DE583 /* atom.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = atom.1; sourceTree = "<group>"; };
 		8FB666A4135BCBD4000DE583 /* atom.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = atom.cpp; path = ../../src/atom.cpp; sourceTree = "<group>"; };
@@ -34,6 +36,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				4943F915136C4E1E003E2ED1 /* libreadline.dylib in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -43,6 +46,7 @@
 		8FB6668D135BCB14000DE583 = {
 			isa = PBXGroup;
 			children = (
+				4943F914136C4E1E003E2ED1 /* libreadline.dylib */,
 				8FB6669B135BCB15000DE583 /* atom */,
 				8FB66699135BCB15000DE583 /* Products */,
 			);

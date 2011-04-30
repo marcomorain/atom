@@ -8,6 +8,9 @@
 #include <stdarg.h>
 #include <setjmp.h>
 
+// For REPL
+#include <readline/readline.h>
+
 // fmod (in atom_modulo) brings in a dependancy on math.h
 // todo: split / remove break?
 #include <math.h>
@@ -50,7 +53,7 @@ struct Environment;
 struct Continuation;
 struct Cell;
 
-typedef Cell* (*Function) (Environment* env, Cell* params);
+typedef Cell* (*atom_function) (Environment* env, Cell* params);
 
 struct Cell
 {
@@ -70,7 +73,7 @@ struct Cell
 	{
 		// If function is null, then the procedure
 		// was created in scheme, otherwise it is a built-in
-		Function 		function;
+		atom_function   function;
 		Cell*    		formals;
 		Cell*    		body;
 		Environment*	env;
@@ -3058,7 +3061,7 @@ tailcall:
 			
 			const Cell::Procedure* proc = &function->data.procedure;
 			
-			if (Function f = proc->function)
+			if (atom_function f = proc->function)
 			{
 				return f(env, cdr(cell));
 			}
@@ -3110,7 +3113,7 @@ tailcall:
 	}
 }
 
-static void add_builtin(Environment* env, const char* name, Function function)
+static void add_builtin(Environment* env, const char* name, atom_function function)
 {
 	assert(env);
 	assert(name);
@@ -3251,9 +3254,23 @@ void atom_api_close(Continuation* cont)
 
 void atom_api_repl(Continuation* cont)
 {
-	std::string line;
-	std::getline (std::cin, line);
-	atom_api_load(cont, line.c_str(), line.length());
+    for (;;)
+    {
+        char* line = readline (">");
+        
+        if (!line) // eof/ctrl+d
+        {
+            break;
+        }
+    
+        if (*line)
+        {
+            add_history (line);
+            atom_api_load(cont, line, strlen(line));
+        }
+    
+        free(line);
+    }
 }
 
 
@@ -3300,7 +3317,7 @@ int main (int argc, char * const argv[])
 
 	atom_api_loadfile(atom, filename);
 
-	while (repl)
+	if (repl)
 	{
         printf("Now doing the REPL\n");
 		atom_api_repl(atom);
