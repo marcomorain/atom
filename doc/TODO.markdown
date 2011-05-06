@@ -24,11 +24,6 @@
 ### Chapter 6: Standard Procedures
 #### 6.1. Equivalence predicates
 #### 6.2. Numbers
-* zero?
-* positive?
-* negative?
-* odd?
-* even?
 * abs
 * quotient
 * remainder
@@ -114,10 +109,6 @@
 * list->string
 * string-copy
 * string-fill!
-
-## 6.3.6 Vectors
-* vector->list
-* list->vector
 
 ### 6.4 Control Features
 * map

@@ -2255,6 +2255,42 @@ static Cell* atom_compare_greater_equal(Environment* env, Cell* params)
 	return comparison_helper<GreaterEq>(env, params);
 }
 
+// (zero? z)
+// (positive? x)
+// (negative? x)
+// (odd? n)
+// (even? n)
+// These numerical predicates test a number for a particular property, returning
+// #t or #f.
+static Cell* atom_zero_q(Environment* env, Cell* params)
+{
+	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
+    return make_boolean(result == 0.0);
+}
+
+static Cell* atom_positive_q(Environment* env, Cell* params)
+{
+	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
+    return make_boolean(result > 0.0);
+}
+
+static Cell* atom_negative_q(Environment* env, Cell* params)
+{
+	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
+    return make_boolean(result < 0.0);
+}
+
+static Cell* atom_odd_q(Environment* env, Cell* params)
+{
+	int result = nth_param_integer(env, params, 1);
+    return make_boolean(result & 1);
+}
+
+static Cell* atom_even_q(Environment* env, Cell* params)
+{
+	int result = nth_param_integer(env, params, 1);
+    return make_boolean(0 == (result & 1));
+}
 
 // (max x1 x2 ...) library procedure
 // (min x1 x2 ...) library procedure
@@ -2631,8 +2667,9 @@ static Cell* atom_vector_q(Environment* env, Cell* params)
 
 // (make-vector k)	procedure
 // (make-vector k fill)	procedure
-// Returns a newly allocated vector of k elements. If a second argument is given, then each
-// element is initialized to fill. Otherwise the initial contents of each element is unspecified.
+// Returns a newly allocated vector of k elements. If a second argument is given,
+// then each element is initialized to fill. Otherwise the initial contents of
+// each element is unspecified.
 static Cell* atom_make_vector(Environment* env, Cell* params)
 {
 	int k = nth_param_integer(env, params, 1);
@@ -2642,7 +2679,8 @@ static Cell* atom_make_vector(Environment* env, Cell* params)
 }
 
 // (vector obj ...)	library procedure
-// Returns a newly allocated vector whose elements contain the given arguments. Analogous to list.
+// Returns a newly allocated vector whose elements contain the given arguments.
+// Analogous to list.
 static Cell* atom_vector(Environment* env, Cell* params)
 {
     int length = 0;
@@ -2967,9 +3005,9 @@ static Cell* atom_load(Environment* env, Cell* params)
 
 // (write-char char)      procedure
 // (write-char char port) procedure
-// Writes the character char (not an external representation of the character) to the given port and returns an
-// unspecified value. The port argument may be omitted, in which case it defaults to the value returned by
-// current-output-port.
+// Writes the character char (not an external representation of the character) to
+// the given port and returns an unspecified value. The port argument may be
+// omitted, in which case it defaults to the value returned by current-output-port.
 static Cell* atom_write_char(Environment* env, Cell* params)
 {
     Cell* c = nth_param(env, params, 1, TYPE_CHARACTER);
@@ -3080,19 +3118,8 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	free(buffer);
 }
 
-static int level = -1;
-
-struct Bump
-{
-	int& value;
-	Bump(int& v) : value(v) { v++; };
-	~Bump() { value--; };
-};
-
 static Cell* eval(Environment* env, Cell* cell)
 {
-	Bump bump(level);
-
 tailcall:
 
 	assert(cell);
@@ -3240,6 +3267,13 @@ Continuation* atom_api_open()
 	add_builtin(env, ">",				atom_compare_greater);
 	add_builtin(env, "<=",				atom_compare_less_equal);
 	add_builtin(env, ">=",				atom_compare_greater_equal);
+    
+    add_builtin(env, "zero?",           atom_zero_q);
+    add_builtin(env, "positive?",       atom_positive_q);
+    add_builtin(env, "negative?",       atom_negative_q);
+    add_builtin(env, "odd?",            atom_odd_q);
+    add_builtin(env, "even?",           atom_even_q);
+    
 	add_builtin(env, "min",				atom_min);
 	add_builtin(env, "max",				atom_max);
 	
