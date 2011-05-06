@@ -1,22 +1,26 @@
-`(list ,(+ 1 2) 4)
+(vector 1 2 3)
 
-`(list ,(+ 1 2) 4)
+;`(list ,(+ 1 2) 4)
+
+;`(list ,(+ 1 2) 4)
 ; (list 3 4)
 
-(let ((name 'a))
-    `(list ,name ',name))
+;(let ((name 'a))
+;    `(list ,name ',name))
 ; (list a (quote a))
 
-`(a ,(+ 1 2) ,@'(4 5 6) b)
+;`(a ,(+ 1 2) ,@'(4 5 6) b)
 ; (a3456b)
 
-`(( foo ,(- 10 3)) ,@(cdr '(c)) . ,(car '(cons)))
+;`(( foo ,(- 10 3)) ,@(cdr '(c)) . ,(car '(cons)))
+
+`(1 . ,(+ 1 2))
 
 ; ((foo 7) . cons)
 
 ;; `#(10 5 ,(sqrt 4) ,@(map sqrt '(16 9)) 8) =⇒ #(1052438)
 
-(current-output-port)
+;(current-output-port)
 ; CRASH
 ;(input-port? 1)
 ;(if (input-port? 1) (display "yes"))

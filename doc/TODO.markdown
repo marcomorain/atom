@@ -116,7 +116,6 @@
 * string-fill!
 
 ## 6.3.6 Vectors
-* vector
 * vector->list
 * list->vector
 

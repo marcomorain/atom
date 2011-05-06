@@ -193,6 +193,16 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
     case TYPE_OUTPUT_PORT:
         fprintf(output, "#<ouput port %p>", cell->data.input_port);
         break;
+            
+    case TYPE_VECTOR:
+        fprintf(output, "#(");
+        for (int i=0; i<cell->data.vector.length; i++)
+        {
+            if (i>0) fprintf(output, " ");
+            print_rec(output, cell->data.vector.data[i], human, 0);
+        }
+        fprintf(output, ")");
+        break;
 	
 	default:
 		assert(false);
@@ -2141,13 +2151,14 @@ static Cell* atom_eqv_q(Environment* env, Cell* params)
 }
 
 // (eq? obj1 obj2)	procedure
-// Eq? is similar to eqv? except that in some cases it is capable of discerning distinctions finer
-// than those detectable by eqv?.
-// Eq? and eqv? are guaranteed to have the same behavior on symbols, booleans, the empty list, pairs,
-// procedures, and non-empty strings and vectors.
-// Eq?’s behavior on numbers and characters is implementation-dependent, but it will always return
-// either true or false, and will return true only when eqv? would also return true. Eq? may also
-// behave differently from eqv? on empty vectors and empty strings.
+// Eq? is similar to eqv? except that in some cases it is capable of discerning
+// distinctions finer than those detectable by eqv?.
+// Eq? and eqv? are guaranteed to have the same behavior on symbols, booleans,
+// the empty list, pairs, procedures, and non-empty strings and vectors.
+// Eq?’s behavior on numbers and characters is implementation-dependent, but it
+// will always return either true or false, and will return true only when eqv?
+// would also return true. Eq? may also behave differently from eqv? on empty
+// vectors and empty strings.
 static Cell* atom_eq_q(Environment* env, Cell* params)
 {
 	Cell* obj1 = nth_param_any(env, params, 1);
@@ -2156,9 +2167,10 @@ static Cell* atom_eq_q(Environment* env, Cell* params)
 }
 
 // (equal? obj1 obj2)	library procedure
-// Equal? recursively compares the contents of pairs, vectors, and strings, applying eqv? on other
-// objects such as numbers and symbols. A rule of thumb is that objects are generally equal? if they
-// print the same. Equal? may fail to terminate if its arguments are circular data structures.
+// Equal? recursively compares the contents of pairs, vectors, and strings,
+// applying eqv? on other objects such as numbers and symbols. A rule of thumb is
+// that objects are generally equal? if they print the same. Equal? may fail to
+// terminate if its arguments are circular data structures.
 static Cell* atom_equal_q(Environment* env, Cell* params)
 {
 	Cell* obj1 = nth_param_any(env, params, 1);
@@ -2633,8 +2645,23 @@ static Cell* atom_make_vector(Environment* env, Cell* params)
 // Returns a newly allocated vector whose elements contain the given arguments. Analogous to list.
 static Cell* atom_vector(Environment* env, Cell* params)
 {
-  // todo
-	return NULL;	
+    int length = 0;
+    for (Cell* p = params; p; p = cdr(p))
+    {
+        length++;
+    }
+    
+    Cell* v = make_vector(env, length, NULL);
+    
+    int i = 0;
+    
+    for (Cell* p = params; p; p = cdr(p))
+    {
+        v->data.vector.data[i] = eval(env, car(p));
+        i++;
+    }
+    
+    return v;
 }
 
 // (vector-length vector)
@@ -2692,6 +2719,48 @@ static Cell* atom_vector_set_b(Environment* env, Cell* params)
 	vector->data.vector.data[k] = obj;
 	return obj;
 }
+
+// (vector->list vector) library procedure
+// Vector->list returns a newly allocated list of the objects contained in the
+// elements of vector. List->vector returns a newly created vector initialized to
+// the elements of the list list .
+static Cell* atom_vector_to_list(Environment* env, Cell* params)
+{
+    Cell* vector = nth_param(env, params, 1, TYPE_VECTOR);
+    
+    Cell* list = NULL;
+
+    // Build up the list backwards
+    for(int i=vector->data.vector.length-1; i > -1; i--)
+    {
+        list = cons(env, vector->data.vector.data[i], list);
+    }
+    return list;
+}
+
+// (list->vector list)   library procedure
+// Vector->list returns a newly allocated list of the objects contained in the
+// elements of vector. List->vector returns a newly created vector initialized to
+// the elements of the list list .
+static Cell* atom_list_to_vector(Environment* env, Cell* params)
+{
+    Cell* list = nth_param(env, params, 1, TYPE_PAIR);
+    
+    int length = 0;
+    for (Cell* cell = list; cell; cell = cdr(cell)) length++;
+    
+    Cell* vector = make_vector(env, length, NULL);
+    
+    int i = 0;
+    for (Cell* cell = list; cell; cell = cdr(cell))
+    {
+        vector->data.vector.data[i] = car(cell);
+        i++;
+    }
+    
+    return vector;
+}
+
 
 // (vector-fill! vector fill) library procedure
 // Stores fill in every element of vector. The value returned by vector-fill! is unspecified.
@@ -2929,6 +2998,8 @@ static Cell* always_false(Environment* env, Cell* params)
 
 static void atom_api_load(Continuation* cont, const char* data, size_t length)
 {	
+    //printf("input> %s", data);
+    
 	Environment* env = cont->env;
 
 	JumpBuffer* prev = cont->escape;
@@ -2971,7 +3042,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 			break;
 		}
 
-		//printf("> ");
+		printf("parsed> ");
 		print(stdout, cell, false);
 		const Cell* result =
         eval(env, cell);
@@ -3206,6 +3277,8 @@ Continuation* atom_api_open()
 	add_builtin(env, "vector",	   		atom_vector);
 	add_builtin(env, "vector-length", 	atom_vector_length);
 	add_builtin(env, "vector-ref",		atom_vector_ref);
+    add_builtin(env, "vector->list",    atom_vector_to_list);
+    add_builtin(env, "list->vector",    atom_list_to_vector);
 	add_builtin(env, "vector-set!",		atom_vector_set_b);
 	add_builtin(env, "vector-fill!",	atom_vector_fill_b);
 	
@@ -3322,8 +3395,7 @@ int main (int argc, char * const argv[])
         printf("Now doing the REPL\n");
 		atom_api_repl(atom);
 	}
-    
-    if (!repl)
+    else
     {
         printf("File done, no REPL.\n");
     }
