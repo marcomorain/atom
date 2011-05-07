@@ -88,10 +88,10 @@ struct Cell
 		Cell*    		body;
 		Environment*	env;
 	};
-
+    
 	// todo: add a const string type? or a flag?
 	// todo: add a length to string type
-
+    
 	union Data
 	{
 		bool         boolean;
@@ -135,18 +135,18 @@ enum Type
 static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 {
 	if (!cell) return;
-
+    
 	switch(cell->type)
 	{
-	case TYPE_BOOLEAN:
-		fprintf(output, "#%c", (cell->data.boolean ? 't' : 'f'));
-		break;
-
-	case TYPE_NUMBER:
-		fprintf(output, "%lg", cell->data.number);
-		break;
-
-	case TYPE_CHARACTER:
+        case TYPE_BOOLEAN:
+            fprintf(output, "#%c", (cell->data.boolean ? 't' : 'f'));
+            break;
+            
+        case TYPE_NUMBER:
+            fprintf(output, "%lg", cell->data.number);
+            break;
+            
+        case TYPE_CHARACTER:
 		{
 			char c = cell->data.character;
 			
@@ -159,63 +159,63 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 		        switch(c)
 			    {
 				    case ' ':
-    				fprintf(output, "#\\space");
-    				break;
-				
+                        fprintf(output, "#\\space");
+                        break;
+                        
     				case '\n':
-    				fprintf(output, "#\\newline");
-    				break;
-				
+                        fprintf(output, "#\\newline");
+                        break;
+                        
     				default:
-    				fprintf(output, "#\\%c", c);
-    				break;
+                        fprintf(output, "#\\%c", c);
+                        break;
     			}
 			}
 			break;
 		}
-
-	case TYPE_STRING:
-		fprintf(output, human ? "%s" : "\"%s\"", cell->data.string.data);
-		break;
-
-	case TYPE_SYMBOL:
-		fprintf(output, "%s", cell->data.symbol);
-		break;
-
-	case TYPE_PAIR:
-		if (is_car) fprintf(output, "(");
-		print_rec(output, cell->data.pair.car, human, 1);
-		
-		if (Cell* c = cell->data.pair.cdr)
-		{
-			fprintf(output, " ");
-			if (c->type != TYPE_PAIR) fprintf(output, ". ");
-			print_rec(output, c, human, 0);
-		}
-
-		if (is_car) fprintf(output, ")");
-		break;
-		
-    case TYPE_INPUT_PORT:
-        fprintf(output, "#<input port %p>", cell->data.input_port);
-        break;
-        
-    case TYPE_OUTPUT_PORT:
-        fprintf(output, "#<ouput port %p>", cell->data.input_port);
-        break;
             
-    case TYPE_VECTOR:
-        fprintf(output, "#(");
-        for (int i=0; i<cell->data.vector.length; i++)
-        {
-            if (i>0) fprintf(output, " ");
-            print_rec(output, cell->data.vector.data[i], human, 0);
-        }
-        fprintf(output, ")");
-        break;
-	
-	default:
-		assert(false);
+        case TYPE_STRING:
+            fprintf(output, human ? "%s" : "\"%s\"", cell->data.string.data);
+            break;
+            
+        case TYPE_SYMBOL:
+            fprintf(output, "%s", cell->data.symbol);
+            break;
+            
+        case TYPE_PAIR:
+            if (is_car) fprintf(output, "(");
+            print_rec(output, cell->data.pair.car, human, 1);
+            
+            if (Cell* c = cell->data.pair.cdr)
+            {
+                fprintf(output, " ");
+                if (c->type != TYPE_PAIR) fprintf(output, ". ");
+                print_rec(output, c, human, 0);
+            }
+            
+            if (is_car) fprintf(output, ")");
+            break;
+            
+        case TYPE_INPUT_PORT:
+            fprintf(output, "#<input port %p>", cell->data.input_port);
+            break;
+            
+        case TYPE_OUTPUT_PORT:
+            fprintf(output, "#<ouput port %p>", cell->data.input_port);
+            break;
+            
+        case TYPE_VECTOR:
+            fprintf(output, "#(");
+            for (int i=0; i<cell->data.vector.length; i++)
+            {
+                if (i>0) fprintf(output, " ");
+                print_rec(output, cell->data.vector.data[i], human, 0);
+            }
+            fprintf(output, ")");
+            break;
+            
+        default:
+            assert(false);
 	}
 }
 
@@ -245,12 +245,12 @@ struct Environment
 		Cell*       value;
 		Node*		next;
 	};
-
+    
 	Continuation* cont;
 	Environment* parent;
 	Node**		 data;
 	unsigned	 mask;
-
+    
 	void init(Continuation* c, int size, Environment* parent_env)
 	{
 		assert(power_of_two(size));
@@ -304,12 +304,12 @@ static Cell* make_cell(Environment* env, int type)
 	Cell* result = (Cell*)malloc(sizeof(Cell));
 	memset(result, 0, sizeof(Cell));
 	result->type = (CellType)type;
-
+    
 	// stick on the first item in the linked list
 	result->next = env->cont->cells;
 	env->cont->cells = result;
 	env->cont->allocated++;
-
+    
 	return result;	
 }
 
@@ -360,7 +360,7 @@ static void mark(Cell* cell)
         case TYPE_INPUT_PORT:
         case TYPE_OUTPUT_PORT:
 			break;
-		
+            
 		case TYPE_PAIR:
 			mark(cell->data.pair.car);
 			mark(cell->data.pair.cdr);
@@ -372,7 +372,7 @@ static void mark(Cell* cell)
                 mark(cell->data.vector.data[i]);
             }
 			break;
-		
+            
 		case TYPE_PROCEDURE:
 		{
 			Cell::Procedure& p = cell->data.procedure;
@@ -411,29 +411,29 @@ static void collect_garbage(Continuation* cont)
 		    switch(cell->type)
 		    {
 		        case TYPE_INPUT_PORT:
-                if (cell->data.input_port != stdin)
-                {
-                    fclose(cell->data.input_port);
-                }
-                break;
-                
+                    if (cell->data.input_port != stdin)
+                    {
+                        fclose(cell->data.input_port);
+                    }
+                    break;
+                    
                 case TYPE_OUTPUT_PORT:
-                if (cell->data.output_port != stdout)
-                {
-                    fclose(cell->data.output_port);
-                }
-                break;
-                
+                    if (cell->data.output_port != stdout)
+                    {
+                        fclose(cell->data.output_port);
+                    }
+                    break;
+                    
                 case TYPE_STRING:
-                free(cell->data.string.data);
-                break;
-                
+                    free(cell->data.string.data);
+                    break;
+                    
                 case TYPE_VECTOR:
-                free(cell->data.vector.data);
-                break;
-                
+                    free(cell->data.vector.data);
+                    break;
+                    
                 default:
-                break;
+                    break;
 		    }
 			cont->allocated--;
 			free(cell);
@@ -441,7 +441,7 @@ static void collect_garbage(Continuation* cont)
 	}
 	
 	cont->cells = remaining;
-
+    
 	printf("GC: %d cells collected. %d remain allocated\n",
            cells_before - cont->allocated, cont->allocated);
 	
@@ -470,7 +470,7 @@ static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
 {
 	type_check(env->cont, TYPE_PAIR, formals->type);
 	type_check(env->cont, TYPE_PAIR, body->type);
-
+    
 	Cell* proc = make_cell(env, TYPE_PROCEDURE);
 	proc->data.procedure.formals = formals;
 	proc->data.procedure.body    = body;
@@ -494,7 +494,7 @@ static Cell* make_string(Environment* env, int length, const char* data)
 {
     // Fail early if the length is wrong.
     assert(length == strlen(data));
-           
+    
     Cell* string = make_cell(env, TYPE_STRING);
     string->data.string.length = length;
     string->data.string.data   = strdup(data);
@@ -551,7 +551,7 @@ static Cell* cons(Environment* env, Cell* car, Cell* cdr)
 static bool is_false(const Cell* cell)
 {
 	return	cell->type == TYPE_BOOLEAN &&
-			cell->data.boolean == false;
+    cell->data.boolean == false;
 }
 
 struct Token
@@ -560,35 +560,35 @@ struct Token
 	{
 		switch(type)
 		{
-		case TOKEN_NUMBER:
-			LEXER_TRACE("Token TOKEN_NUMBER %lg\n", data.number);
-			break;
-
-		case TOKEN_IDENTIFIER:
-			LEXER_TRACE("Token TOKEN_IDENTIFIER %s\n", data.identifier);
-			break;
-
-		case TOKEN_STRING:
-			LEXER_TRACE("Token TOKEN_STRING \"%s\"\n", data.string);
-			break;
-
+            case TOKEN_NUMBER:
+                LEXER_TRACE("Token TOKEN_NUMBER %lg\n", data.number);
+                break;
+                
+            case TOKEN_IDENTIFIER:
+                LEXER_TRACE("Token TOKEN_IDENTIFIER %s\n", data.identifier);
+                break;
+                
+            case TOKEN_STRING:
+                LEXER_TRACE("Token TOKEN_STRING \"%s\"\n", data.string);
+                break;
+                
 #define PRINT_CASE(id) case id: LEXER_TRACE("Token %s\n", #id); break
-
-		PRINT_CASE(TOKEN_BOOLEAN);
-		PRINT_CASE(TOKEN_CHARACTER);
-		PRINT_CASE(TOKEN_LIST_START);
-		PRINT_CASE(TOKEN_LIST_END);
-		PRINT_CASE(TOKEN_VECTOR_START);
-		PRINT_CASE(TOKEN_QUOTE);
-		PRINT_CASE(TOKEN_BACKTICK);
-		PRINT_CASE(TOKEN_COMMA);
-		PRINT_CASE(TOKEN_COMMA_AT);
-		PRINT_CASE(TOKEN_DOT);
+                
+                PRINT_CASE(TOKEN_BOOLEAN);
+                PRINT_CASE(TOKEN_CHARACTER);
+                PRINT_CASE(TOKEN_LIST_START);
+                PRINT_CASE(TOKEN_LIST_END);
+                PRINT_CASE(TOKEN_VECTOR_START);
+                PRINT_CASE(TOKEN_QUOTE);
+                PRINT_CASE(TOKEN_BACKTICK);
+                PRINT_CASE(TOKEN_COMMA);
+                PRINT_CASE(TOKEN_COMMA_AT);
+                PRINT_CASE(TOKEN_DOT);
 #undef PRINT_CASE
 		}
-
+        
 	}
-
+    
 	union Data
 	{
 		double		number;
@@ -597,7 +597,7 @@ struct Token
 		const char*	identifier;
 		char		character;
 	};
-
+    
 	Type type;
 	Data data;
 };
@@ -606,14 +606,14 @@ struct Token
 struct TokenList
 {
 private:
-
+    
 	void add_basic(Type t)
 	{
 		tokens[next].type = t;
 		tokens[next].print();
 		next++;
 	}
-
+    
 	char* buffer_copy_and_reset(void)
 	{
 		char* dup = (char*)malloc(buffer_position + 1);
@@ -622,9 +622,9 @@ private:
 		buffer_position = 0;
 		return dup;
 	}
-
+    
 public:
-
+    
 	void buffer_push(char c)
 	{
 		if (buffer_position == buffer_length)
@@ -635,11 +635,11 @@ public:
 		buffer_data[buffer_position] = c;
 		buffer_position++;
 	}
-
+    
 	char*  buffer_data;
 	size_t buffer_length;
 	size_t buffer_position;
-
+    
 	Environment* env;
 	Token*	     tokens;
 	int		     next;
@@ -650,17 +650,17 @@ public:
 		length = next;
 		next = 0;
 	}
-
+    
 	void add_backtick()
 	{
 		add_basic(TOKEN_BACKTICK);
 	}
-
+    
 	void add_list_start()
 	{
 		add_basic(TOKEN_LIST_START);
 	}
-
+    
 	void add_list_end()
 	{
 		add_basic(TOKEN_LIST_END);
@@ -670,12 +670,12 @@ public:
     {
         add_basic(TOKEN_VECTOR_START);
     }
-
+    
 	void add_quote()
 	{
 		add_basic(TOKEN_QUOTE);
 	}
-
+    
 	void add_dot()
 	{
 		add_basic(TOKEN_DOT);
@@ -690,7 +690,7 @@ public:
     {
         add_basic(TOKEN_COMMA);
     }
-
+    
 	void add_identifier(void)
 	{
 		tokens[next].type = TOKEN_IDENTIFIER;
@@ -698,7 +698,7 @@ public:
 		tokens[next].print();
 		next++;
 	}
-
+    
 	void add_string(void)
 	{
 		tokens[next].type = TOKEN_STRING;
@@ -706,7 +706,7 @@ public:
 		tokens[next].print();
 		next++;
 	}
-
+    
 	void add_number(double number)
 	{
 		tokens[next].type = TOKEN_NUMBER;
@@ -722,7 +722,7 @@ public:
 		tokens[next].print();
 		next++;
 	}
-
+    
 	void add_boolean(bool value)
 	{
 		tokens[next].type = TOKEN_BOOLEAN;
@@ -730,25 +730,25 @@ public:
 		tokens[next].print();
 		next++;
 	}
-
+    
 	void init(Environment* env, int size)
 	{
 		next   = 0;
 		length = size;
 		tokens = (Token*)malloc(size*sizeof(Token));
-
+        
 		buffer_position = 0;
 		buffer_length	= 64;
 		buffer_data = (char*)malloc(buffer_length);
 		this->env = env;
 	}
-
+    
 	void destroy()
 	{
 		free(tokens);
 		free(buffer_data);
 	}
-
+    
 	const Token* peek(void) const
 	{
 		if (next < length)
@@ -757,7 +757,7 @@ public:
 		}
 		return NULL;
 	}
-
+    
 	void skip(void)
 	{
 		next++;
@@ -772,7 +772,7 @@ struct Input
 	const char*   data;
 	TokenList*	  tokens;
 	Continuation* cont;
-
+    
 	void init(Continuation* c, const char* d)
 	{
 		line	= 1;
@@ -790,9 +790,9 @@ struct Input
 	char next(void)
 	{
 		assert(*data);
-
+        
 		column++;
-
+        
 		if (*data == '\n')
 		{
 			column = 1;
@@ -818,15 +818,15 @@ void skip_whitespace(Input& input)
 			case '\n':
 			case ' ':
 			case '\t':
-			continue;
-			
+                continue;
+                
 			case ';':
-			for (char d = input.next(); d != '\n'; d = input.next())
-			{
-				if (!d) return;
-			}
-			break;
-			
+                for (char d = input.next(); d != '\n'; d = input.next())
+                {
+                    if (!d) return;
+                }
+                break;
+                
 			default: return;
 		}
 	}
@@ -855,9 +855,9 @@ bool is_special_initial(char c)
 		case '^':
 		case '_':
 		case '~':
-		return true;
+            return true;
 	}
-
+    
 	return false;
 }
 
@@ -898,7 +898,7 @@ bool is_special_subsequent(char c)
 		case '@':
 			return true;
 	}
-
+    
 	return false;
 }
 
@@ -914,16 +914,16 @@ static void read_character(Input& input)
 	switch(c)
 	{
 		case 's':
-		if (input.next() == 'p'){
-			if (input.next() != 'a') syntax_error(input, "space expected");
-			if (input.next() != 'c') syntax_error(input, "space expected");
-			if (input.next() != 'e') syntax_error(input, "space expected");
-			if (!is_delimeter(input.next())) syntax_error(input, "space expected");
-			input.tokens->add_character(' ');
-			return;
-		}
-		else goto success;
-
+            if (input.next() == 'p'){
+                if (input.next() != 'a') syntax_error(input, "space expected");
+                if (input.next() != 'c') syntax_error(input, "space expected");
+                if (input.next() != 'e') syntax_error(input, "space expected");
+                if (!is_delimeter(input.next())) syntax_error(input, "space expected");
+                input.tokens->add_character(' ');
+                return;
+            }
+            else goto success;
+            
 		case 'n':
 			if (input.next() == 'e'){
 				if (input.next() != 'w') syntax_error(input, "newline expected");
@@ -936,18 +936,18 @@ static void read_character(Input& input)
 				return;
 			}
 			else goto success;
-
+            
 		default: goto success;
 	}
-
+    
 success:
-
+    
 	if (is_delimeter(input.next()))
 	{
 		input.tokens->add_character(c);
 		return;
 	}
-
+    
 	syntax_error(input, "delimeter expected");
 }
 
@@ -962,13 +962,13 @@ static double char_to_double(char c)
 void read_number(Input& input)
 {
 	char c = input.get();
-
+    
 	double accum = char_to_double(c);
-
+    
 	for (;;)
 	{
 		c = input.next();
-
+        
 		if (!is_digit(c))
 		{
 			input.tokens->add_number(accum);
@@ -983,17 +983,17 @@ void read_number(Input& input)
 void read_string(Input& input)
 {
 	assert(input.get() == '"');
-
+    
 	for (;;)
 	{
 		char c = input.next();
-
+        
 		if (c == '"'){
 			input.next();
 			input.tokens->add_string();
 			return;
 		}
-
+        
 		if (c == '\\'){
 			c = input.next();
 			if (c == '"' || c == '\\')
@@ -1003,13 +1003,13 @@ void read_string(Input& input)
 			}
 			syntax_error(input, "malformed string");
 		}
-
+        
 		if (isprint(c))
 		{
 			input.tokens->buffer_push(c);
 			continue;
 		}
-
+        
 		syntax_error(input, "unexpected character in string");
 	}
 }
@@ -1026,7 +1026,7 @@ void read_identifier(Input& input)
 	if (is_initial(c))
 	{
 		input.tokens->buffer_push(c);
-
+        
 		for (;;)
 		{
 			c = input.next();
@@ -1047,9 +1047,9 @@ void read_identifier(Input& input)
 	{
 		syntax_error(input, "malformed identifier");
 	}
-
+    
 	input.tokens->add_identifier();
-
+    
 }
 
 void read_token(Input& input)
@@ -1081,27 +1081,27 @@ void read_token(Input& input)
             
             break;
         }
-
+            
 		case '#':
 		{
 			c = input.next();
 			switch(c)
 			{
-				// @todo: check for next character here (should be a delimiter)
+                    // @todo: check for next character here (should be a delimiter)
 				case 't':  input.next(); input.tokens->add_boolean(true);  break;
 				case 'f':  input.next(); input.tokens->add_boolean(false); break;
 				case '\\': input.next(); read_character(input);			   break;
                 case '(':  input.next(); input.tokens->add_vector_start(); break;
                 default:   syntax_error(input, "malformed identifier after #");
 			}
-
+            
 			break;
 		}
-
+            
 		case '"': read_string(input); break;
-
+            
 		case 0: break;
-		
+            
 		default:
 		{
 			if (is_digit(c))
@@ -1112,7 +1112,7 @@ void read_token(Input& input)
 			{
 				read_identifier(input);
 			}
-
+            
 			break;
 		}
 	}
@@ -1150,9 +1150,9 @@ Cell* parse_vector(TokenList& tokens)
         stack.push_back(parse_datum(tokens));
         length++;
     }
-                        
+    
     Cell* vector = make_vector(env, length, NULL);
-                        
+    
     for (int i=0; i<length; i++)
     {
         vector->data.vector.data[i] = stack[i];
@@ -1166,33 +1166,33 @@ Cell* parse_abreviation(TokenList& tokens)
 	const Token* t = tokens.peek();
 	
 	Environment* env = tokens.env;
-
+    
 	if (!t) signal_error(env->cont, "unexpected end of input");
     
     const char* symbol = NULL;
     switch(t->type)
     {
         case TOKEN_QUOTE:
-        symbol = "quote";
-        break;
-        
-        case TOKEN_BACKTICK:
-        symbol = "quasiquote";
-        break;
-        
-        case TOKEN_COMMA:
-        symbol = "unquote";
-        break;
-        
-        case TOKEN_COMMA_AT:
-        symbol = "unquote-splicing";
-        break;
+            symbol = "quote";
+            break;
             
-        // If the token is not one of the above abreviations, then we early out
+        case TOKEN_BACKTICK:
+            symbol = "quasiquote";
+            break;
+            
+        case TOKEN_COMMA:
+            symbol = "unquote";
+            break;
+            
+        case TOKEN_COMMA_AT:
+            symbol = "unquote-splicing";
+            break;
+            
+            // If the token is not one of the above abreviations, then we early out
         default:
-        return NULL;
+            return NULL;
     }
-     
+    
     Cell* abreviation = make_cell(env, TYPE_SYMBOL);
     abreviation->data.symbol = symbol;
     tokens.skip();
@@ -1210,16 +1210,16 @@ Cell* parse_list(TokenList& tokens)
 	{
 		return parse_abreviation(tokens);
 	}
-
+    
 	// skip the start list token
 	tokens.skip();
 	
 	Cell* cell = parse_datum(tokens);
 	
 	Cell* list = cons(tokens.env, cell, NULL);
-
+    
 	Cell* head = list;
-
+    
 	for (;;)
 	{
 		
@@ -1232,20 +1232,20 @@ Cell* parse_list(TokenList& tokens)
 		{
 			tokens.skip();
 			Cell* cell = parse_datum(tokens);
-
+            
 			
 			if (!cell)
 			{
 				signal_error(cont, "expecting a datum after a dot");
 			}
-
+            
 			set_cdr(list, cell);
-
+            
 			if (tokens.peek()->type != TOKEN_LIST_END)
 			{
 				signal_error(cont, "expecting )");
 			}
-
+            
 			tokens.skip();
 			break;
 		}
@@ -1256,17 +1256,17 @@ Cell* parse_list(TokenList& tokens)
 		}
 		
 		Cell* car = parse_datum(tokens);
-
+        
 		if (!car)
 		{
 			signal_error(cont, "is this unexpected end of input? todo");
 		}
-
+        
 		Cell* rest = cons(tokens.env, car, NULL);
 		set_cdr(list, rest);
 		list = rest;
 	}
-
+    
 	// success, allocate a list
 	return head;
 }
@@ -1283,7 +1283,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 	const Token* t = tokens.peek();
 	
 	if (!t) return NULL;
-
+    
 	switch (t->type)
 	{
 		case TOKEN_BOOLEAN:
@@ -1300,7 +1300,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 			tokens.skip();
 			return cell;
 		}
-
+            
 		case TOKEN_CHARACTER:
 		{
 			
@@ -1316,7 +1316,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 			tokens.skip();
 			return cell;
 		}
-
+            
 		case TOKEN_IDENTIFIER:
 		{
 			Cell* cell = make_cell(tokens.env, TYPE_SYMBOL);
@@ -1324,7 +1324,7 @@ Cell* parse_simple_datum(TokenList& tokens)
 			tokens.skip();
 			return cell;
 		}
-		
+            
 		default:
 			return NULL;
 	}
@@ -1356,55 +1356,55 @@ Cell* parse_datum(TokenList& tokens)
 static unsigned int MurmurHash2 ( const void * key, int len)
 {
 	const unsigned int seed = 0xdbc;
-
+    
 	assert(sizeof(int) == 4);
-
+    
 	// 'm' and 'r' are mixing constants generated offline.
 	// They're not really 'magic', they just happen to work well.
-
+    
 	const unsigned int m = 0x5bd1e995;
 	const int r = 24;
-
+    
 	// Initialize the hash to a 'random' value
-
+    
 	unsigned int h = seed ^ len;
-
+    
 	// Mix 4 bytes at a time into the hash
-
+    
 	const unsigned char * data = (const unsigned char *)key;
-
+    
 	while(len >= 4)
 	{
 		unsigned int k = *(unsigned int *)data;
-
+        
 		k *= m; 
 		k ^= k >> r; 
 		k *= m; 
-
+        
 		h *= m; 
 		h ^= k;
-
+        
 		data += 4;
 		len -= 4;
 	}
-
+    
 	// Handle the last few bytes of the input array
-
+    
 	switch(len)
 	{
-	case 3: h ^= data[2] << 16;
-	case 2: h ^= data[1] << 8;
-	case 1: h ^= data[0];
-		h *= m;
+        case 3: h ^= data[2] << 16;
+        case 2: h ^= data[1] << 8;
+        case 1: h ^= data[0];
+            h *= m;
 	};
-
+    
 	// Do a few final mixes of the hash to ensure the last few
 	// bytes are well-incorporated.
-
+    
 	h ^= h >> 13;
 	h *= m;
 	h ^= h >> 15;
-
+    
 	return h;
 } 
 
@@ -1414,7 +1414,7 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 	assert(symbol->type == TYPE_SYMBOL);
 	const char* str = symbol->data.symbol;
 	unsigned hash = env->mask & MurmurHash2(str, (int)strlen(str));
-
+    
 	for (Environment::Node* node = env->data[hash]; node; node = node->next)
 	{
 		if (strcmp(str, node->symbol) == 0)
@@ -1422,12 +1422,12 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 			return node->value;
 		}
 	}
-		
+    
 	if (env->parent)
 	{
 		return environment_get(env->parent, symbol);
 	}
-		
+    
 	signal_error(env->cont, "reference to undefined identifier: %s", str);
 	return NULL;
 	
@@ -1436,7 +1436,7 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 void environment_define(Environment* env, const char* symbol, Cell* value)
 {
 	unsigned index = env->mask & MurmurHash2(symbol, (int)strlen(symbol));
-
+    
 	for (Environment::Node* node = env->data[index]; node; node = node->next)
 	{
 		if (strcmp(symbol, node->symbol) == 0)
@@ -1456,11 +1456,11 @@ void environment_define(Environment* env, const char* symbol, Cell* value)
 void environment_set(Environment* env, const char* symbol, Cell* value)
 {
 	unsigned hash = MurmurHash2(symbol, (int)strlen(symbol));
-		
+    
 	do {
 		
 		unsigned index = hash & env->mask;
-
+        
 		for (Environment::Node* node = env->data[index]; node; node = node->next)
 		{
 			if (strcmp(symbol, node->symbol) == 0)
@@ -1471,9 +1471,9 @@ void environment_set(Environment* env, const char* symbol, Cell* value)
 		}
 		
 		env = env->parent;
-	
+        
 	} while (env);
-		
+    
 	signal_error(env->cont, "No binding for %s in any scope.", symbol);
 }
 
@@ -1528,7 +1528,7 @@ static Cell* nth_param_optional(Environment* env, Cell* params, int n, int type)
 	{
 	    type_check(env->cont, type, result->type);    
 	}
-
+    
 	return result; 
 }
 
@@ -1604,7 +1604,7 @@ static Cell* atom_if(Environment* env, Cell* params)
 		{
 			return eval(env, car(alternate));
 		}
-	
+        
 		// undefined, this is false though.
 		return test;
 	}
@@ -1666,7 +1666,7 @@ static Cell* atom_cond(Environment* env, Cell* params)
 	for(Cell* clause = params; clause; clause = cdr(clause))
 	{
 		Cell* test = car(clause);
-
+        
 		// @todo: make sure all symbols are stored in lowercase
 		// @todo: assert that else is in the last place in the case
 		// statement.
@@ -1735,7 +1735,7 @@ static Cell* atom_and(Environment* env, Cell* params)
 	{
 		signal_error(env->cont, "syntax error. at least 1 test exptected in (and ...)");
 	}
-
+    
 	Cell* last_result;
 	for (Cell* cell = params; cell; cell = cdr(cell))
 	{
@@ -1762,7 +1762,7 @@ static Cell* atom_or(Environment* env, Cell* params)
 	{
 		signal_error(env->cont, "syntax error. at least 1 test exptected in (or ...)");
 	}
-
+    
 	for (Cell* cell = params; cell; cell = cdr(cell))
 	{
 		Cell* test = eval(env, car(cell));
@@ -1801,7 +1801,7 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 	Environment* child = create_environment(env->cont, env);
 	
 	Environment* target = star ? child : env;
-
+    
 	for (Cell* b = bindings; b; b = cdr(b))
 	{
 		Cell* pair = car(b);
@@ -1812,7 +1812,7 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 	}
 	
 	Cell* last = NULL;
-
+    
 	for (Cell* b = body; b; b = cdr(b))
 	{
 		Cell* expr = car(b);
@@ -1854,7 +1854,7 @@ static Cell* atom_let_s(Environment* env, Cell* params)
 static Cell* atom_define(Environment* env, Cell* params)
 {
 	Cell* first  = car(params); // no eval
-
+    
 	Cell* variable = 0;
 	Cell* value    = 0;
 	
@@ -1866,7 +1866,7 @@ static Cell* atom_define(Environment* env, Cell* params)
 			value		= eval(env, car(cdr(params)));
 			break;
 		}
-		
+            
 		case TYPE_PAIR:
 		{
 			// todo: handle dotted syntax
@@ -1876,10 +1876,10 @@ static Cell* atom_define(Environment* env, Cell* params)
 			value = make_procedure(env, formals, body);
 			break;
 		}
-		
+            
 		default:
-		// todo: make this a syntax error.
-		signal_error(env->cont, "symbol or pair expected as parameter 1 to define");
+            // todo: make this a syntax error.
+            signal_error(env->cont, "symbol or pair expected as parameter 1 to define");
 	}
 	
 	assert(variable && value);
@@ -2036,9 +2036,9 @@ static Cell* plus_mul_helper(Environment* env,
 		assert(n); // todo: trigger this assert and test
 		
 		Cell* value = eval(env, n);
-
+        
 		type_check(env->cont, TYPE_NUMBER, value->type);
-			
+        
 		if (is_add)
 		{
 			result += value->data.number;
@@ -2160,10 +2160,10 @@ static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
 	
 	// if different lengths, return false
 	if (obj2->data.vector.length != length) return false;
-			
+    
 	Cell* const* const a = obj1->data.vector.data;
 	Cell* const* const b = obj2->data.vector.data;
-			
+    
 	for (int i=0; i<length; i++)
 	{
 		if (!eq_helper(a[i], b[i], true, true))
@@ -2177,7 +2177,7 @@ static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
 static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, bool recurse_compound)
 {
 	const int type = obj1->type;
-
+    
 	if (type != obj2->type)
 	{
 		return false;
@@ -2186,33 +2186,33 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
 	switch(type)
 	{
 		case TYPE_BOOLEAN:
-		return obj1->data.boolean == obj2->data.boolean;
-
+            return obj1->data.boolean == obj2->data.boolean;
+            
 		case TYPE_CHARACTER:
-		return obj1->data.character == obj2->data.character;
-
+            return obj1->data.character == obj2->data.character;
+            
 		case TYPE_SYMBOL:
-		// @todo: intern symbols, use pointer equality
-		return 0 == strcmp(obj1->data.symbol, obj2->data.symbol);
-
+            // @todo: intern symbols, use pointer equality
+            return 0 == strcmp(obj1->data.symbol, obj2->data.symbol);
+            
 		case TYPE_NUMBER:
-		return obj1->data.number == obj2->data.number;
+            return obj1->data.number == obj2->data.number;
 			
 		case TYPE_PAIR:
-		return pair_equal(obj1, obj2, recurse_compound);
-
+            return pair_equal(obj1, obj2, recurse_compound);
+            
 		case TYPE_VECTOR:
-		return vector_equal(obj1, obj2, recurse_compound);
-
+            return vector_equal(obj1, obj2, recurse_compound);
+            
 		case TYPE_STRING:
-		return (obj1 == obj2) ||
-				(recurse_strings && (0 == strcmp(obj1->data.string.data, obj2->data.string.data)));
-
+            return (obj1 == obj2) ||
+            (recurse_strings && (0 == strcmp(obj1->data.string.data, obj2->data.string.data)));
+            
 		default:
-		// unhandled case
-		assert(0);
+            // unhandled case
+            assert(0);
 	}
-
+    
 	return false;
 }
 
@@ -2264,7 +2264,7 @@ static Cell* atom_integer_q(Environment* env, Cell* params)
 	Cell* obj = nth_param_any(env, params, 1);
 	
 	bool integer =	obj->type == TYPE_NUMBER &&
-					is_integer(obj->data.number);
+    is_integer(obj->data.number);
 	
 	return make_boolean(integer);
 }
@@ -2273,30 +2273,30 @@ template <typename Compare>
 static Cell* comparison_helper(Environment* env, Cell* params)
 {
 	int n = 2;
-
+    
 	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
 	
 	for (;;)
 	{
 		params = cdr(params);
 		Cell* b = nth_param(env, params, 1, TYPE_NUMBER);
-	
+        
 		double x = a->data.number;
 		double y = b->data.number;
 		if (!Compare::compare(x, y))
 		{
 			return make_boolean(false);
 		}
-	
+        
 		a = b;
 		n++;
-	
+        
 		if (!cdr(params))
 		{
 			break;
 		}
 	}
-
+    
 	return make_boolean(true);
 };
 
@@ -2526,7 +2526,7 @@ static Cell* atom_list(Environment* env, Cell* params)
 static Cell* atom_length(Environment* env, Cell* params)
 {	
 	int length = 1;
-
+    
 	for (Cell* list = eval(env, car(params)); list; list = list->data.pair.cdr)
 	{
 		type_check(env->cont, TYPE_PAIR, list->type);
@@ -2651,7 +2651,7 @@ static Cell* atom_string_q(Environment* env, Cell* params)
 static Cell* atom_make_string(Environment* env, Cell* params)
 {
 	int k = nth_param_integer(env, params, 1);
-
+    
 	char fill = 0;
 	
 	Cell* second = optional_second_param(env, params);
@@ -2725,8 +2725,8 @@ static void string_set_char(Environment* env, Cell* string, int k, Cell* c)
 static Cell* atom_string_set(Environment* env, Cell* params)
 {
     string_set_char(env, nth_param(env, params, 1, TYPE_STRING),
-                         nth_param_integer(env, params, 2),
-                         nth_param(env, params, 3, TYPE_CHARACTER));
+                    nth_param_integer(env, params, 2),
+                    nth_param(env, params, 3, TYPE_CHARACTER));
     return make_boolean(false);
 }
 
@@ -2839,7 +2839,7 @@ static Cell* atom_vector_to_list(Environment* env, Cell* params)
     Cell* vector = nth_param(env, params, 1, TYPE_VECTOR);
     
     Cell* list = NULL;
-
+    
     // Build up the list backwards
     for(int i=vector->data.vector.length-1; i > -1; i--)
     {
@@ -3111,7 +3111,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
     //printf("input> %s", data);
     
 	Environment* env = cont->env;
-
+    
 	JumpBuffer* prev = cont->escape;
 	JumpBuffer  jb;
 	
@@ -3134,33 +3134,33 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 	
 	
 	tokens.init(env, 1000);
-
+    
 	while (input.get())
 	{
 		read_token(input);
 	}
-
+    
 	tokens.start_parse();
 	
 	for(;;)
 	{
 		Cell* cell = parse_datum(tokens);
-
+        
 		if (!cell)
 		{
             print(stdout, cell, false);
 			break;
 		}
-
+        
 		printf("parsed> ");
 		print(stdout, cell, false);
 		const Cell* result =
         eval(env, cell);
 		print(stdout, result, false);
 	}
-
+    
 cleanup:
-
+    
 	tokens.destroy();	
 	collect_garbage(cont);
 	
@@ -3193,22 +3193,22 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 static Cell* eval(Environment* env, Cell* cell)
 {
 tailcall:
-
+    
 	assert(cell);
-
+    
 	switch(cell->type)
 	{
-		// basic types will self evaluate
+            // basic types will self evaluate
 		case TYPE_BOOLEAN:
 		case TYPE_NUMBER:
 		case TYPE_STRING:
 		case TYPE_CHARACTER:
         case TYPE_VECTOR:
 			return cell;
-
+            
 		case TYPE_SYMBOL:
 			return environment_get(env, cell);
-
+            
 		case TYPE_PAIR:
 		{
 			Cell* symbol = car(cell);
@@ -3229,7 +3229,7 @@ tailcall:
 			{
 				signal_error(env->cont, "Undefined symbol '%s'", symbol->data.symbol);
 			}
-
+            
 			if (function->type != TYPE_PROCEDURE)
 			{
 				signal_error(env->cont, "%s is not a function", symbol->data.symbol);
@@ -3282,7 +3282,7 @@ tailcall:
 			assert(false); // @todo - i don't think this can happen
 			return last_result;
 		}
-
+            
 		default:
 			assert(false);
 			return 0;
@@ -3357,7 +3357,7 @@ Continuation* atom_api_open()
 	
 	add_builtin(env, "not",		   		atom_not);
 	add_builtin(env, "boolean?",   		atom_boolean_q);
-
+    
 	// lists
 	add_builtin(env, "pair?",      		atom_pair_q);
 	add_builtin(env, "cons",       		atom_cons);
@@ -3447,13 +3447,13 @@ void atom_api_repl(Continuation* cont)
         {
             break;
         }
-    
+        
         if (*line)
         {
             add_history (line);
             atom_api_load(cont, line, strlen(line));
         }
-    
+        
         free(line);
     }
 }
@@ -3462,7 +3462,7 @@ void atom_api_repl(Continuation* cont)
 static bool match(const char* input, const char* a, const char* b)
 {
 	return	strcmp(input, a) == 0 ||
-			strcmp(input, b) == 0;
+    strcmp(input, b) == 0;
 }
 
 int main (int argc, char * const argv[])
@@ -3490,8 +3490,8 @@ int main (int argc, char * const argv[])
 			filename = argv[i];
 		}
 	}
-
-
+    
+    
 	
 	if (!file)
 	{
@@ -3499,9 +3499,9 @@ int main (int argc, char * const argv[])
 	}
     
     printf("Loading input from %s\n", filename);
-
+    
 	atom_api_loadfile(atom, filename);
-
+    
 	if (repl)
 	{
         printf("Now doing the REPL\n");
@@ -3511,10 +3511,10 @@ int main (int argc, char * const argv[])
     {
         printf("File done, no REPL.\n");
     }
-
+    
 	atom_api_close(atom);
     
     printf("atom shutdwn ok\n");
-
+    
 	return 0;
 }
