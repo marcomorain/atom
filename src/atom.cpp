@@ -72,6 +72,12 @@ struct Cell
 		Cell** data;
 		int    length;		
 	};
+    
+    struct String
+    {
+        char* data;
+        int   length;
+    };
 	
 	struct Procedure
 	{
@@ -91,7 +97,7 @@ struct Cell
 		bool         boolean;
 		char         character;
 		double       number;
-		char*		 string;
+		String		 string;
 		Pair         pair;
 		const char*  symbol;
 		Vector		 vector;
@@ -169,7 +175,7 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 		}
 
 	case TYPE_STRING:
-		fprintf(output, human ? "%s" : "\"%s\"", cell->data.string);
+		fprintf(output, human ? "%s" : "\"%s\"", cell->data.string.data);
 		break;
 
 	case TYPE_SYMBOL:
@@ -419,7 +425,7 @@ static void collect_garbage(Continuation* cont)
                 break;
                 
                 case TYPE_STRING:
-                free(cell->data.string);
+                free(cell->data.string.data);
                 break;
                 
                 case TYPE_VECTOR:
@@ -482,6 +488,32 @@ static Cell* make_vector(Environment* env, int length, Cell* fill)
 		vec->data.vector.data[i] = fill;
 	}
 	return vec;
+}
+
+static Cell* make_string(Environment* env, int length, const char* data)
+{
+    // Fail early if the length is wrong.
+    assert(length == strlen(data));
+           
+    Cell* string = make_cell(env, TYPE_STRING);
+    string->data.string.length = length;
+    string->data.string.data   = strdup(data);
+    
+    // Assert if the allocation fails.
+    // TODO: handle this.
+    assert(string->data.string.data);
+    
+    return string;
+}
+
+static Cell* make_string_filled(Environment* env, int length, char fill)
+{
+    Cell* string = make_cell(env, TYPE_STRING);
+	string->data.string.data   = (char*)malloc(length + 1);
+    string->data.string.length = length;
+	memset(string->data.string.data, fill, length);
+	string->data.string.data[length] = 0;
+	return string;
 }
 
 static Cell* car(const Cell* cell)
@@ -735,10 +767,10 @@ public:
 
 struct Input
 {
-	unsigned	line;
-	unsigned	column;
-	const char* data;
-	TokenList*	tokens;
+	unsigned	  line;
+	unsigned	  column;
+	const char*   data;
+	TokenList*	  tokens;
 	Continuation* cont;
 
 	void init(Continuation* c, const char* d)
@@ -1086,8 +1118,8 @@ void read_token(Input& input)
 	}
 }
 
-
 Cell* parse_datum(TokenList& tokens);
+
 
 Cell* parse_vector(TokenList& tokens)
 {
@@ -1198,7 +1230,6 @@ Cell* parse_list(TokenList& tokens)
 		
 		if (tokens.peek()->type == TOKEN_DOT)
 		{
-			
 			tokens.skip();
 			Cell* cell = parse_datum(tokens);
 
@@ -1242,12 +1273,9 @@ Cell* parse_list(TokenList& tokens)
 
 Cell* parse_compound_datum(TokenList& tokens)
 {
-	if (Cell* cell = parse_list(tokens))
-	{
-		return cell;
-	}
-
-	return parse_vector(tokens);
+	if (Cell* list   = parse_list(tokens))   return list;
+    if (Cell* vector = parse_vector(tokens)) return vector;
+	return NULL;
 }
 
 Cell* parse_simple_datum(TokenList& tokens)
@@ -1265,6 +1293,13 @@ Cell* parse_simple_datum(TokenList& tokens)
 			tokens.skip();
 			return cell;
 		}
+            
+        case TOKEN_NUMBER:
+		{
+			Cell* cell = make_number(tokens.env, t->data.number);
+			tokens.skip();
+			return cell;
+		}
 
 		case TOKEN_CHARACTER:
 		{
@@ -1274,10 +1309,10 @@ Cell* parse_simple_datum(TokenList& tokens)
 			tokens.skip();
 			return cell;
 		}
-
-		case TOKEN_NUMBER:
+            
+        case TOKEN_STRING:
 		{
-			Cell* cell = make_number(tokens.env, t->data.number);
+			Cell* cell = make_string(tokens.env, (int)strlen(t->data.string), t->data.string);
 			tokens.skip();
 			return cell;
 		}
@@ -1290,14 +1325,6 @@ Cell* parse_simple_datum(TokenList& tokens)
 			return cell;
 		}
 		
-		case TOKEN_STRING:
-		{
-			Cell* cell = make_cell(tokens.env, TYPE_STRING);
-			cell->data.string = t->data.string;
-			tokens.skip();
-			return cell;
-		}
-
 		default:
 			return NULL;
 	}
@@ -1305,12 +1332,10 @@ Cell* parse_simple_datum(TokenList& tokens)
 
 Cell* parse_datum(TokenList& tokens)
 {
-	if (Cell* cell = parse_simple_datum(tokens))
-	{
-		return cell;
-	}
-	
-	return parse_compound_datum(tokens);
+	if (Cell* simple_datum   = parse_simple_datum(tokens))   return simple_datum;
+    if (Cell* compound_datum = parse_compound_datum(tokens)) return compound_datum;
+    //assert(false);
+    return NULL;
 }
 
 
@@ -1647,7 +1672,7 @@ static Cell* atom_cond(Environment* env, Cell* params)
 		// statement.
 		Cell* t = car(test);
 		if (t->type != TYPE_SYMBOL ||
-			strcmp("else", t->data.string) != 0)
+			strcmp("else", t->data.string.data) != 0)
 		{
 			Cell* result = eval(env, t);	
 			if (result->type == TYPE_BOOLEAN &&
@@ -1965,7 +1990,7 @@ static Cell* atom_error(Environment* env, Cell* params)
 	// todo: symantics here
 	if (message && message->type == TYPE_STRING)
 	{
-		str = message->data.string;
+		str = message->data.string.data;
 	}
 	signal_error(env->cont, "%s", str);
 	return NULL;
@@ -2181,7 +2206,7 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
 
 		case TYPE_STRING:
 		return (obj1 == obj2) ||
-				(recurse_strings && (0 == strcmp(obj1->data.string, obj2->data.string)));
+				(recurse_strings && (0 == strcmp(obj1->data.string.data, obj2->data.string.data)));
 
 		default:
 		// unhandled case
@@ -2555,13 +2580,8 @@ static Cell* atom_symbol_q(Environment* env, Cell* params)
 static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 {
 	const Cell* symbol = nth_param(env, params, 1, TYPE_SYMBOL);
-	const char* data = symbol->data.symbol;
-	size_t length = strlen(data);
-	Cell* result = make_cell(env, TYPE_STRING);
-	result->data.string = (char*)malloc(length+1);
-	memcpy(result->data.string, data, length);
-	result->data.string[length] = 0;
-	return result;
+    // TODO: bad type conversion here
+	return make_string(env, (int)strlen(symbol->data.symbol), symbol->data.symbol);
 }
 
 // (string->symbol string) procedure
@@ -2573,7 +2593,7 @@ static Cell* atom_string_to_symbol(Environment* env, Cell* params)
 {
 	// todo: this is a copy-and-paste of symbol->string
 	const Cell* symbol = nth_param(env, params, 1, TYPE_STRING);
-	const char* data = symbol->data.string;
+	const char* data = symbol->data.string.data;
 	size_t length = strlen(data);
 	Cell* result = make_cell(env, TYPE_SYMBOL);
 	
@@ -2646,12 +2666,8 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 	{
 		signal_error(env->cont, "positive integer length required");
 	}
-	
-	Cell* result = make_cell(env, TYPE_STRING);
-	result->data.string = (char*)malloc(k + 1);
-	memset(result->data.string, fill, k);
-	result->data.string[k] = 0;
-	return result;
+    
+    return make_string_filled(env, k, fill);
 }
 
 
@@ -2665,7 +2681,7 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 static Cell* atom_string_length(Environment* env, Cell* params)
 {
 	Cell* string = nth_param(env, params, 1, TYPE_STRING);
-	return make_number(env, strlen(string->data.string));
+	return make_number(env, string->data.string.length);
 }
 
 // (string-ref string k)	procedure
@@ -2677,14 +2693,30 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 	int k        = nth_param_integer(env, params, 2);
 	
 	// todo: watch this cast.
-	if (k < 0 || k < (int)strlen(string->data.string))
+	if (k < 0 || k < string->data.string.length)
 	{
 		signal_error(env->cont, "k is not a valid index of the given string");
 	}
 	
-	return make_character(env, string->data.string[k]);
+	return make_character(env, string->data.string.data[k]);
 }
 
+
+// Set string[k] = c
+// Asserts that string is a string
+// Asserts that c is a character
+// Raises an error if k is an invalid index.
+static void string_set_char(Environment* env, Cell* string, int k, Cell* c)
+{
+    assert(string->type == TYPE_STRING);
+    assert(c->type      == TYPE_CHARACTER);
+    
+	if (k < 0 || k >= string->data.string.length)
+	{
+		signal_error(env->cont, "invalid string index");
+	}
+	string->data.string.data[k] = c->data.character;
+}
 
 // (string-set! string k char)	procedure
 // k must be a valid index of string.
@@ -2692,21 +2724,10 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 // unspecified value.
 static Cell* atom_string_set(Environment* env, Cell* params)
 {
-	Cell* string = nth_param(env, params, 1, TYPE_STRING);
-	int   k      = nth_param_integer(env, params, 2);
-	Cell* c      = nth_param(env, params, 3, TYPE_CHARACTER);
-
-	char* data = string->data.string;
-	
-	// todo: watch this cast.
-	// todo: strings should carry a length
-	if (k < 0 || k >= (int)strlen(data))
-	{
-		signal_error(env->cont, "invalid string index");
-	}
-	
-	data[k] = c->data.character;
-	return string;
+    string_set_char(env, nth_param(env, params, 1, TYPE_STRING),
+                         nth_param_integer(env, params, 2),
+                         nth_param(env, params, 3, TYPE_CHARACTER));
+    return make_boolean(false);
 }
 
 // (vector? obj)
@@ -2923,7 +2944,7 @@ static FILE* file_open_helper(Environment* env, Cell* params, const char* mode)
 {
     Cell* filename = nth_param(env, params, 1, TYPE_STRING);
     
-    const char* f = filename->data.string;
+    const char* f = filename->data.string.data;
     
     FILE* file = fopen(f, "r");
     
@@ -3050,7 +3071,7 @@ static Cell* atom_newline(Environment* env, Cell* params)
 static Cell* atom_load(Environment* env, Cell* params)
 {
 	Cell* filename = nth_param(env, params, 1, TYPE_STRING);
-	atom_api_loadfile(env->cont, filename->data.string);
+	atom_api_loadfile(env->cont, filename->data.string.data);
 	return make_boolean(true);	
 }
 
