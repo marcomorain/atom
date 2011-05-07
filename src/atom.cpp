@@ -3191,6 +3191,11 @@ tailcall:
 		case TYPE_PAIR:
 		{
 			Cell* symbol = car(cell);
+            
+            if (!symbol)
+            {
+                signal_error(env->cont, "missing procedure in expression");
+            }
 			
 			type_check(env->cont, TYPE_SYMBOL, symbol->type);
 			
