@@ -8,6 +8,10 @@
 #include <stdarg.h>
 #include <setjmp.h>
 
+
+// For a stack in parse_vector
+#include <vector>
+
 // For REPL
 #include <readline/readline.h>
 
@@ -114,7 +118,7 @@ enum Type
 	TOKEN_STRING,
 	TOKEN_LIST_START,
 	TOKEN_LIST_END,
-	TOKEN_HASH_LIST_START,
+    TOKEN_VECTOR_START,
 	TOKEN_QUOTE,
 	TOKEN_BACKTICK,
 	TOKEN_COMMA,
@@ -542,7 +546,7 @@ struct Token
 		PRINT_CASE(TOKEN_CHARACTER);
 		PRINT_CASE(TOKEN_LIST_START);
 		PRINT_CASE(TOKEN_LIST_END);
-		PRINT_CASE(TOKEN_HASH_LIST_START);
+		PRINT_CASE(TOKEN_VECTOR_START);
 		PRINT_CASE(TOKEN_QUOTE);
 		PRINT_CASE(TOKEN_BACKTICK);
 		PRINT_CASE(TOKEN_COMMA);
@@ -629,6 +633,11 @@ public:
 	{
 		add_basic(TOKEN_LIST_END);
 	}
+    
+    void add_vector_start()
+    {
+        add_basic(TOKEN_VECTOR_START);
+    }
 
 	void add_quote()
 	{
@@ -763,6 +772,11 @@ struct Input
 	};
 };
 
+void syntax_error(Input& input, const char* message)
+{
+    signal_error(input.cont, "Syntax error line %d column %d: %s", input.line, input.column, message);
+}
+
 void skip_whitespace(Input& input)
 {
 	for(char c = input.get(); c; c = input.next())
@@ -869,10 +883,10 @@ static void read_character(Input& input)
 	{
 		case 's':
 		if (input.next() == 'p'){
-			if (input.next() != 'a') signal_error(input.cont, "space expected");
-			if (input.next() != 'c') signal_error(input.cont, "space expected");
-			if (input.next() != 'e') signal_error(input.cont, "space expected");
-			if (!is_delimeter(input.next())) signal_error(input.cont, "space expected");
+			if (input.next() != 'a') syntax_error(input, "space expected");
+			if (input.next() != 'c') syntax_error(input, "space expected");
+			if (input.next() != 'e') syntax_error(input, "space expected");
+			if (!is_delimeter(input.next())) syntax_error(input, "space expected");
 			input.tokens->add_character(' ');
 			return;
 		}
@@ -880,12 +894,12 @@ static void read_character(Input& input)
 
 		case 'n':
 			if (input.next() == 'e'){
-				if (input.next() != 'w') signal_error(input.cont, "newline expected");
-				if (input.next() != 'l') signal_error(input.cont, "newline expected");
-				if (input.next() != 'i') signal_error(input.cont, "newline expected");
-				if (input.next() != 'n') signal_error(input.cont, "newline expected");
-				if (input.next() != 'e') signal_error(input.cont, "newline expected");
-				if (!is_delimeter(input.next())) signal_error(input.cont, "newline expected");
+				if (input.next() != 'w') syntax_error(input, "newline expected");
+				if (input.next() != 'l') syntax_error(input, "newline expected");
+				if (input.next() != 'i') syntax_error(input, "newline expected");
+				if (input.next() != 'n') syntax_error(input, "newline expected");
+				if (input.next() != 'e') syntax_error(input, "newline expected");
+				if (!is_delimeter(input.next())) syntax_error(input, "newline expected");
 				input.tokens->add_character('\n'); // newline
 				return;
 			}
@@ -902,7 +916,7 @@ success:
 		return;
 	}
 
-	signal_error(input.cont, "delimeter expected");
+	syntax_error(input, "delimeter expected");
 }
 
 // Convert an ascii digit, '0' to '9' into
@@ -955,7 +969,7 @@ void read_string(Input& input)
 				input.tokens->buffer_push(c);
 				continue;
 			}
-			signal_error(input.cont, "malformed string");
+			syntax_error(input, "malformed string");
 		}
 
 		if (isprint(c))
@@ -964,7 +978,7 @@ void read_string(Input& input)
 			continue;
 		}
 
-		signal_error(input.cont, "unexpected character in string");
+		syntax_error(input, "unexpected character in string");
 	}
 }
 
@@ -987,7 +1001,7 @@ void read_identifier(Input& input)
 			if (is_delimeter(c)) break;
 			if (!is_subsequent(c))
 			{
-				signal_error(input.cont, "malformed identifier at line %d column %d", input.line, input.column);
+				syntax_error(input, "malformed identifier");
 			}
 			input.tokens->buffer_push(c);
 		}
@@ -999,7 +1013,7 @@ void read_identifier(Input& input)
 	}
 	else
 	{
-		signal_error(input.cont, "malformed identifier at line %d column %d", input.line, input.column);
+		syntax_error(input, "malformed identifier");
 	}
 
 	input.tokens->add_identifier();
@@ -1045,6 +1059,8 @@ void read_token(Input& input)
 				case 't':  input.next(); input.tokens->add_boolean(true);  break;
 				case 'f':  input.next(); input.tokens->add_boolean(false); break;
 				case '\\': input.next(); read_character(input);			   break;
+                case '(':  input.next(); input.tokens->add_vector_start(); break;
+                default:   syntax_error(input, "malformed identifier after #");
 			}
 
 			break;
@@ -1075,7 +1091,42 @@ Cell* parse_datum(TokenList& tokens);
 
 Cell* parse_vector(TokenList& tokens)
 {
-	return 0;
+    Environment* env = tokens.env;
+    const Token* t = tokens.peek();
+    if (!t) signal_error(env->cont, "unexpected end of input");
+    
+    if (t->type != TOKEN_VECTOR_START)
+    {
+        return NULL;
+    }
+    
+    // skip the #(
+    tokens.skip();
+    
+    int length = 0;
+    
+    std::vector<Cell*> stack;
+    
+    for (;;)
+    {
+        const Token* next = tokens.peek();
+        if (!next) signal_error(env->cont, "unexpected end of input");
+        if (next->type == TOKEN_LIST_END)
+        {
+            break;
+        }
+        stack.push_back(parse_datum(tokens));
+        length++;
+    }
+                        
+    Cell* vector = make_vector(env, length, NULL);
+                        
+    for (int i=0; i<length; i++)
+    {
+        vector->data.vector.data[i] = stack[i];
+    }
+    
+	return vector;
 }
 
 Cell* parse_abreviation(TokenList& tokens)
@@ -3131,6 +3182,7 @@ tailcall:
 		case TYPE_NUMBER:
 		case TYPE_STRING:
 		case TYPE_CHARACTER:
+        case TYPE_VECTOR:
 			return cell;
 
 		case TYPE_SYMBOL:

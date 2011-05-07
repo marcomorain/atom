@@ -1,4 +1,6 @@
 (vector 1 2 3)
+(vector->list #(1 2 3 4))
+(list->vector '(1 2 3 4))
 
 ;`(list ,(+ 1 2) 4)
 
