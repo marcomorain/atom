@@ -1880,14 +1880,15 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 
 // (let <bindings> <body>) library syntax
 // Syntax: <Bindings> should have the form
-// ((<variable1> <init1>) ...), where each <init> is an expression, and <body> should be a
-// sequence of one or more expressions. It is an error for a <variable> to appear more than once in
-// the list of variables being bound.
+// ((<variable1> <init1>) ...), where each <init> is an expression, and <body>
+// should be a sequence of one or more expressions. It is an error for a <variable>
+// to appear more than once in the list of variables being bound.
 //
-// Semantics: The <init>s are evaluated in the current environment (in some unspecified order), the
-// <variable>s are bound to fresh locations holding the results, the <body> is evaluated in the
-// extended environment, and the value(s) of the last expression of <body> is(are) returned. Each
-// binding of a <variable> has <body> as its region.
+// Semantics: The <init>s are evaluated in the current environment (in some
+// unspecified order), the <variable>s are bound to fresh locations holding the
+// results, the <body> is evaluated in the extended environment, and the value(s)
+// of the last expression of <body> is(are) returned. Each binding of a <variable>
+// has <body> as its region.
 static Cell* atom_let(Environment* env, Cell* params)
 {
 	return let_helper(env, params, false);
@@ -1897,10 +1898,11 @@ static Cell* atom_let(Environment* env, Cell* params)
 // Syntax: <Bindings> should have the form
 // ((<variable1> <init1>) ...), and <body> should be a sequence of one or more expressions.
 //
-// Semantics: Let* is similar to let, but the bindings are performed sequentially from left to right,
-// and the region of a binding indicated by (<variable> <init>) is that part of the let* expression
-// to the right of the binding. Thus the second binding is done in an environment in which the first
-// binding is visible, and so on.
+// Semantics: Let* is similar to let, but the bindings are performed sequentially
+// from left to right, and the region of a binding indicated by (<variable> <init>)
+// is that part of the let* expression to the right of the binding. Thus the
+// second binding is done in an environment in which the first binding is visible,
+// and so on.
 static Cell* atom_let_s(Environment* env, Cell* params)
 {
 	return let_helper(env, params, true);
@@ -3345,6 +3347,12 @@ static void add_builtin(Environment* env, const char* name, atom_function functi
 	environment_define(env, find_or_insert_symbol(env->cont, name), cell);
 }
 
+struct Library
+{
+    const char*   name;
+    atom_function func;
+};
+
 Continuation* atom_api_open()
 {
 	Continuation* cont	= (Continuation*)malloc(sizeof(Continuation));
@@ -3358,131 +3366,136 @@ Continuation* atom_api_open()
     cont->symbol_count  = 0;
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)malloc(sizeof(Symbol*) * (1+cont->symbol_mask));
-	
-	add_builtin(env, "quote",			atom_quote);
-	add_builtin(env, "lambda",     		atom_lambda);
-	add_builtin(env, "if",				atom_if);
-	add_builtin(env, "set!",			atom_set_b);
-	add_builtin(env, "cond",			atom_cond);
-	add_builtin(env, "case",			atom_case);
-	add_builtin(env, "and",				atom_and);
-	add_builtin(env, "or",				atom_or);
-	add_builtin(env, "let",				atom_let);
-	add_builtin(env, "let*",			atom_let_s);
-	add_builtin(env, "begin",      		atom_begin);
-	add_builtin(env, "define",			atom_define);
-    add_builtin(env, "quasiquote",      atom_quasiquote);
-	
-	add_builtin(env, "eqv?",			atom_eqv_q);
-	add_builtin(env, "eq?",				atom_eq_q);
-	add_builtin(env, "equal?",			atom_equal_q);
-	add_builtin(env, "number?",    		atom_number_q);
-	add_builtin(env, "complex?",   		always_false);
-	add_builtin(env, "real?",      		atom_number_q);
-	add_builtin(env, "rational?",  		always_false);
-	add_builtin(env, "integer?",   		atom_integer_q);
-	add_builtin(env, "+",		   		atom_plus);
-	add_builtin(env, "*",		   		atom_mul);
-	add_builtin(env, "-",				atom_sub);
-	add_builtin(env, "/",				atom_div);
-	add_builtin(env, "modulo",			atom_modulo);
-	add_builtin(env, "exact?",			atom_exact_q);
-	add_builtin(env, "inexact?",		atom_inexact_q);
-	add_builtin(env, "=",				atom_comapre_equal);
-	add_builtin(env, "<",				atom_compare_less);
-	add_builtin(env, ">",				atom_compare_greater);
-	add_builtin(env, "<=",				atom_compare_less_equal);
-	add_builtin(env, ">=",				atom_compare_greater_equal);
     
-    add_builtin(env, "zero?",           atom_zero_q);
-    add_builtin(env, "positive?",       atom_positive_q);
-    add_builtin(env, "negative?",       atom_negative_q);
-    add_builtin(env, "odd?",            atom_odd_q);
-    add_builtin(env, "even?",           atom_even_q);
+    const Library libs [] = {
+        {"quote",           atom_quote},
+        {"lambda",          atom_lambda},
+        {"if",				atom_if},
+        {"set!",			atom_set_b},
+        {"cond",			atom_cond},
+        {"case",			atom_case},
+        {"and",				atom_and},
+        {"or",				atom_or},
+        {"let",				atom_let},
+        {"let*",			atom_let_s},
+        {"begin",      		atom_begin},
+        {"define",			atom_define},
+        {"quasiquote",      atom_quasiquote},
+        {"eqv?",			atom_eqv_q},
+        {"eq?",				atom_eq_q},
+        {"equal?",			atom_equal_q},
+        
+        // numeric
+        {"number?",    		atom_number_q},
+        {"complex?",   		always_false},
+        {"real?",      		atom_number_q},
+        {"rational?",  		always_false},
+        {"integer?",   		atom_integer_q},
+        {"+",		   		atom_plus},
+        {"*",		   		atom_mul},
+        {"-",				atom_sub},
+        {"/",				atom_div},
+        {"modulo",			atom_modulo},
+        {"exact?",			atom_exact_q},
+        {"inexact?",		atom_inexact_q},
+        {"=",				atom_comapre_equal},
+        {"<",				atom_compare_less},
+        {">",				atom_compare_greater},
+        {"<=",				atom_compare_less_equal},
+        {">=",				atom_compare_greater_equal},
+        {"zero?",           atom_zero_q},
+        {"positive?",       atom_positive_q},
+        {"negative?",       atom_negative_q},
+        {"odd?",            atom_odd_q},
+        {"even?",           atom_even_q},
+        {"min",				atom_min},
+        {"max",				atom_max},
+        
+        // boolean
+        {"not",		   		atom_not},
+        {"boolean?",   		atom_boolean_q},
+        
+        // lists
+        {"pair?",      		atom_pair_q},
+        {"cons",       		atom_cons},
+        {"car",        		atom_car},
+        {"cdr",        		atom_cdr},
+        {"set-car!",   		atom_set_car_b},
+        {"set-cdr!",   		atom_set_cdr_b},
+        {"null?",      		atom_null_q},
+        {"list?",      		atom_list_q},
+        {"list",       		atom_list},
+        {"length",     		atom_length},
+        {"append",     		atom_append},
+        
+        // char
+        {"char?",			atom_char_q},
+        {"char->integer",	atom_char_to_integer},
+        {"integer->char",	atom_integer_to_char},
+        
+        // string
+        {"string?",	   		atom_string_q},
+        {"make-string",		atom_make_string},
+        {"string-length",	atom_string_length},
+        {"string-ref",	   	atom_string_ref},
+        {"string-set!",	   	atom_string_set},
+        
+        // Vector
+        {"vector?",	   		atom_vector_q},
+        {"make-vector",	  	atom_make_vector},
+        {"vector",	   		atom_vector},
+        {"vector-length", 	atom_vector_length},
+        {"vector-ref",		atom_vector_ref},
+        {"vector->list",    atom_vector_to_list},
+        {"list->vector",    atom_list_to_vector},
+        {"vector-set!",		atom_vector_set_b},
+        {"vector-fill!",	atom_vector_fill_b},
+        
+        // symbols
+        {"symbol?",    		atom_symbol_q},
+        {"symbol->string",	atom_symbol_to_string},
+        {"string->symbol",	atom_string_to_symbol},
+        
+        // control
+        {"procedure?", 		atom_procedure_q},
+        {"apply",	   		atom_apply},
+        
+        {"close-input-port",  atom_close_input_port},
+        {"close-output-port", atom_close_output_port},
+        {"open-input-file",   atom_open_input_file},
+        {"open-output-file",  atom_open_output_file},
+        
+        // io
+        {"input-port?",     atom_input_port_q},
+        {"output-port?",    atom_output_port_q},
+        
+        // input
+        {"current-input-port",  atom_current_input_port},
+        {"current-output-port", atom_current_output_port},
+        
+        // output
+        {"write",      		atom_write},
+        {"display",	   		atom_display},
+        {"newline",	   		atom_newline},
+        {"write-char",      atom_write_char},
+        
+        // output
+        {"load",	   		atom_load},
+        
+        {"error",	   		atom_error},
+        {NULL, NULL}};
     
-	add_builtin(env, "min",				atom_min);
-	add_builtin(env, "max",				atom_max);
-	
-	add_builtin(env, "not",		   		atom_not);
-	add_builtin(env, "boolean?",   		atom_boolean_q);
+    for (const Library* library = &libs[0]; library->name; library++)
+    {
+        add_builtin(env, library->name, library->func);
+    }
     
-	// lists
-	add_builtin(env, "pair?",      		atom_pair_q);
-	add_builtin(env, "cons",       		atom_cons);
-	add_builtin(env, "car",        		atom_car);
-	add_builtin(env, "cdr",        		atom_cdr);
-	add_builtin(env, "set-car!",   		atom_set_car_b);
-	add_builtin(env, "set-cdr!",   		atom_set_cdr_b);
-	add_builtin(env, "null?",      		atom_null_q);
-	add_builtin(env, "list?",      		atom_list_q);
-	add_builtin(env, "list",       		atom_list);
-	add_builtin(env, "length",     		atom_length);
-	add_builtin(env, "append",     		atom_append);
-	
-	// char
-	add_builtin(env, "char?",			atom_char_q);
-	add_builtin(env, "char->integer",	atom_char_to_integer);
-	add_builtin(env, "integer->char",	atom_integer_to_char);
-	
-	// string
-	add_builtin(env, "string?",	   		atom_string_q);
-	add_builtin(env, "make-string",		atom_make_string);
-	add_builtin(env, "string-length",	atom_string_length);
-	add_builtin(env, "string-ref",	   	atom_string_ref);
-	add_builtin(env, "string-set!",	   	atom_string_set);
-	
-	// Vector
-	add_builtin(env, "vector?",	   		atom_vector_q);
-	add_builtin(env, "make-vector",	  	atom_make_vector);
-	add_builtin(env, "vector",	   		atom_vector);
-	add_builtin(env, "vector-length", 	atom_vector_length);
-	add_builtin(env, "vector-ref",		atom_vector_ref);
-    add_builtin(env, "vector->list",    atom_vector_to_list);
-    add_builtin(env, "list->vector",    atom_list_to_vector);
-	add_builtin(env, "vector-set!",		atom_vector_set_b);
-	add_builtin(env, "vector-fill!",	atom_vector_fill_b);
-	
-	// symbols
-	add_builtin(env, "symbol?",    		atom_symbol_q);
-	add_builtin(env, "symbol->string",	atom_symbol_to_string);
-	add_builtin(env, "string->symbol",	atom_string_to_symbol);
-	
-	// control
-	add_builtin(env, "procedure?", 		atom_procedure_q);
-	add_builtin(env, "apply",	   		atom_apply);
-    
-    add_builtin(env, "close-input-port",  atom_close_input_port);
-    add_builtin(env, "close-output-port", atom_close_output_port);
-    
-    add_builtin(env, "open-input-file",   atom_open_input_file);
-    add_builtin(env, "open-output-file",  atom_open_output_file);
-	
-	// io
-    add_builtin(env, "input-port?",     atom_input_port_q);
-    add_builtin(env, "output-port?",    atom_output_port_q);
-	
-	// input
-	add_builtin(env, "current-input-port",  atom_current_input_port);
-	add_builtin(env, "current-output-port", atom_current_output_port);
-	
-	// output
-	add_builtin(env, "write",      		atom_write);
-	add_builtin(env, "display",	   		atom_display);
-	add_builtin(env, "newline",	   		atom_newline);
-    add_builtin(env, "write-char",      atom_write_char);
-	
-	// output
-	add_builtin(env, "load",	   		atom_load);
-	
-	add_builtin(env, "error",	   		atom_error);
-	
-	return cont;	
+    return cont;
 }
-
 
 void atom_api_close(Continuation* cont)
 {
-	
+    
     for (size_t i=0; i <= cont->symbol_mask; i++)
     {
         Symbol* next;
@@ -3522,60 +3535,60 @@ void atom_api_repl(Continuation* cont)
 
 static bool match(const char* input, const char* a, const char* b)
 {
-	return	strcmp(input, a) == 0 ||
+    return	strcmp(input, a) == 0 ||
     strcmp(input, b) == 0;
 }
 
 int main (int argc, char * const argv[])
 {
-	Continuation* atom = atom_api_open();
-	
-	bool repl = false;
-	bool file = false;
-	const char* filename = NULL;
-	
-	for (int i=1; i<argc; i++)
-	{
-		if (match(argv[i], "-i", "--interactive"))
-		{
-			repl = true;
-		}
-		else if (match(argv[i], "-f", "--file"))
-		{
-			i++;
-			if (i == argc)
-			{
-				signal_error(atom, "filename expected");
-			}
-			file = true;
-			filename = argv[i];
-		}
-	}
+    Continuation* atom = atom_api_open();
+    
+    bool repl = false;
+    bool file = false;
+    const char* filename = NULL;
+    
+    for (int i=1; i<argc; i++)
+    {
+        if (match(argv[i], "-i", "--interactive"))
+        {
+            repl = true;
+        }
+        else if (match(argv[i], "-f", "--file"))
+        {
+            i++;
+            if (i == argc)
+            {
+                signal_error(atom, "filename expected");
+            }
+            file = true;
+            filename = argv[i];
+        }
+    }
     
     
-	
-	if (!file)
-	{
-		filename = "/Users/marcomorain/dev/scheme/test/bug.scm";
-	}
+    
+    if (!file)
+    {
+        filename = "/Users/marcomorain/dev/scheme/test/bug.scm";
+    }
     
     printf("Loading input from %s\n", filename);
     
-	atom_api_loadfile(atom, filename);
+    atom_api_loadfile(atom, filename);
     
-	if (repl)
-	{
+    if (repl)
+    {
         printf("Now doing the REPL\n");
-		atom_api_repl(atom);
-	}
+        atom_api_repl(atom);
+    }
     else
     {
         printf("File done, no REPL.\n");
     }
     
-	atom_api_close(atom);
+    atom_api_close(atom);
     
     printf("atom shutdwn ok\n");
     
-	return 0;
+    return 0;
 }
