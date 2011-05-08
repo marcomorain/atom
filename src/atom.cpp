@@ -27,6 +27,7 @@
 #define LEXER_TRACE(format, ...)
 #endif
 
+static unsigned int MurmurHash2 ( const void * key, int len);
 
 enum CellType
 {
@@ -56,6 +57,7 @@ const static char* typenames [] = {
 struct Environment;
 struct Continuation;
 struct Cell;
+struct Symbol;
 
 typedef Cell* (*atom_function) (Environment* env, Cell* params);
 
@@ -94,16 +96,16 @@ struct Cell
     
 	union Data
 	{
-		bool         boolean;
-		char         character;
-		double       number;
-		String		 string;
-		Pair         pair;
-		const char*  symbol;
-		Vector		 vector;
-		Procedure    procedure;
-		FILE*		 input_port;
-        FILE*        output_port;
+		bool            boolean;
+		char            character;
+		double          number;
+		String          string;
+		Pair            pair;
+		const Symbol*   symbol;
+		Vector          vector;
+		Procedure       procedure;
+		FILE*           input_port;
+        FILE*           output_port;
 	};
 	
 	CellType type;
@@ -130,6 +132,15 @@ enum Type
 	TOKEN_COMMA,
 	TOKEN_COMMA_AT,
 	TOKEN_DOT
+};
+
+struct Symbol
+{
+    // TODO: allocate the string data right on the end of this struct.
+    // This will reduce memory, fragments, cache misses, etc.
+    size_t  hash;
+    Symbol* next;
+    char*   name;
 };
 
 static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
@@ -179,7 +190,7 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             break;
             
         case TYPE_SYMBOL:
-            fprintf(output, "%s", cell->data.symbol);
+            fprintf(output, "%s", cell->data.symbol->name);
             break;
             
         case TYPE_PAIR:
@@ -241,9 +252,9 @@ struct Environment
 {
 	struct Node
 	{
-		const char* symbol;
-		Cell*       value;
-		Node*		next;
+		const Symbol* symbol;
+		Cell*         value;
+		Node*		  next;
 	};
     
 	Continuation* cont;
@@ -278,7 +289,46 @@ struct Continuation
 	int				allocated;
 	FILE*			input;
     FILE*           output;
+    
+    // The symbol table
+    Symbol**        symbols;
+    
+    // The size of the symbol table, minus one for masking
+    size_t          symbol_mask;
+    
+    // The number of symbols that exist in the table
+    // This is used to know when to grow.
+    size_t          symbol_count;
 };
+
+// Maybe insert a new symbol into the Cont's symbol table.
+// Or return an existing one if the name is already in the table
+static Symbol* find_or_insert_symbol(Continuation* cont, const char* name)
+{
+    // TODO: This function assumes that there are no embedded nulls in name
+    
+    const size_t hash = cont->symbol_mask & MurmurHash2(name, (int)strlen(name));
+    
+    for (Symbol* symbol = cont->symbols[hash]; symbol; symbol = symbol->next)
+    {
+        if (strcmp(name, symbol->name) == 0)
+        {
+            return symbol;
+        }
+    }
+    
+    if (cont->symbol_count > (cont->symbol_mask / 2))
+    {
+        // TODO: grow
+    }
+    
+    Symbol* new_symbol = (Symbol*)malloc(sizeof(Symbol));
+    
+    new_symbol->name = strdup(name);
+    new_symbol->next = cont->symbols[hash];
+    cont->symbols[hash] = new_symbol;
+    return new_symbol;
+}
 
 static void signal_error(Continuation* cont, const char* message, ...)
 {
@@ -311,6 +361,13 @@ static Cell* make_cell(Environment* env, int type)
 	env->cont->allocated++;
     
 	return result;	
+}
+
+static Cell* make_symbol(Environment* env, const char* name)
+{
+    Cell* symbol        = make_cell(env, TYPE_SYMBOL);
+    symbol->data.symbol = find_or_insert_symbol(env->cont, name);
+    return symbol;
 }
 
 static Cell* make_io_port(Environment* env, int type, FILE* port)
@@ -1193,8 +1250,7 @@ Cell* parse_abreviation(TokenList& tokens)
             return NULL;
     }
     
-    Cell* abreviation = make_cell(env, TYPE_SYMBOL);
-    abreviation->data.symbol = symbol;
+    Cell* abreviation = make_symbol(env, symbol);
     tokens.skip();
     return cons(env, abreviation, cons(env, parse_datum(tokens), NULL));
 }
@@ -1319,8 +1375,7 @@ Cell* parse_simple_datum(TokenList& tokens)
             
 		case TOKEN_IDENTIFIER:
 		{
-			Cell* cell = make_cell(tokens.env, TYPE_SYMBOL);
-			cell->data.symbol = t->data.identifier;
+			Cell* cell = make_symbol(tokens.env, t->data.identifier);
 			tokens.skip();
 			return cell;
 		}
@@ -1412,12 +1467,12 @@ static unsigned int MurmurHash2 ( const void * key, int len)
 Cell* environment_get(Environment* env, const Cell* symbol)
 {
 	assert(symbol->type == TYPE_SYMBOL);
-	const char* str = symbol->data.symbol;
-	unsigned hash = env->mask & MurmurHash2(str, (int)strlen(str));
+    
+	unsigned hash = env->mask & symbol->data.symbol->hash;
     
 	for (Environment::Node* node = env->data[hash]; node; node = node->next)
 	{
-		if (strcmp(str, node->symbol) == 0)
+		if (symbol->data.symbol == node->symbol)
 		{
 			return node->value;
 		}
@@ -1428,18 +1483,18 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 		return environment_get(env->parent, symbol);
 	}
     
-	signal_error(env->cont, "reference to undefined identifier: %s", str);
+	signal_error(env->cont, "reference to undefined identifier: %s", symbol->data.symbol->name);
 	return NULL;
 	
 }
 
-void environment_define(Environment* env, const char* symbol, Cell* value)
+void environment_define(Environment* env, const Symbol* symbol, Cell* value)
 {
-	unsigned index = env->mask & MurmurHash2(symbol, (int)strlen(symbol));
+	unsigned index = env->mask & symbol->hash;
     
 	for (Environment::Node* node = env->data[index]; node; node = node->next)
 	{
-		if (strcmp(symbol, node->symbol) == 0)
+		if (symbol == node->symbol)
 		{
 			node->value = value;
 			return;
@@ -1453,9 +1508,9 @@ void environment_define(Environment* env, const char* symbol, Cell* value)
 	env->data[index]	= node;
 }
 
-void environment_set(Environment* env, const char* symbol, Cell* value)
+void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 {
-	unsigned hash = MurmurHash2(symbol, (int)strlen(symbol));
+	const size_t hash = symbol->hash;
     
 	do {
 		
@@ -1463,7 +1518,7 @@ void environment_set(Environment* env, const char* symbol, Cell* value)
         
 		for (Environment::Node* node = env->data[index]; node; node = node->next)
 		{
-			if (strcmp(symbol, node->symbol) == 0)
+			if (symbol == node->symbol)
 			{
 				node->value = value;
 				return;
@@ -1474,7 +1529,7 @@ void environment_set(Environment* env, const char* symbol, Cell* value)
         
 	} while (env);
     
-	signal_error(env->cont, "No binding for %s in any scope.", symbol);
+	signal_error(env->cont, "No binding for %s in any scope.", symbol->name);
 }
 
 static Cell* eval(Environment* env, Cell* cell);
@@ -1917,10 +1972,11 @@ static Cell* append_destructive(Cell* a, Cell* b)
 }
 
 
+// TODO: Remove this function, replace with a pointer comparison.
 static bool symbol_is(const Cell* symbol, const char* name)
 {
     assert(symbol && symbol->type == TYPE_SYMBOL);
-    return 0 == strcmp(name, symbol->data.symbol);
+    return 0 == strcmp(name, symbol->data.symbol->name);
 }
 
 // TODO: Handle literal vectors in quasiquote
@@ -2192,8 +2248,7 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
             return obj1->data.character == obj2->data.character;
             
 		case TYPE_SYMBOL:
-            // @todo: intern symbols, use pointer equality
-            return 0 == strcmp(obj1->data.symbol, obj2->data.symbol);
+            return obj1->data.symbol == obj2->data.symbol;
             
 		case TYPE_NUMBER:
             return obj1->data.number == obj2->data.number;
@@ -2579,9 +2634,9 @@ static Cell* atom_symbol_q(Environment* env, Cell* params)
 // returned by this procedure.
 static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 {
-	const Cell* symbol = nth_param(env, params, 1, TYPE_SYMBOL);
-    // TODO: bad type conversion here
-	return make_string(env, (int)strlen(symbol->data.symbol), symbol->data.symbol);
+	const char* symbol = nth_param(env, params, 1, TYPE_SYMBOL)->data.symbol->name;
+    // TODO: bad type conversion here (size_t, int).
+	return make_string(env, (int)strlen(symbol), symbol);
 }
 
 // (string->symbol string) procedure
@@ -2591,17 +2646,7 @@ static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 // implementations of Scheme they cannot be read as themselves.
 static Cell* atom_string_to_symbol(Environment* env, Cell* params)
 {
-	// todo: this is a copy-and-paste of symbol->string
-	const Cell* symbol = nth_param(env, params, 1, TYPE_STRING);
-	const char* data = symbol->data.string.data;
-	size_t length = strlen(data);
-	Cell* result = make_cell(env, TYPE_SYMBOL);
-	
-	char* scratch = (char*)malloc(length+1);
-	memcpy(scratch, data, length);
-	scratch[length] = 0;
-	result->data.symbol = scratch;
-	return result;
+	return make_symbol(env, nth_param(env, params, 1, TYPE_STRING)->data.string.data);
 }
 
 // 6.3.4 Characters
@@ -3297,7 +3342,7 @@ static void add_builtin(Environment* env, const char* name, atom_function functi
 	
 	Cell* cell = make_cell(env, TYPE_PROCEDURE);
 	cell->data.procedure.function = function;
-	environment_define(env, name, cell);
+	environment_define(env, find_or_insert_symbol(env->cont, name), cell);
 }
 
 Continuation* atom_api_open()
@@ -3310,6 +3355,9 @@ Continuation* atom_api_open()
 	cont->allocated		= 0;
 	cont->input     	= stdin;
     cont->output        = stdout;
+    cont->symbol_count  = 0;
+    cont->symbol_mask   = 0xFF;
+    cont->symbols       = (Symbol**)malloc(sizeof(Symbol*) * (1+cont->symbol_mask));
 	
 	add_builtin(env, "quote",			atom_quote);
 	add_builtin(env, "lambda",     		atom_lambda);
@@ -3434,7 +3482,20 @@ Continuation* atom_api_open()
 
 void atom_api_close(Continuation* cont)
 {
-	free(cont);
+	
+    for (size_t i=0; i <= cont->symbol_mask; i++)
+    {
+        Symbol* next;
+        for (Symbol* symbol = cont->symbols[i]; symbol; symbol = next)
+        {
+            next = symbol->next;
+            free(symbol->name);
+            free(symbol);
+        }
+    }
+    free(cont->symbols);
+    free(cont);
+    
 }
 
 void atom_api_repl(Continuation* cont)
