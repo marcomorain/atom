@@ -27,7 +27,7 @@
 #define LEXER_TRACE(format, ...)
 #endif
 
-static unsigned int MurmurHash2 ( const void * key, int len);
+static unsigned int MurmurHash2 (const void * key, int len);
 
 enum CellType
 {
@@ -51,7 +51,9 @@ const static char* typenames [] = {
 	"pair",
 	"vector",
 	"symbol",
-	"procedure"
+	"procedure",
+    "input-port",
+    "output-port"
 };
 
 struct Environment;
@@ -2278,9 +2280,8 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
 // Briefly, it returns #t if obj1 and obj2 should normally be regarded as the same object.
 static Cell* atom_eqv_q(Environment* env, Cell* params)
 {
-	Cell* obj1 = nth_param_any(env, params, 1);
-	Cell* obj2 = nth_param_any(env, params, 2);
-	return make_boolean(eq_helper(obj1, obj2, true, false));
+	return make_boolean(eq_helper(nth_param_any(env, params, 1),
+                                  nth_param_any(env, params, 2), true, false));
 }
 
 // (eq? obj1 obj2)	procedure
@@ -3352,7 +3353,7 @@ struct Library
     const char*   name;
     atom_function func;
 };
-
+ 
 Continuation* atom_api_open()
 {
 	Continuation* cont	= (Continuation*)malloc(sizeof(Continuation));
@@ -3483,7 +3484,8 @@ Continuation* atom_api_open()
         {"load",	   		atom_load},
         
         {"error",	   		atom_error},
-        {NULL, NULL}};
+        {NULL, NULL}
+    };
     
     for (const Library* library = &libs[0]; library->name; library++)
     {
@@ -3492,7 +3494,7 @@ Continuation* atom_api_open()
     
     return cont;
 }
-
+ 
 void atom_api_close(Continuation* cont)
 {
     
@@ -3565,8 +3567,6 @@ int main (int argc, char * const argv[])
         }
     }
     
-    
-    
     if (!file)
     {
         filename = "/Users/marcomorain/dev/scheme/test/bug.scm";
@@ -3591,4 +3591,4 @@ int main (int argc, char * const argv[])
     printf("atom shutdwn ok\n");
     
     return 0;
-}
+ }
