@@ -4,9 +4,11 @@
 #include <iostream>
 #include <string>
 #include <cassert>
+#include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <setjmp.h>
+
 
 
 // For a stack in parse_vector
