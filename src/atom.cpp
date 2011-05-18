@@ -15,7 +15,9 @@
 #include <vector>
 
 // For REPL
-#include <readline/readline.h>
+extern "C" {
+#include "linenoise.h"
+}
 
 // fmod (in atom_modulo) brings in a dependancy on math.h
 // todo: split / remove break?
@@ -1181,12 +1183,12 @@ void read_token(Input& input)
 
 Cell* parse_datum(TokenList& tokens);
 
-
 Cell* parse_vector(TokenList& tokens)
 {
     Environment* env = tokens.env;
     const Token* t = tokens.peek();
-    if (!t) signal_error(env->cont, "unexpected end of input");
+    
+	if (!tokens.peek()) return NULL;
     
     if (t->type != TOKEN_VECTOR_START)
     {
@@ -3519,7 +3521,7 @@ void atom_api_repl(Continuation* cont)
 {
     for (;;)
     {
-        char* line = readline (">");
+        char* line = linenoise(">");
         
         if (!line) // eof/ctrl+d
         {
@@ -3528,7 +3530,7 @@ void atom_api_repl(Continuation* cont)
         
         if (*line)
         {
-            add_history (line);
+            linenoiseHistoryAdd(line);
             atom_api_load(cont, line, strlen(line));
         }
         
@@ -3571,7 +3573,7 @@ int main (int argc, char * const argv[])
     
     if (!file)
     {
-        filename = "/Users/marcomorain/dev/scheme/test/bug.scm";
+        filename = "/Users/marcomorain/dev/scheme/test/the_little_schemer.scm";
     }
     
     printf("Loading input from %s\n", filename);
