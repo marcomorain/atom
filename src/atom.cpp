@@ -1609,11 +1609,15 @@ static int nth_param_integer(Environment* env, Cell* params, int n)
 	if (!is_integer(param->data.number))
 	{
 		// todo: better error message
-		signal_error(env->cont, "Not an integer");
+		signal_error(env->cont, "Parameter %d is not an integer", n);
 	}
 	return (int)param->data.number;
 }
 
+static char nth_param_character(Environment* env, Cell* params, int n)
+{
+    return nth_param(env, params, n, TYPE_CHARACTER)->data.character;
+}
 
 // Evaluate and return the second parameter, if one exists.
 // Return null otherwise.
@@ -2665,6 +2669,52 @@ static Cell* atom_char_q(Environment* env, Cell* params)
 	return type_q_helper(env, params, TYPE_CHARACTER);	
 }
 
+
+// (char=?	char1	char2 ) procedure
+// (char<?	char1	char2 ) procedure
+// (char>?	char1	char2 ) procedure
+// (char<=?	char1	char2 ) procedure
+// (char>=?	char1	char2 ) procedure
+
+// These procedures impose a total ordering on the set of characters.
+// It is guaranteed that under this ordering:
+// - The upper case characters are in order. For example, (char<? #\A #\B) returns #t.
+// - The lower case characters are in order. For example, (char<? #\a #\b) returns #t.
+// - The digits are in order. For example, (char<? #\0 #\9) returns #t.
+// - Either all the digits precede all the upper case letters, or vice versa.
+// - Either all the digits precede all the lower case letters, or vice versa.
+// Some implementations may generalize these procedures to take more than two
+// arguments, as with the corresponding numerical predicates.
+static Cell* atom_char_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character(env, params, 1) ==
+                        nth_param_character(env, params, 2));
+}
+
+static Cell* atom_char_less_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character(env, params, 1) <
+                        nth_param_character(env, params, 2));
+}
+
+static Cell* atom_char_greater_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character(env, params, 1) >
+                        nth_param_character(env, params, 2));
+}
+
+static Cell* atom_char_less_than_or_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character(env, params, 1) >=
+                        nth_param_character(env, params, 2));
+}
+
+static Cell* atom_char_greater_than_or_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character(env, params, 1) <=
+                        nth_param_character(env, params, 2));
+}
+
 // (char->integer char)	procedure
 // (integer->char n)	procedure
 // Given a character, char->integer returns an exact integer representation
@@ -3435,6 +3485,12 @@ Continuation* atom_api_open()
         
         // char
         {"char?",			atom_char_q},
+        {"char=?",          atom_char_equal_q},
+        {"char<?",          atom_char_less_than_q},
+        {"char>?",          atom_char_greater_than_q},
+        {"char<=?",         atom_char_less_than_or_equal_q},
+        {"char>=?",         atom_char_greater_than_or_equal_q},
+        
         {"char->integer",	atom_char_to_integer},
         {"integer->char",	atom_integer_to_char},
         

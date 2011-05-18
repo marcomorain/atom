@@ -73,11 +73,6 @@
 
 ## 6.3.3 Symbols
 ## 6.3.4. Characters
-* char=?
-* char<?
-* char>?
-* char<=?
-* char>=?
 * char-ci=?
 * char-ci<?
 * char-ci>?
@@ -135,5 +130,3 @@
 * peek-char
 * eof-object?
 * char-ready?
-
-### 6.6.3 Output
