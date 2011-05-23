@@ -2650,6 +2650,25 @@ static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 	return make_string(env, (int)strlen(symbol), symbol);
 }
 
+// (string char ...) library procedure
+// Returns a newly allocated string composed of the arguments.
+static Cell* atom_string(Environment* env, Cell* params)
+{
+    int count = 0;
+    for (Cell* p = params; p; p = cdr(p))
+    {
+        count++;
+    }
+    
+    char* data = (char*)malloc(count);
+    
+    for (Cell* p = params; p; p = cdr(p))
+    {
+        eval(env, p);
+        count++;
+    }
+}
+
 // (string->symbol string) procedure
 // Returns the symbol whose name is string. This procedure can create symbols
 // with names containing special characters or letters in the non-standard
