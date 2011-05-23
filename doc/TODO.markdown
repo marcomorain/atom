@@ -71,20 +71,6 @@
 * assv
 * assoc
 
-## 6.3.3 Symbols
-## 6.3.4. Characters
-* char-ci=?
-* char-ci<?
-* char-ci>?
-* char-ci<=?
-* char-ci>=?
-* char-aphabetic?
-* char-numeric?
-* char-whitespace?
-* char-upper-case?
-* char-lower-case?
-* char-upcase
-* char-downcase
 
 ## 6.3.5 Strings
 * string

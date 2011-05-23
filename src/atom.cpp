@@ -895,11 +895,6 @@ void skip_whitespace(Input& input)
 	}
 }
 
-bool is_digit(char c)
-{
-	return c >= '0' && c <= '9';
-}
-
 bool is_special_initial(char c)
 {
 	switch (c)
@@ -968,7 +963,7 @@ bool is_special_subsequent(char c)
 
 static bool is_subsequent(char c)
 {
-	return is_initial(c) || is_digit(c) || is_special_subsequent(c);
+	return is_initial(c) || isdigit(c) || is_special_subsequent(c);
 }
 
 static void read_character(Input& input)
@@ -1032,7 +1027,7 @@ void read_number(Input& input)
 	{
 		c = input.next();
         
-		if (!is_digit(c))
+		if (!isdigit(c))
 		{
 			input.tokens->add_number(accum);
 			return;
@@ -1167,7 +1162,7 @@ void read_token(Input& input)
             
 		default:
 		{
-			if (is_digit(c))
+			if (isdigit(c))
 			{
 				read_number(input);
 			}
@@ -1617,6 +1612,11 @@ static int nth_param_integer(Environment* env, Cell* params, int n)
 static char nth_param_character(Environment* env, Cell* params, int n)
 {
     return nth_param(env, params, n, TYPE_CHARACTER)->data.character;
+}
+
+static char nth_param_character_lower(Environment* env, Cell* params, int n)
+{
+    return tolower(nth_param(env, params, n, TYPE_CHARACTER)->data.character);
 }
 
 // Evaluate and return the second parameter, if one exists.
@@ -2715,6 +2715,99 @@ static Cell* atom_char_greater_than_or_equal_q(Environment* env, Cell* params)
                         nth_param_character(env, params, 2));
 }
 
+// (char-ci=?	char1	char2 ) library procedure
+// (char-ci<?	char1	char2 ) library procedure
+// (char-ci>?	char1	char2 ) library procedure
+// (char-ci<=?	char1	char2 ) library procedure
+// (char-ci>=?	char1	char2 ) library procedure
+// These procedures are similar to char=? et cetera, but they treat upper case
+// and lower case letters as the same. For example, (char-ci=? #\A #\a) returns #t.
+// Some imple- mentations may generalize these procedures to take more than two
+// arguments, as with the corresponding numerical predicates.
+static Cell* atom_char_ci_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character_lower(env, params, 1) ==
+                        nth_param_character_lower(env, params, 2));
+}
+
+static Cell* atom_char_ci_less_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character_lower(env, params, 1) <
+                        nth_param_character_lower(env, params, 2));
+}
+
+static Cell* atom_char_ci_greater_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character_lower(env, params, 1) >
+                        nth_param_character_lower(env, params, 2));
+}
+
+static Cell* atom_char_ci_less_than_or_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character_lower(env, params, 1) >=
+                        nth_param_character_lower(env, params, 2));
+}
+
+static Cell* atom_char_ci_greater_than_or_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character_lower(env, params, 1) <=
+                        nth_param_character_lower(env, params, 2));
+}
+
+
+// (char-alphabetic? char)
+// (char-numeric?	 char)
+// (char-whitespace? char)
+// (char-upper-case? char)
+// (char-lower-case? char)
+// These procedures return #t if their arguments are alpha- betic, numeric,
+// whitespace, upper case, or lower case char- acters, respectively, otherwise
+// they return #f. The follow- ing remarks, which are specific to the ASCII
+// character set, are intended only as a guide: The alphabetic characters are the
+// 52 upper and lower case letters. The numeric charac- ters are the ten decimal
+// digits.
+// The whitespace characters are space, tab, line feed, form feed, and carriage
+// return.
+static Cell* atom_char_alphabetic_q(Environment* env, Cell* params)
+{
+    return make_boolean(isalpha(nth_param_character(env, params, 1)));
+}
+
+static Cell* atom_char_numeric_q(Environment* env, Cell* params)
+{
+    return make_boolean(isdigit(nth_param_character(env, params, 1)));
+}
+
+static Cell* atom_char_whitespace_q(Environment* env, Cell* params)
+{
+    return make_boolean(isspace(nth_param_character(env, params, 1)));
+}
+
+static Cell* atom_char_upper_case_q(Environment* env, Cell* params)
+{
+    return make_boolean(isupper(nth_param_character(env, params, 1)));
+}
+
+static Cell* atom_char_lower_case_q(Environment* env, Cell* params)
+{
+    return make_boolean(islower(nth_param_character(env, params, 1)));
+}
+
+// (char-upcase char)	library procedure
+// (char-downcase	char )	library	procedure
+// These procedures return a character char2 such that (char-ci=? char char2). In
+// addition, if char is alpha- betic, then the result of char-upcase is upper case
+// and the result of char-downcase is lower case.
+static Cell* atom_char_upcase(Environment* env, Cell* params)
+{
+    return make_character(env, toupper(nth_param_character(env, params, 1)));
+}
+
+static Cell* atom_char_downcase(Environment* env, Cell* params)
+{
+    return make_character(env, tolower(nth_param_character(env, params, 1)));
+}
+
 // (char->integer char)	procedure
 // (integer->char n)	procedure
 // Given a character, char->integer returns an exact integer representation
@@ -3490,6 +3583,21 @@ Continuation* atom_api_open()
         {"char>?",          atom_char_greater_than_q},
         {"char<=?",         atom_char_less_than_or_equal_q},
         {"char>=?",         atom_char_greater_than_or_equal_q},
+        
+        {"char-ci=?",       atom_char_ci_equal_q},
+        {"char-ci<?",       atom_char_ci_less_than_q},
+        {"char-ci>?",       atom_char_ci_greater_than_q},
+        {"char-ci<=?",      atom_char_ci_less_than_or_equal_q},
+        {"char-ci>=?",      atom_char_ci_greater_than_or_equal_q},
+        
+        {"char-alphabetic?", atom_char_alphabetic_q},
+        {"char-numeric?",    atom_char_numeric_q},
+        {"char-whitespace?", atom_char_whitespace_q},
+        {"char-upper-case?", atom_char_upper_case_q},
+        {"char-lower-case?", atom_char_lower_case_q},
+        
+        {"char-upcase",     atom_char_upcase},
+        {"char-downcase",   atom_char_downcase},
         
         {"char->integer",	atom_char_to_integer},
         {"integer->char",	atom_integer_to_char},
