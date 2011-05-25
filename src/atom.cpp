@@ -558,7 +558,7 @@ static Cell* make_vector(Environment* env, int length, Cell* fill)
 static Cell* make_string(Environment* env, int length, const char* data)
 {
     // Fail early if the length is wrong.
-    assert(length == strlen(data));
+    assert(length == (int)strlen(data));
     
     Cell* string = make_cell(env, TYPE_STRING);
     string->data.string.length = length;
@@ -1580,7 +1580,7 @@ static Cell* nth_param_any(Environment* env, Cell* params, int n)
 static Cell* nth_param_optional(Environment* env, Cell* params, int n, int type)
 {
    	Cell* result = nth_param_any_optional(env, params, n);
-	// todo: this error message should include 'n'
+		// todo: this error message should include 'n'
 	
 	if (result)
 	{
@@ -1618,7 +1618,7 @@ static char nth_param_character(Environment* env, Cell* params, int n)
 
 static char nth_param_character_lower(Environment* env, Cell* params, int n)
 {
-    return tolower(nth_param(env, params, n, TYPE_CHARACTER)->data.character);
+    return tolower(nth_param_character(env, params, n));
 }
 
 // Evaluate and return the second parameter, if one exists.
@@ -2661,14 +2661,24 @@ static Cell* atom_string(Environment* env, Cell* params)
     {
         count++;
     }
-    
-    char* data = (char*)malloc(count);
-    
-    for (Cell* p = params; p; p = cdr(p))
-    {
-        eval(env, p);
-        count++;
-    }
+
+		if (count < 1) signal_error(env->cont, "At least one parameter must be passed to (string char ...)");
+
+		std::vector<char> stack;
+
+		for (int i=0; i<count; i++){
+			char c = nth_param_character(env, params, i);
+			stack.push_back(c);
+			printf("%d is %c\n", i, c);
+		}
+
+		stack.push_back(0);
+
+		char* data = &stack.front();
+
+		printf(">>>> %s\n", data);
+
+		return make_string(env, count, &stack.front());
 }
 
 // (string->symbol string) procedure
@@ -3627,6 +3637,7 @@ Continuation* atom_api_open()
         
         // string
         {"string?",	   		atom_string_q},
+				{"string",			  atom_string},
         {"make-string",		atom_make_string},
         {"string-length",	atom_string_length},
         {"string-ref",	   	atom_string_ref},
@@ -3763,7 +3774,7 @@ int main (int argc, char * const argv[])
         filename = "/Users/marcomorain/dev/scheme/test/the_little_schemer.scm";
     }
     
-    printf("Loading input from %s\n", filename);
+		printf("Loading input from %s\n", filename);
     
     atom_api_loadfile(atom, filename);
     
