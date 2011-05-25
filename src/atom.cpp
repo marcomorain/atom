@@ -1600,17 +1600,6 @@ static Cell* nth_param(Environment* env, Cell* params, int n, int type)
 	return result;
 }
 
-static int nth_param_integer(Environment* env, Cell* params, int n)
-{
-	Cell* param = nth_param(env, params, n, TYPE_NUMBER);
-	if (!is_integer(param->data.number))
-	{
-		// todo: better error message
-		signal_error(env->cont, "Parameter %d is not an integer", n);
-	}
-	return (int)param->data.number;
-}
-
 static char nth_param_character(Environment* env, Cell* params, int n)
 {
     return nth_param(env, params, n, TYPE_CHARACTER)->data.character;
@@ -1624,6 +1613,22 @@ static char nth_param_character_lower(Environment* env, Cell* params, int n)
 static const char* nth_param_string(Environment* env, Cell* params, int n)
 {
     return nth_param(env, params, n, TYPE_STRING)->data.string.data;
+}
+
+static double nth_param_number(Environment* env, Cell* params, int n)
+{
+    return nth_param(env, params, n, TYPE_NUMBER)->data.number;
+}
+
+static int nth_param_integer(Environment* env, Cell* params, int n)
+{
+	double num = nth_param_number(env, params, n);
+	if (!is_integer(num))
+	{
+		// todo: better error message
+		signal_error(env->cont, "Parameter %d is not an integer", n);
+	}
+	return (int)num;
 }
 
 // Evaluate and return the second parameter, if one exists.
@@ -2081,7 +2086,7 @@ static Cell* atom_lambda(Environment* env, Cell* params)
 // (begin <expression1> <expression> ...)	library syntax
 // The <expression>s are evaluated sequentially from left to right, and
 // the value(s) of the last <expression> is(are) returned. This expression
-// type is used to sequence side ef- fects such as input and output.
+// type is used to sequence side effects such as input and output.
 
 static Cell* atom_begin(Environment* env, Cell* params)
 {
@@ -2341,6 +2346,76 @@ static Cell* atom_integer_q(Environment* env, Cell* params)
 	
 	return make_boolean(integer);
 }
+
+// (sin z)
+// (cos z)
+// (tan z)
+// (asin z)
+// (acos z)
+// (atan z)
+// (atan y x)
+// These procedures are part of every implementation that supports general real
+// numbers; they compute the usual transcendental functions. Log computes the
+// natural logarithm of z (not the base ten logarithm). Asin, acos, and atan
+// compute arcsine (sin−1), arccosine (cos−1), and arctangent (tan−1),
+// respectively. The two-argument variant of atan computes
+// (angle (make-rectangular x y)) (see below), even in implementations that
+// don’t support general complex numbers.
+//
+// In general, the mathematical functions log, arcsine, arccosine, and arctangent
+// are multiply defined. The value of log z is defined to be the one whose
+// imaginary part lies in the range from −π (exclusive) to π (inclusive). log 0
+// is undefined. With log defined this way, the values of sin−1 z, cos−1 z, and
+// tan−1 z are according to the following formulae
+//
+// The above specification follows [27], which in turn cites [19]; refer to these
+// sources for more detailed discussion of branch cuts, boundary conditions, and
+// implementation of these functions. When it is possible these procedures
+// produce a real result from a real argument.
+
+static Cell* atom_sin(Environment* env, Cell* params)
+{
+    return make_number(env, sin(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_cos(Environment* env, Cell* params)
+{
+    return make_number(env, cos(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_tan(Environment* env, Cell* params)
+{
+    return make_number(env, tan(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_asin(Environment* env, Cell* params)
+{
+    return make_number(env, asin(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_acos(Environment* env, Cell* params)
+{
+    return make_number(env, acos(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_atan(Environment* env, Cell* params)
+{
+    double y = nth_param_number(env, params, 1);
+    
+    double result;
+    
+    if (Cell* second = optional_second_param(env, params)){
+        type_check(env->cont, TYPE_NUMBER, second->type);
+        result = atan2(y, second->data.number);
+    }
+    else
+    {
+        result = atan(y);
+    }
+    
+    return make_number(env, result);
+}
+
 
 template <typename Compare>
 static Cell* comparison_helper(Environment* env, Cell* params)
@@ -2839,7 +2914,7 @@ static Cell* atom_char_greater_than_or_equal_q(Environment* env, Cell* params)
 // (char-ci>=?	char1	char2 ) library procedure
 // These procedures are similar to char=? et cetera, but they treat upper case
 // and lower case letters as the same. For example, (char-ci=? #\A #\a) returns #t.
-// Some imple- mentations may generalize these procedures to take more than two
+// Some implementations may generalize these procedures to take more than two
 // arguments, as with the corresponding numerical predicates.
 static Cell* atom_char_ci_equal_q(Environment* env, Cell* params)
 {
@@ -2877,11 +2952,11 @@ static Cell* atom_char_ci_greater_than_or_equal_q(Environment* env, Cell* params
 // (char-whitespace? char)
 // (char-upper-case? char)
 // (char-lower-case? char)
-// These procedures return #t if their arguments are alpha- betic, numeric,
-// whitespace, upper case, or lower case char- acters, respectively, otherwise
-// they return #f. The follow- ing remarks, which are specific to the ASCII
+// These procedures return #t if their arguments are alphabetic, numeric,
+// whitespace, upper case, or lower case characters, respectively, otherwise
+// they return #f. The following remarks, which are specific to the ASCII
 // character set, are intended only as a guide: The alphabetic characters are the
-// 52 upper and lower case letters. The numeric charac- ters are the ten decimal
+// 52 upper and lower case letters. The numeric characters are the ten decimal
 // digits.
 // The whitespace characters are space, tab, line feed, form feed, and carriage
 // return.
@@ -2913,7 +2988,7 @@ static Cell* atom_char_lower_case_q(Environment* env, Cell* params)
 // (char-upcase char)	library procedure
 // (char-downcase	char )	library	procedure
 // These procedures return a character char2 such that (char-ci=? char char2). In
-// addition, if char is alpha- betic, then the result of char-upcase is upper case
+// addition, if char is alphabetic, then the result of char-upcase is upper case
 // and the result of char-downcase is lower case.
 static Cell* atom_char_upcase(Environment* env, Cell* params)
 {
@@ -3677,6 +3752,12 @@ Continuation* atom_api_open()
         {"even?",           atom_even_q},
         {"min",				atom_min},
         {"max",				atom_max},
+        {"sin",             atom_sin},
+        {"cos",             atom_cos},
+        {"tan",             atom_tan},
+        {"asin",            atom_asin},
+        {"acos",            atom_acos},
+        {"atan",            atom_atan},
         
         // boolean
         {"not",		   		atom_not},

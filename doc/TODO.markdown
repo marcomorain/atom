@@ -37,12 +37,6 @@
 * rationalize
 * exp  
 * log  
-* sin  
-* cos  
-* tan 
-* asin 
-* acos
-* atan
 * sqrt
 * expt
 * make-rectangular
