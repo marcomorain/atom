@@ -1,7 +1,17 @@
-atom: atom.h atom.cpp linenoise.h linenoise.c
+CFLAGS=-c -g -Wall
+CC=gcc
+CPP=g++
 
-atom: linenoise.c atom.cpp
-	g++ -Wall  -Os illibstdc++ -lreadline -g -o atom linenoise.c atom.cpp
+all: atom
+
+atom: atom.o linenoise.o
+	$(CC) -lstdc++ atom.o linenoise.o -o atom
+
+atom.o: atom.h atom.cpp
+	$(CPP) $(CFLAGS) atom.cpp
+
+linenoise.o: linenoise.h linenoise.h
+	$(CC) $(CFLAGS) linenoise.c
 
 clean:
-	rm -f atom
+	rm -f *.o atom

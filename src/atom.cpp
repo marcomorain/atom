@@ -8,6 +8,8 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <setjmp.h>
+#include <cstring>
+#include <new>
 
 
 
@@ -3388,7 +3390,9 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	
 	if (!file)
 	{
-		signal_error(cont, "Error opening file %s", filename);
+		//signal_error(cont, "Error opening file %s", filename);
+		fprintf(stderr, "Error opening file %s\n", filename);
+		return;
 	}
 	
 	fseek (file, 0, SEEK_END);

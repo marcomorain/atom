@@ -2,7 +2,8 @@
 /scheme.1
 /a.out
 /a.out.dSYM/
-
 /build/Debug/scheme
 /src/a.out
 /src/a.out.dSYM/
+/src/atom
+/src/*.o
