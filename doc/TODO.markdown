@@ -73,17 +73,6 @@
 
 
 ## 6.3.5 Strings
-* string
-* string=?
-* string-ci=?
-* string<?
-* string>?
-* string<=?
-* string>=?
-* string-ci<?
-* string-ci>?
-* string-ci<=?
-* string-ci>=?
 * substring
 * string-append
 * string->list

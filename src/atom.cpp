@@ -1621,6 +1621,11 @@ static char nth_param_character_lower(Environment* env, Cell* params, int n)
     return tolower(nth_param_character(env, params, n));
 }
 
+static const char* nth_param_string(Environment* env, Cell* params, int n)
+{
+    return nth_param(env, params, n, TYPE_STRING)->data.string.data;
+}
+
 // Evaluate and return the second parameter, if one exists.
 // Return null otherwise.
 static Cell* optional_second_param(Environment* env, Cell* params)
@@ -2662,24 +2667,105 @@ static Cell* atom_string(Environment* env, Cell* params)
         count++;
     }
 
-		if (count < 1) signal_error(env->cont, "At least one parameter must be passed to (string char ...)");
+    if (count < 1) signal_error(env->cont, "At least one parameter must be passed to (string char ...)");
 
-		std::vector<char> stack;
+    std::vector<char> stack;
 
-		for (int i=0; i<count; i++){
-			char c = nth_param_character(env, params, i);
-			stack.push_back(c);
-			printf("%d is %c\n", i, c);
-		}
+    for (int i=1; i<=count; i++){
+        stack.push_back(nth_param_character(env, params, i));
+    }
 
-		stack.push_back(0);
-
-		char* data = &stack.front();
-
-		printf(">>>> %s\n", data);
-
-		return make_string(env, count, &stack.front());
+    stack.push_back(0);
+    return make_string(env, count, &stack.front());
 }
+
+static int compare_strings(Environment* env, Cell* params)
+{
+    return strcmp(nth_param_string(env, params, 1),
+                  nth_param_string(env, params, 2));
+}
+
+static int compare_case_strings(Environment* env, Cell* params)
+{
+    return strcasecmp(nth_param_string(env, params, 1),
+                      nth_param_string(env, params, 2));
+}
+
+// (string=? string1 string2) library procedure
+// (string-ci=? string1 string2)	library procedure
+// Returns #t if the two strings are the same length and contain the same
+// characters in the same positions, otherwise returns #f. Stringci=? treats
+// upper and lower case letters as though they were the same character, but
+// string=? treats upper and lower case as distinct characters.
+static Cell* atom_string_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 == compare_strings(env, params));
+}
+
+static Cell* atom_string_ci_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 == compare_case_strings(env, params));
+}
+
+// (string<?	string1	string2 ) library procedure
+// (string>?	string1	string2 ) library procedure
+// (string<=?	string1	string2 ) library procedure
+// (string>=?	string1	string2 ) library procedure
+// (string-ci<?	string1	string2 ) library procedure
+// (string-ci>?	string1	string2 ) library procedure
+// (string-ci<=?	string1	string2 ) library procedure
+// (string-ci>=?	string1	string2 ) library procedure
+//
+// These procedures are the lexicographic extensions to strings of the
+// corresponding orderings on characters. For example, string<? is the lexicographic
+// ordering on strings induced by the ordering char<? on characters. If two
+// strings differ in length but are the same up to the length of the shorter
+// string, the shorter string is considered to be lexicographically less than the
+// longer string.
+// Implementations may generalize these and the string=? and string-ci=? procedures
+// to take more than two arguments, as with the corresponding numerical predicates.
+
+static Cell* atom_string_less_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 > compare_strings(env, params));
+}
+
+static Cell* atom_string_greater_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 < compare_strings(env, params));
+}
+
+static Cell* atom_string_less_than_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 >= compare_strings(env, params));
+}
+
+static Cell* atom_string_greater_than_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 <= compare_strings(env, params));
+}
+
+static Cell* atom_string_ci_less_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 > compare_case_strings(env, params));
+}
+
+static Cell* atom_string_ci_greater_than_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 < compare_case_strings(env, params));
+}
+
+static Cell* atom_string_ci_less_than_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 >= compare_case_strings(env, params));
+}
+
+static Cell* atom_string_ci_greater_than_equal_q(Environment* env, Cell* params)
+{
+    return make_boolean(0 <= compare_case_strings(env, params));
+}
+
+
 
 // (string->symbol string) procedure
 // Returns the symbol whose name is string. This procedure can create symbols
@@ -3637,11 +3723,21 @@ Continuation* atom_api_open()
         
         // string
         {"string?",	   		atom_string_q},
-				{"string",			  atom_string},
+        {"string",			atom_string},
         {"make-string",		atom_make_string},
         {"string-length",	atom_string_length},
         {"string-ref",	   	atom_string_ref},
         {"string-set!",	   	atom_string_set},
+        {"string=?",        atom_string_equal_q},
+        {"string-ci=?",     atom_string_ci_equal_q},
+        {"string<?",        atom_string_less_than_q},
+        {"string>?",        atom_string_greater_than_q},
+        {"string<=?",       atom_string_less_than_equal_q},
+        {"string>=?",       atom_string_greater_than_equal_q},
+        {"string-ci<?",     atom_string_ci_less_than_q},
+        {"string-ci>?",     atom_string_ci_greater_than_q},
+        {"string-ci<=?",    atom_string_ci_less_than_equal_q},
+        {"string-ci>=?",    atom_string_ci_greater_than_equal_q},
         
         // Vector
         {"vector?",	   		atom_vector_q},
