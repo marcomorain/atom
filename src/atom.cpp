@@ -555,29 +555,41 @@ static Cell* make_vector(Environment* env, int length, Cell* fill)
 	return vec;
 }
 
-static Cell* make_string(Environment* env, int length, const char* data)
+static Cell* make_empty_string(Environment* env, int length)
 {
-    // Fail early if the length is wrong.
-    assert(length == (int)strlen(data));
-    
     Cell* string = make_cell(env, TYPE_STRING);
     string->data.string.length = length;
-    string->data.string.data   = strdup(data);
-    
+    string->data.string.data   = (char*)malloc(length+1);
+        
     // Assert if the allocation fails.
     // TODO: handle this.
     assert(string->data.string.data);
     
+    // Fill with zeros
+    memset(string->data.string.data, 0, length+1);
+
     return string;
+}
+
+static Cell* fill_string(Cell* str, int length, const char* data)
+{
+    assert(str->type == TYPE_STRING);
+    strncpy(str->data.string.data, data, length);
+    return str;
+}
+
+static Cell* make_string(Environment* env, int length, const char* data)
+{
+    // Fail early if the length is wrong.
+    assert(length == (int)strlen(data));
+    return fill_string(make_empty_string(env, length), length, data);
 }
 
 static Cell* make_string_filled(Environment* env, int length, char fill)
 {
-    Cell* string = make_cell(env, TYPE_STRING);
-	string->data.string.data   = (char*)malloc(length + 1);
-    string->data.string.length = length;
+    Cell* string = make_empty_string(env, length);
 	memset(string->data.string.data, fill, length);
-	string->data.string.data[length] = 0;
+    assert((int)strlen(string->data.string.data) == length);
 	return string;
 }
 
@@ -2840,7 +2852,90 @@ static Cell* atom_string_ci_greater_than_equal_q(Environment* env, Cell* params)
     return make_boolean(0 <= compare_case_strings(env, params));
 }
 
+// (substring string start end) library procedure
+// String must be a string, and start and end must be exact integers satisfying
+// 0 ≤ start ≤ end ≤ (string-length string).
+// Substring returns a newly allocated string formed from the characters of
+// string beginning with index start (inclusive) and ending with index end
+// (exclusive).
+static Cell* atom_substring(Environment* env, Cell* params)
+{
+    const Cell* cell = nth_param(env, params, 1, TYPE_STRING);
+    const int start  = nth_param_integer(env, params, 2);
+    const int end    = nth_param_integer(env, params, 3);
+    
+    const int length = end - start;
+    
+    if (start < 0 || start >= end || end > cell->data.string.length){
+        signal_error(env->cont,
+                     "Invalid indices (%d, %d) passed to substring. String has length %d",
+                     start, end, cell->data.string.length);
+    }
+    
+    Cell* substring = make_empty_string(env, length);
+    
+    strncpy(substring->data.string.data,
+            cell->data.string.data + start,
+            length);
+    
+    return substring;
+}
 
+// (string-append string ...) library procedure
+// Returns a newly allocated string whose characters form the concatenation of
+// the given strings.
+static Cell* atom_string_append(Environment* env, Cell* params)
+{
+    std::vector<char> stack;
+    
+    for (Cell* param = params; param; param = cdr(param))
+    {
+        Cell* str = eval(env, car(param));
+        type_check(env->cont, TYPE_STRING, str->type);
+        
+        for (int i=0; i<str->data.string.length; i++)
+        {
+            stack.push_back(str->data.string.data[i]);
+        }
+    }
+    
+    int length = (int)stack.size();
+    Cell* result = make_empty_string(env, length);
+    
+    if (length > 0)
+    {    
+        strncpy(result->data.string.data, &stack[0], length);
+    }
+    
+    return result;
+}
+
+// (string-copy string)	library procedure
+// Returns a newly allocated copy of the given string.
+static Cell* atom_string_copy(Environment* env, Cell* params)
+{
+    Cell* string = nth_param(env, params, 1, TYPE_STRING);
+    const int length = string->data.string.length;
+    return fill_string(make_empty_string(env, length),
+                       length,
+                       string->data.string.data);
+}
+
+// (string-fill! string char) library procedure
+// Stores char in every element of the given string and returns an unspecified
+// value.
+static Cell* atom_string_fill_b(Environment* env, Cell* params)
+{
+    Cell* string = nth_param(env, params, 1, TYPE_STRING);
+    char c       = nth_param_character(env, params, 2);
+    
+    for (int i=0; i<string->data.string.length; i++)
+    {
+        string->data.string.data[i] = c;
+    }
+    
+    return string;
+}
 
 // (string->symbol string) procedure
 // Returns the symbol whose name is string. This procedure can create symbols
@@ -3819,6 +3914,10 @@ Continuation* atom_api_open()
         {"string-ci>?",     atom_string_ci_greater_than_q},
         {"string-ci<=?",    atom_string_ci_less_than_equal_q},
         {"string-ci>=?",    atom_string_ci_greater_than_equal_q},
+        {"substring",       atom_substring},
+        {"string-append",   atom_string_append},
+        {"string-copy",     atom_string_copy},
+        {"string-fill!",    atom_string_fill_b},
         
         // Vector
         {"vector?",	   		atom_vector_q},

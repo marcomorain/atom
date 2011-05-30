@@ -65,14 +65,9 @@
 * assv
 * assoc
 
-
 ## 6.3.5 Strings
-* substring
-* string-append
 * string->list
 * list->string
-* string-copy
-* string-fill!
 
 ### 6.4 Control Features
 * map
