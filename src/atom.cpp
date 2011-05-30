@@ -4171,6 +4171,8 @@ static bool match(const char* input, const char* a, const char* b)
     strcmp(input, b) == 0;
 }
 
+static const char* history = ".atom_history";
+
 int main (int argc, char * const argv[])
 {
     Continuation* atom = atom_api_open();
@@ -4208,8 +4210,10 @@ int main (int argc, char * const argv[])
     
     if (repl)
     {
+        linenoiseHistoryLoad((char*)history);
         printf("Now doing the REPL\n");
         atom_api_repl(atom);
+        linenoiseHistorySave((char*)history);
     }
     else
     {

@@ -247,7 +247,7 @@ static int completeLine(int fd, const char *prompt, char *buf, size_t buflen, si
                 refreshLine(fd,prompt,buf,*len,*pos,cols);
             }
 
-            nread = (int)read(fd,&c,1);
+            nread = read(fd,&c,1);
             if (nread <= 0) {
                 freeCompletions(&lc);
                 return -1;
@@ -307,8 +307,8 @@ static int linenoisePrompt(int fd, char *buf, size_t buflen, const char *prompt)
         int nread;
         char seq[2], seq2[2];
 
-        nread = (int)read(fd,&c,1);
-        if (nread <= 0) return (int)len;
+        nread = read(fd,&c,1);
+        if (nread <= 0) return len;
 
         /* Only autocomplete when the callback is set. It returns < 0 when
          * there was an error reading from fd. Otherwise it will return the
@@ -316,7 +316,7 @@ static int linenoisePrompt(int fd, char *buf, size_t buflen, const char *prompt)
         if (c == 9 && completionCallback != NULL) {
             c = completeLine(fd,prompt,buf,buflen,&len,&pos,cols);
             /* Return on errors */
-            if (c < 0) return (int)len;
+            if (c < 0) return len;
             /* Read next character when 0 */
             if (c == 0) continue;
         }
@@ -470,7 +470,7 @@ up_down_arrow:
             refreshLine(fd,prompt,buf,len,pos,cols);
         }
     }
-    return (int)len;
+    return len;
 }
 
 static int linenoiseRaw(char *buf, size_t buflen, const char *prompt) {
@@ -482,8 +482,8 @@ static int linenoiseRaw(char *buf, size_t buflen, const char *prompt) {
         return -1;
     }
     if (!isatty(STDIN_FILENO)) {
-        if (fgets(buf, (int)buflen, stdin) == NULL) return -1;
-        count = (int)strlen(buf);
+        if (fgets(buf, buflen, stdin) == NULL) return -1;
+        count = strlen(buf);
         if (count && buf[count-1] == '\n') {
             count--;
             buf[count] = '\0';
