@@ -72,9 +72,6 @@
 
 ### 6.5 Eval
 * eval
-* scheme-report-environment
-* null-environment
-* interaction-environment
 
 ### 6.6.1 Ports
 * call-with-input-file

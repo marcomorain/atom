@@ -37,16 +37,17 @@ static unsigned int MurmurHash2 (const void * key, int len);
 
 enum CellType
 {
-	TYPE_BOOLEAN,
-	TYPE_CHARACTER,
-	TYPE_NUMBER,
-	TYPE_STRING,
-	TYPE_PAIR,
-	TYPE_VECTOR,
-	TYPE_SYMBOL,
-	TYPE_PROCEDURE,
-	TYPE_INPUT_PORT,
-	TYPE_OUTPUT_PORT
+    TYPE_BOOLEAN,
+    TYPE_CHARACTER,
+    TYPE_NUMBER,
+    TYPE_STRING,
+    TYPE_PAIR,
+    TYPE_VECTOR,
+    TYPE_SYMBOL,
+    TYPE_PROCEDURE,
+    TYPE_INPUT_PORT,
+    TYPE_OUTPUT_PORT,
+    TYPE_ENVIRONMENT
 };
 
 const static char* typenames [] = {
@@ -59,7 +60,8 @@ const static char* typenames [] = {
 	"symbol",
 	"procedure",
     "input-port",
-    "output-port"
+    "output-port",
+    "environment"
 };
 
 struct Environment;
@@ -114,6 +116,7 @@ struct Cell
 		Procedure       procedure;
 		FILE*           input_port;
         FILE*           output_port;
+        Environment*    env;
 	};
 	
 	CellType type;
@@ -223,6 +226,14 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             fprintf(output, "#<ouput port %p>", cell->data.input_port);
             break;
             
+        case TYPE_ENVIRONMENT:
+            fprintf(output, "#<environment %p>", cell->data.env);
+            break;
+        
+        case TYPE_PROCEDURE:
+            fprintf(output, "#<procedure %p>",  &cell->data.procedure);
+            break;
+            
         case TYPE_VECTOR:
             fprintf(output, "#(");
             for (int i=0; i<cell->data.vector.length; i++)
@@ -232,9 +243,6 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             }
             fprintf(output, ")");
             break;
-            
-        default:
-            assert(false);
 	}
 }
 
@@ -449,6 +457,12 @@ static void mark(Cell* cell)
 			}
 			break;
 		}
+            
+        case TYPE_ENVIRONMENT:
+        {
+            mark_environment(cell->data.env);
+            break;
+        }
 	}
 }
 
@@ -2348,6 +2362,9 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
 		case TYPE_SYMBOL:
             return obj1->data.symbol == obj2->data.symbol;
             
+        case TYPE_ENVIRONMENT:
+            return obj1->data.env == obj2->data.env;
+            
 		case TYPE_NUMBER:
             return obj1->data.number == obj2->data.number;
 			
@@ -2360,12 +2377,9 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
 		case TYPE_STRING:
             return (obj1 == obj2) ||
             (recurse_strings && (0 == strcmp(obj1->data.string.data, obj2->data.string.data)));
-            
-		default:
-            // unhandled case
-            assert(0);
 	}
     
+    assert(false);
 	return false;
 }
 
@@ -3451,6 +3465,68 @@ static Cell* atom_apply(Environment* env, Cell* params)
 	return eval(env, caller);
 }
 
+
+// (scheme-report-environment version)  procedure
+// (null-environment version)           procedure
+// Version must be the exact integer 5, corresponding to this revision of the
+// Scheme report (the Revised5 Report on Scheme).
+// Scheme-report-environment returns a specifier for an environment that is
+// empty except for all bindings defined in this report that are either
+// required or both optional and supported by the implementation.
+// Null-environment returns a specifier for an environment that is empty except
+// for the (syntactic) bindings for all syntactic keywords defined in this report
+// that are either required or both optional and supported by the implementation.
+// Other values of version can be used to specify environments matching past
+// revisions of this report, but their support is not required.
+// An implementation will signal an error if version is neither 5 nor another
+// value supported by the implementation.
+// The effect of assigning (through the use of eval) a variable bound in a
+// scheme-report-environment (for example car) is unspecified.
+// Thus the environments specified by scheme-report-environment may be immutable.
+static Cell* atom_scheme_report_environment(Environment* env, Cell* params)
+{
+    const int version = nth_param_integer(env, params, 1);
+    if (version != 5) signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    
+    while (env->parent) env = env->parent;
+    
+    Cell* environment = make_cell(env, TYPE_ENVIRONMENT);
+    environment->data.env = env;
+    return environment;
+}
+
+
+// TODO: this is a copy and paste of scheme-report-environemnt
+static Cell* atom_null_environment(Environment* env, Cell* params)
+{
+    const int version = nth_param_integer(env, params, 1);
+    if (version != 5) signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    
+    while (env->parent) env = env->parent;
+    
+    Cell* environment = make_cell(env, TYPE_ENVIRONMENT);
+    environment->data.env = env;
+    return environment;
+}
+
+// (interaction-environment) optional procedure
+// This procedure returns a specifier for the environment that contains
+// implementation-defined bindings, typically a su- perset of those listed in the
+// report. The intent is that this procedure will return the environment in which
+// the implementation would evaluate expressions dynamically typed by the user.
+// TODO: this is a copy and paste of scheme-report-environemnt
+static Cell* atom_interaction_environment(Environment* env, Cell* params)
+{
+    const int version = nth_param_integer(env, params, 1);
+    if (version != 5) signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    
+    while (env->parent) env = env->parent;
+    
+    Cell* environment = make_cell(env, TYPE_ENVIRONMENT);
+    environment->data.env = env;
+    return environment;
+}
+
 // output functions helper
 // Many of the output functions take an optional port parameter, which if not present defaults to the output
 // from current-output-port.
@@ -3750,6 +3826,7 @@ tailcall:
 		case TYPE_STRING:
 		case TYPE_CHARACTER:
         case TYPE_VECTOR:
+        case TYPE_ENVIRONMENT:
 			return cell;
             
 		case TYPE_SYMBOL:
@@ -4009,6 +4086,10 @@ Continuation* atom_api_open()
         // control
         {"procedure?", 		atom_procedure_q},
         {"apply",	   		atom_apply},
+        
+        {"scheme-report-environment",       atom_scheme_report_environment},
+        {"null-environment",                atom_null_environment},
+        {"atom_interaction_environment",    atom_interaction_environment},
         
         {"close-input-port",  atom_close_input_port},
         {"close-output-port", atom_close_output_port},
