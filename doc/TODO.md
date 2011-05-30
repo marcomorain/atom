@@ -24,21 +24,13 @@
 ### Chapter 6: Standard Procedures
 #### 6.1. Equivalence predicates
 #### 6.2. Numbers
-* abs
 * quotient
 * remainder
 * gcd
 * lcm
 * numerator
 * denominator
-* floor
-* ceiling
-* round
 * rationalize
-* exp  
-* log  
-* sqrt
-* expt
 * make-rectangular
 * make-polar
 * real-part

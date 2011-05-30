@@ -2206,6 +2206,68 @@ static Cell* atom_div(Environment* env, Cell* params)
 	return sub_div_helper(env, params, false);
 }
 
+// (abs x)
+// Abs returns the absolute value of its argument.
+static Cell* atom_abs(Environment* env, Cell* params)
+{
+    return make_number(env, fabs(nth_param_number(env, params, 1)));
+}
+
+// (floor x)    procedure
+// (ceiling x)  procedure
+// (truncate x) procedure
+// (round x)    procedure
+// These procedures return integers. Floor returns the largest integer not
+// larger than x. Ceiling returns the smallest integer not smaller than x.
+// Truncate returns the integer closest to x whose absolute value is not larger
+// than the absolute value of x. Round returns the closest integer to x,
+// rounding to even when x is halfway between two integers.
+static Cell* atom_floor(Environment* env, Cell* params)
+{
+    return make_number(env, floor(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_ceiling(Environment* env, Cell* params)
+{
+    return make_number(env,  ceil(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_truncate(Environment* env, Cell* params)
+{
+    return make_number(env, trunc(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_round(Environment* env, Cell* params)
+{
+    return make_number(env, round(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_exp(Environment* env, Cell* params)
+{
+    return make_number(env, exp(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_log(Environment* env, Cell* params)
+{
+    return make_number(env, log(nth_param_number(env, params, 1)));
+}
+
+// (sqrt z)	procedure
+// Returns the principal square root of z.
+// The result will have either positive real part, or zero real part and
+// non-negative imaginary part.
+static Cell* atom_sqrt(Environment* env, Cell* params)
+{
+    return make_number(env, sqrt(nth_param_number(env, params, 1)));
+}
+
+static Cell* atom_expt(Environment* env, Cell* params)
+{
+    return make_number(env, pow(nth_param_number(env, params, 1),
+                                nth_param_number(env, params, 2)));
+}
+
+
 static Cell* atom_modulo(Environment* env, Cell* params)
 {
 	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
@@ -3832,6 +3894,15 @@ Continuation* atom_api_open()
         {"*",		   		atom_mul},
         {"-",				atom_sub},
         {"/",				atom_div},
+        {"abs",             atom_abs},
+        {"floor",           atom_floor},
+        {"ceiling",         atom_ceiling},
+        {"truncate",        atom_truncate},
+        {"round",           atom_round},
+        {"exp",             atom_exp},
+        {"log",             atom_log},
+        {"sqrt",            atom_sqrt},
+        {"expt",            atom_expt},
         {"modulo",			atom_modulo},
         {"exact?",			atom_exact_q},
         {"inexact?",		atom_inexact_q},
