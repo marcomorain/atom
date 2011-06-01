@@ -3542,6 +3542,14 @@ static FILE* get_output_port(Environment* env, Cell* params, int n)
     return env->cont->output;
 }
 
+static FILE* get_input_port(Environment* env, Cell* params, int n)
+{
+    if (Cell* port = nth_param_optional(env, params, n, TYPE_INPUT_PORT))
+    {
+        return port->data.input_port;
+    }
+    return env->cont->input;
+}
 
 // (input-port?  obj) procedure
 // Returns #t if obj is an input port or output port respectively,
@@ -3646,6 +3654,42 @@ static Cell* atom_write(Environment* env, Cell* params)
     return make_boolean(false);
 }
 
+// (read-char)      procedure
+// (read-char port) procedure
+// Returns the next character available from the input port, updating the port
+// to point to the following character. If no more characters are available, an
+// end of file object is returned. Port may be omitted, in which case it defaults
+// to the value returned by current-input-port.
+static Cell* atom_read_char(Environment* env, Cell* params)
+{
+    int c = fgetc(get_input_port(env, params, 1));
+    
+    // TODO: test this cast. fgetc returns an unsigned char cast to int,
+    // which is sure to be error prone.
+    // TODO: test if c == EOF. Is EOF a different type to the EOF value?
+    return make_character(env, (char)c);
+}
+
+// (peek-char) procedure
+// (peek-char port) procedure
+// Returns the next character available from the input port, without updating
+// the port to point to the following character. If no more characters are
+// available, an end of file object is returned. Port may be omitted, in which
+// case it defaults to the value returned by current-input-port.
+static Cell* atom_peek_char(Environment* env, Cell* params)
+{
+    FILE* file = get_input_port(env, params, 1);
+    return make_character(env, ungetc(fgetc(file), file));
+}
+
+// (eof-object?	obj) procedure
+// Returns #t if obj is an end of file object, otherwise returns #f. The precise
+// set of end of file objects will vary among implementations, but in any case
+// no end of file object will ever be an object that can be read in using read.
+static Cell* atom_eof_object_q(Environment* env, Cell* params)
+{
+    return make_boolean(nth_param_character(env, params, 1) == EOF);
+}
 
 // (display	obj)
 // (display obj port)
@@ -4091,18 +4135,19 @@ Continuation* atom_api_open()
         {"null-environment",                atom_null_environment},
         {"atom_interaction_environment",    atom_interaction_environment},
         
-        {"close-input-port",  atom_close_input_port},
-        {"close-output-port", atom_close_output_port},
-        {"open-input-file",   atom_open_input_file},
-        {"open-output-file",  atom_open_output_file},
+        {"close-input-port",        atom_close_input_port},
+        {"close-output-port",       atom_close_output_port},
+        {"open-input-file",         atom_open_input_file},
+        {"open-output-file",        atom_open_output_file},
         
         // io
-        {"input-port?",     atom_input_port_q},
-        {"output-port?",    atom_output_port_q},
+        {"input-port?",             atom_input_port_q},
+        {"output-port?",            atom_output_port_q},
         
         // input
-        {"current-input-port",  atom_current_input_port},
-        {"current-output-port", atom_current_output_port},
+        {"read-char",               atom_read_char},
+        {"current-input-port",      atom_current_input_port},
+        {"current-output-port",     atom_current_output_port},
         
         // output
         {"write",      		atom_write},
@@ -4147,7 +4192,7 @@ void atom_api_repl(Continuation* cont)
 {
     for (;;)
     {
-        char* line = linenoise(">");
+        char* line = linenoise("> ");
         
         if (!line) // eof/ctrl+d
         {
@@ -4204,7 +4249,7 @@ int main (int argc, char * const argv[])
         filename = "/Users/marcomorain/dev/scheme/test/the_little_schemer.scm";
     }
     
-		printf("Loading input from %s\n", filename);
+    printf("Loading input from %s\n", filename);
     
     atom_api_loadfile(atom, filename);
     

@@ -7,3 +7,5 @@
 /src/a.out.dSYM/
 /src/atom
 /src/*.o
+
+/src/.atom_history

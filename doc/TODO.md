@@ -79,7 +79,4 @@
 
 ### 6.6.3 Input
 * read
-* read-char
-* peek-char
-* eof-object?
 * char-ready?
