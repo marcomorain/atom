@@ -58,7 +58,6 @@
 * assoc
 
 ## 6.3.5 Strings
-* string->list
 * list->string
 
 ### 6.4 Control Features

@@ -2986,6 +2986,28 @@ static Cell* atom_string_append(Environment* env, Cell* params)
     return result;
 }
 
+// (string->list string) library procedure
+// (list->string list)   library procedure
+// String->list returns a newly allocated list of the characters that make up
+// the given string. List->string returns a newly allocated string formed from
+// the characters in the list list, which must be a list of characters.
+// String->list and list->string are inverses so far as equal? is concerned.
+static Cell* atom_string_to_list(Environment* env, Cell* params)
+{
+    Cell* string = nth_param(env, params, 1, TYPE_STRING);
+    
+    const int length = string->data.string.length;
+    
+    Cell* result = NULL;
+    
+    for (int i=length-1; i >= 0; i--){
+        result = cons(env, make_character(env, string->data.string.data[i]), result);
+    }
+                      
+    return result;
+}
+
+
 // (string-copy string)	library procedure
 // Returns a newly allocated copy of the given string.
 static Cell* atom_string_copy(Environment* env, Cell* params)
@@ -4110,6 +4132,7 @@ Continuation* atom_api_open()
         {"string-append",   atom_string_append},
         {"string-copy",     atom_string_copy},
         {"string-fill!",    atom_string_fill_b},
+        {"string->list",    atom_string_to_list},
         
         // Vector
         {"vector?",	   		atom_vector_q},
@@ -4145,6 +4168,8 @@ Continuation* atom_api_open()
         {"output-port?",            atom_output_port_q},
         
         // input
+        {"peek-char",               atom_peek_char},
+        {"eof-object?",             atom_eof_object_q},
         {"read-char",               atom_read_char},
         {"current-input-port",      atom_current_input_port},
         {"current-output-port",     atom_current_output_port},
