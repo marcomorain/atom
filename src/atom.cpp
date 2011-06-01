@@ -3003,8 +3003,35 @@ static Cell* atom_string_to_list(Environment* env, Cell* params)
     for (int i=length-1; i >= 0; i--){
         result = cons(env, make_character(env, string->data.string.data[i]), result);
     }
-                      
+    
     return result;
+}
+
+static Cell* atom_list_to_string(Environment* env, Cell* params)
+{
+    Cell* list = nth_param(env, params, 1, TYPE_PAIR);
+    
+    int length = 0;
+    
+    for (Cell* c = list; c; c = cdr(c))
+    {
+        type_check(env->cont, TYPE_CHARACTER, car(c)->type);
+        length = length + 1;
+    }
+    
+    Cell* string = make_empty_string(env, length);
+    
+    int i = 0;
+    for (Cell* c = list; c; c = cdr(c))
+    {
+        assert(TYPE_CHARACTER == car(c)->type);
+        string->data.string.data[i] = car(c)->data.character;
+        i++;
+    }
+    
+    assert((int)strlen(string->data.string.data) == length);
+    
+    return string;
 }
 
 
@@ -4133,6 +4160,7 @@ Continuation* atom_api_open()
         {"string-copy",     atom_string_copy},
         {"string-fill!",    atom_string_fill_b},
         {"string->list",    atom_string_to_list},
+        {"list->string",    atom_list_to_string},
         
         // Vector
         {"vector?",	   		atom_vector_q},

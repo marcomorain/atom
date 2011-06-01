@@ -57,8 +57,6 @@
 * assv
 * assoc
 
-## 6.3.5 Strings
-* list->string
 
 ### 6.4 Control Features
 * map
