@@ -3560,7 +3560,7 @@ static Cell* atom_null_environment(Environment* env, Cell* params)
 
 // (interaction-environment) optional procedure
 // This procedure returns a specifier for the environment that contains
-// implementation-defined bindings, typically a su- perset of those listed in the
+// implementation-defined bindings, typically a superset of those listed in the
 // report. The intent is that this procedure will return the environment in which
 // the implementation would evaluate expressions dynamically typed by the user.
 // TODO: this is a copy and paste of scheme-report-environemnt
@@ -3600,6 +3600,30 @@ static FILE* get_input_port(Environment* env, Cell* params, int n)
     return env->cont->input;
 }
 
+
+// (call-with-input-file string proc) library procedure
+// (call-with-output-file string proc) library procedure
+// String should be a string naming a file, and proc should be a procedure that
+// accepts one argument. For call-with-input-file, the file should already exist;
+// for call-with-output-file, the effect is unspecified if the file already
+// exists. These procedures call proc with one argument: the port obtained by
+// opening the named file for input or output. If the file cannot be opened, an
+// error is signalled. If proc returns, then the port is closed automatically
+// and the value(s) yielded by the proc is(are) returned. If proc does not
+// return, then the port will not be closed automatically unless it is possible
+// to prove that the port will never again be used for a read or write operation.
+static Cell* atom_call_with_input_file(Environment* env, Cell* params)
+{
+    assert(0);
+    return NULL;
+}
+
+static Cell* atom_call_with_output_file(Environment* env, Cell* params)
+{
+    assert(0);
+    return NULL;
+}
+
 // (input-port?  obj) procedure
 // Returns #t if obj is an input port or output port respectively,
 // otherwise returns #f.
@@ -3617,20 +3641,26 @@ static Cell* atom_output_port_q(Environment* env, Cell* params)
 }
 
 // Grab a string from a given param, and open that file in the given mode.
-static FILE* file_open_helper(Environment* env, Cell* params, const char* mode)
+static Cell* file_open_helper(Environment* env, Cell* params, int n, bool read)
 {
-    Cell* filename = nth_param(env, params, 1, TYPE_STRING);
+    const char* filename = nth_param_string(env, params, n);
     
-    const char* f = filename->data.string.data;
-    
-    FILE* file = fopen(f, "r");
+    FILE* file = fopen(filename, (read ? "r" : "w"));
     
     if (!file)
     {
-        signal_error(env->cont, "Error opening file: %s", f);
+        signal_error(env->cont, "Error opening file: %s", filename);
     }
     
-    return file;
+    
+    if (read)
+    {
+        return make_input_port(env, file);
+    }
+    else
+    {
+        return make_output_port(env, file);
+    }
 }
 
 // (open-input-file filename) procedure
@@ -3639,7 +3669,7 @@ static FILE* file_open_helper(Environment* env, Cell* params, const char* mode)
 // is signalled.
 static Cell* atom_open_input_file(Environment* env, Cell* params)
 {
-    return make_input_port(env, file_open_helper(env, params, "r"));
+    return file_open_helper(env, params, 1, true);
 }
 
 // (open-output-file filename) procedure
@@ -3649,7 +3679,7 @@ static Cell* atom_open_input_file(Environment* env, Cell* params)
 // the effect is unspecified.
 static Cell* atom_open_output_file(Environment* env, Cell* params)
 {
-    return make_output_port(env, file_open_helper(env, params, "w"));
+    return file_open_helper(env, params, 1, false);
 }
 
 
