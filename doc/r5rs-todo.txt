@@ -719,37 +719,6 @@ types: booleans, pairs, lists, symbols, characters, strings and vectors.
                                                         ==>  20
 
 
- -- procedure: scheme-report-environment version
- -- procedure: null-environment version
-     VERSION must be the exact integer `5', corresponding to this
-     revision of the Scheme report (the Revised^5 Report on Scheme).
-     `Scheme-report-environment' returns a specifier for an environment
-     that is empty except for all bindings defined in this report that
-     are either required or both optional and supported by the
-     implementation. `Null-environment' returns a specifier for an
-     environment that is empty except for the (syntactic) bindings for
-     all syntactic keywords defined in this report that are either
-     required or both optional and supported by the implementation.
-
-     Other values of VERSION can be used to specify environments
-     matching past revisions of this report, but their support is not
-     required.  An implementation will signal an error if VERSION is
-     neither `5' nor another value supported by the implementation.
-
-     The effect of assigning (through the use of `eval') a variable
-     bound in a `scheme-report-environment' (for example `car') is
-     unspecified.  Thus the environments specified by
-     `scheme-report-environment' may be immutable.
-
-
- -- optional procedure: interaction-environment
-     This procedure returns a specifier for the environment that
-     contains implementation-defined bindings, typically a superset of
-     those listed in the report.  The intent is that this procedure
-     will return the environment in which the implementation would
-     evaluate expressions dynamically typed by the user.
-
-
 6.6 Input and output
 ====================
 
@@ -782,19 +751,6 @@ port is a Scheme object that can accept characters.
           portable code using both `call-with-current-continuation' and
           `call-with-input-file' or `call-with-output-file'.
 
-
-
- -- procedure: input-port? obj
- -- procedure: output-port? obj
-     Returns #t if OBJ is an input port or output port respectively,
-     otherwise returns #f.
-
-
- -- procedure: current-input-port
- -- procedure: current-output-port
-     Returns the current default input or output port.
-
-
  -- optional procedure: with-input-from-file string thunk
  -- optional procedure: with-output-to-file string thunk
      STRING should be a string naming a file, and PROC should be a
@@ -812,36 +768,8 @@ port is a Scheme object that can accept characters.
      is implementation dependent.
 
 
- -- procedure: open-input-file filename
-     Takes a string naming an existing file and returns an input port
-     capable of delivering characters from the file.  If the file
-     cannot be opened, an error is signalled.
-
-
- -- procedure: open-output-file filename
-     Takes a string naming an output file to be created and returns an
-     output port capable of writing characters to a new file by that
-     name.  If the file cannot be opened, an error is signalled.  If a
-     file with the given name already exists, the effect is unspecified.
-
-
- -- procedure: close-input-port port
- -- procedure: close-output-port port
-     Closes the file associated with PORT, rendering the PORT incapable
-     of delivering or accepting characters.
-
-     These routines have no effect if the file has already been closed.
-     The value returned is unspecified.
-
-
 6.6.2 Input
 -----------
-
- 
-
-
-
-
 
  -- library procedure: read
  -- library procedure: read port
@@ -865,40 +793,6 @@ port is a Scheme object that can accept characters.
      value returned by `current-input-port'.  It is an error to read
      from a closed port.
 
- -- procedure: read-char
- -- procedure: read-char port
-     Returns the next character available from the input PORT, updating
-     the PORT to point to the following character.  If no more
-     characters are available, an end of file object is returned.  PORT
-     may be omitted, in which case it defaults to the value returned by
-     `current-input-port'.
-
-
- -- procedure: peek-char
- -- procedure: peek-char port
-     Returns the next character available from the input PORT,
-     _without_ updating the PORT to point to the following character.
-     If no more characters are available, an end of file object is
-     returned.  PORT may be omitted, in which case it defaults to the
-     value returned by `current-input-port'.
-
-          _Note:_ The value returned by a call to `peek-char' is the
-          same as the value that would have been returned by a call to
-          `read-char' with the same PORT.  The only difference is that
-          the very next call to `read-char' or `peek-char' on that PORT
-          will return the value returned by the preceding call to
-          `peek-char'.  In particular, a call to `peek-char' on an
-          interactive port will hang waiting for input whenever a call
-          to `read-char' would have hung.
-
-
- -- procedure: eof-object? obj
-     Returns #t if OBJ is an end of file object, otherwise returns #f.
-     The precise set of end of file objects will vary among
-     implementations, but in any case no end of file object will ever
-     be an object that can be read in using `read'.
-
-
  -- procedure: char-ready?
  -- procedure: char-ready? port
      Returns #t if a character is ready on the input PORT and returns
@@ -918,80 +812,8 @@ port is a Scheme object that can accept characters.
           interactive port that has no ready characters.
 
 
-6.6.3 Output
-------------
-
-
-
-
-
-
-
-
- -- library procedure: write obj
- -- library procedure: write obj port
-     Writes a written representation of OBJ to the given PORT.  Strings
-     that appear in the written representation are enclosed in
-     doublequotes, and within those strings backslash and doublequote
-     characters are escaped by backslashes.  Character objects are
-     written using the `#\' notation.  `Write' returns an unspecified
-     value.  The PORT argument may be omitted, in which case it
-     defaults to the value returned by `current-output-port'.
-
-
- -- library procedure: display obj
- -- library procedure: display obj port
-     Writes a representation of OBJ to the given PORT.  Strings that
-     appear in the written representation are not enclosed in
-     doublequotes, and no characters are escaped within those strings.
-     Character objects appear in the representation as if written by
-     `write-char' instead of by `write'.  `Display' returns an
-     unspecified value.  The PORT argument may be omitted, in which
-     case it defaults to the value returned by `current-output-port'.
-
-          _Rationale:_ `Write' is intended for producing
-          machine-readable output and `display' is for producing
-          human-readable output.  Implementations that allow
-          "slashification" within symbols will probably want `write'
-          but not `display' to slashify funny characters in symbols.
-
-
- -- library procedure: newline
- -- library procedure: newline port
-     Writes an end of line to PORT.  Exactly how this is done differs
-     from one operating system to another.  Returns an unspecified
-     value.  The PORT argument may be omitted, in which case it
-     defaults to the value returned by `current-output-port'.
-
-
- -- procedure: write-char char
- -- procedure: write-char char port
-     Writes the character CHAR (not an external representation of the
-     character) to the given PORT and returns an unspecified value.  The
-     PORT argument may be omitted, in which case it defaults to the
-     value returned by `current-output-port'.
-
-
 6.6.4 System interface
 ----------------------
-
-Questions of system interface generally fall outside of the domain of
-this report.  However, the following operations are important enough to
-deserve description here.
-
- -- optional procedure: load filename
-     FILENAME should be a string naming an existing file containing
-     Scheme source code.  The `load' procedure reads expressions and
-     definitions from the file and evaluates them sequentially.  It is
-     unspecified whether the results of the expressions are printed.
-     The `load' procedure does not affect the values returned by
-     `current-input-port' and `current-output-port'.  `Load' returns an
-     unspecified value.
-
-          _Rationale:_ For portability, `load' must operate on source
-          files.  Its operation on other kinds of files necessarily
-          varies among implementations.
-
 
  -- optional procedure: transcript-on filename
  -- optional procedure: transcript-off

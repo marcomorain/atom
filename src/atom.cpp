@@ -4212,9 +4212,9 @@ Continuation* atom_api_open()
         {"procedure?", 		atom_procedure_q},
         {"apply",	   		atom_apply},
         
-        {"scheme-report-environment",       atom_scheme_report_environment},
-        {"null-environment",                atom_null_environment},
-        {"atom_interaction_environment",    atom_interaction_environment},
+        {"scheme-report-environment",  atom_scheme_report_environment},
+        {"null-environment",           atom_null_environment},
+        {"interaction-environment",    atom_interaction_environment},
         
         {"close-input-port",        atom_close_input_port},
         {"close-output-port",       atom_close_output_port},
