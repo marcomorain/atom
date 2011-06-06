@@ -3503,15 +3503,40 @@ static Cell* atom_procedure_q(Environment* env, Cell* params)
 	return type_q_helper(env, params, TYPE_PROCEDURE);
 }
 
+static Cell* apply_recursive(Environment* env, Cell* function, Cell* args)
+{
+    if (args == NULL)
+    {
+        return NULL;
+    }
+    
+    return cons(env, eval(env, cons(env, function,
+                                         cons(env, car(args), NULL))),
+                     apply_recursive(env, function, cdr(args)));
+}
+
 // (apply proc arg1 ... args) procedure
 // Proc must be a procedure and args must be a list. Calls proc with the
 // elements of the list (append (list arg1 ...) args) as the actual arguments.
 static Cell* atom_apply(Environment* env, Cell* params)
 {
-	Cell* proc = car(params);
-	Cell* args = nth_param(env, params, 2, TYPE_PAIR);
-	Cell* caller = cons(env, proc, args);
-	return eval(env, caller);
+    Cell* func = nth_param(env, params, 1, TYPE_PROCEDURE);
+    
+    int num_args = 0;
+    
+    for (Cell* param = params; param; param = cdr(param)) num_args++;
+    
+    Cell* list = nth_param(env, params, num_args, TYPE_PAIR);
+    
+    Cell* args = list;
+    
+    for (int i=num_args-1; i>0; i--)
+    {
+        Cell* arg = nth_param_any(env, params, i);
+        args = cons(env, arg, args);
+    }
+    
+    return apply_recursive(env, func, args);
 }
 
 
@@ -3733,6 +3758,27 @@ static Cell* atom_write(Environment* env, Cell* params)
     return make_boolean(false);
 }
 
+// (read)      library procedure
+// (read port) library procedure
+// Read converts external representations of Scheme objects into the objects
+// themselves. That is, it is a parser for the nonterminal ⟨datum⟩. Read returns
+// the next object parsable from the given input port, updating port to point to
+// the first character past the end of the external representation of the object.
+// If an end of file is encountered in the input before any characters are found
+// that can begin an object, then an end of file object is returned. The port
+// remains open, and further attempts to read will also return an end of file
+// object. If an end of file is encountered after the beginning of an object’s
+// external representation, but the external representation is incomplete and
+// therefore not parsable, an error is signalled.
+// The port argument may be omitted, in which case it defaults to the value
+// returned by current-input-port. It is an error to read from a closed port.
+static Cell* atom_read(Environment* env, Cell* params)
+{
+    FILE* port = get_input_port(env, params, 1);
+    // TODO: implement this
+    return NULL;
+}
+
 // (read-char)      procedure
 // (read-char port) procedure
 // Returns the next character available from the input port, updating the port
@@ -3748,6 +3794,8 @@ static Cell* atom_read_char(Environment* env, Cell* params)
     // TODO: test if c == EOF. Is EOF a different type to the EOF value?
     return make_character(env, (char)c);
 }
+
+
 
 // (peek-char) procedure
 // (peek-char port) procedure
