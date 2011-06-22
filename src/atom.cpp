@@ -2773,6 +2773,8 @@ static Cell* atom_length(Environment* env, Cell* params)
 }
 
 
+
+
 // (append list ...)
 // Returns a list consisting of the elements of the first list followed by
 // the elements of the other lists.
@@ -2788,6 +2790,42 @@ static Cell* atom_append(Environment* env, Cell* params)
     }
     
     return result;
+}
+
+
+// library procedure: list-tail list K
+// Returns the sublist of LIST obtained by omitting the first K
+// elements.  It is an error if LIST has fewer than K elements.
+// `List-tail' could be defined by
+// (define list-tail
+//   (lambda (x k)
+//     (if (zero? k)
+//        x
+//        (list-tail (cdr x) (- k 1)))))
+static Cell* list_tail_helper(Environment* env, Cell* params)
+{
+	Cell* list = nth_param(env, params, 1, TYPE_PAIR);
+	
+	for (int k = nth_param_integer(env, params, 2); k>0; k--)
+	{
+		list = cdr(list);
+		if (!list) signal_error(env->cont, "The given list must have at least K elements");
+	}
+	return list;
+}
+
+static Cell* atom_list_tail(Environment* env, Cell* params)
+{
+	return list_tail_helper(env, params);
+}
+
+// library procedure: list-ref list K
+// Returns the Kth element of LIST.  (This is the same as the car of
+// (list-tail LIST K).)  It is an error if LIST has fewer than K
+// elements.
+static Cell* atom_list_ref(Environment* env, Cell* params)
+{
+	return car(list_tail_helper(env, params));
 }
 
 // a bunh of functions are missing here....
@@ -4189,6 +4227,8 @@ Continuation* atom_api_open()
         {"list",       		atom_list},
         {"length",     		atom_length},
         {"append",     		atom_append},
+		{"list-tail",		atom_list_tail},
+		{"list-ref",		atom_list_ref},
         
         // char
         {"char?",			atom_char_q},
