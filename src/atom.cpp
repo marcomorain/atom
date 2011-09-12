@@ -25,7 +25,7 @@ extern "C" {
 // todo: split / remove break?
 #include <math.h>
 
-#define DEBUG_LEXER (0)
+#define DEBUG_LEXER (1)
 
 #if (DEBUG_LEXER)
 #define LEXER_TRACE(format, ...) printf(format, __VA_ARGS__)
@@ -128,7 +128,7 @@ struct Cell
 static Cell cell_true  = { TYPE_BOOLEAN, {true }, NULL, false };
 static Cell cell_false = { TYPE_BOOLEAN, {false}, NULL, false };
 
-enum Type
+enum TokenType
 {
 	TOKEN_IDENTIFIER,
 	TOKEN_BOOLEAN,
@@ -645,40 +645,53 @@ static bool is_false(const Cell* cell)
     cell->data.boolean == false;
 }
 
+
+
+struct character_buffer
+{
+    char* data;
+    size_t used;
+    size_t size;
+};
+
+void character_buffer_init(struct character_buffer* buffer)
+{
+    buffer->used = 0;
+    buffer->size = 32;
+    buffer->data = (char*)malloc(buffer->size);
+}
+
+void character_buffer_push(struct character_buffer* buffer, char value)
+{
+    if (buffer->used == buffer->size)
+    {
+        buffer->size = buffer->size * 2;
+        buffer->data = (char*)realloc(buffer->data, buffer->size);
+    }
+    
+    buffer->data[buffer->used++] = value;
+}
+
+void character_buffer_reset(struct character_buffer* buffer)
+{
+    buffer->used = 0;
+}
+
+char* character_buffer_copy(const struct character_buffer* buffer)
+{
+    size_t size = buffer->used + 1;
+    char* dup = (char*)malloc(size);
+    memcpy(dup, buffer->data, buffer->used);
+    dup[buffer->used] = 0; // null terminate
+    return dup;
+}
+
+
 struct Token
 {
 	void print(void) const
 	{
-		switch(type)
-		{
-            case TOKEN_NUMBER:
-                LEXER_TRACE("Token TOKEN_NUMBER %lg\n", data.number);
-                break;
-                
-            case TOKEN_IDENTIFIER:
-                LEXER_TRACE("Token TOKEN_IDENTIFIER %s\n", data.identifier);
-                break;
-                
-            case TOKEN_STRING:
-                LEXER_TRACE("Token TOKEN_STRING \"%s\"\n", data.string);
-                break;
-                
-#define PRINT_CASE(id) case id: LEXER_TRACE("Token %s\n", #id); break
-                
-                PRINT_CASE(TOKEN_BOOLEAN);
-                PRINT_CASE(TOKEN_CHARACTER);
-                PRINT_CASE(TOKEN_LIST_START);
-                PRINT_CASE(TOKEN_LIST_END);
-                PRINT_CASE(TOKEN_VECTOR_START);
-                PRINT_CASE(TOKEN_QUOTE);
-                PRINT_CASE(TOKEN_BACKTICK);
-                PRINT_CASE(TOKEN_COMMA);
-                PRINT_CASE(TOKEN_COMMA_AT);
-                PRINT_CASE(TOKEN_DOT);
-#undef PRINT_CASE
-		}
-        
-	}
+			}
     
 	union Data
 	{
@@ -687,189 +700,138 @@ struct Token
 		char*		string;
 		const char*	identifier;
 		char		character;
-	};
-    
-	Type type;
-	Data data;
+	} data;
+	TokenType type;
 };
 
-
-struct TokenList
+static void token_print(Token* token)
 {
-private:
-    
-	void add_basic(Type t)
-	{
-		tokens[next].type = t;
-		tokens[next].print();
-		next++;
-	}
-    
-	char* buffer_copy_and_reset(void)
-	{
-		char* dup = (char*)malloc(buffer_position + 1);
-		memcpy(dup, buffer_data, buffer_position);
-		dup[buffer_position] = 0; // null terminate
-		buffer_position = 0;
-		return dup;
-	}
-    
-public:
-    
-	void buffer_push(char c)
-	{
-		if (buffer_position == buffer_length)
-		{
-			buffer_length *= 2;
-			buffer_data = (char*)realloc(buffer_data, buffer_length);
-		}
-		buffer_data[buffer_position] = c;
-		buffer_position++;
-	}
-    
-	char*  buffer_data;
-	size_t buffer_length;
-	size_t buffer_position;
-    
-	Environment* env;
-	Token*	     tokens;
-	int		     next;
-	int		     length;
-	
-	void start_parse()
-	{
-		length = next;
-		next = 0;
-	}
-    
-	void add_backtick()
-	{
-		add_basic(TOKEN_BACKTICK);
-	}
-    
-	void add_list_start()
-	{
-		add_basic(TOKEN_LIST_START);
-	}
-    
-	void add_list_end()
-	{
-		add_basic(TOKEN_LIST_END);
-	}
-    
-    void add_vector_start()
+    switch(token->type)
     {
-        add_basic(TOKEN_VECTOR_START);
+        case TOKEN_NUMBER:
+            LEXER_TRACE("Token TOKEN_NUMBER %lg\n", token->data.number);
+            break;
+            
+        case TOKEN_IDENTIFIER:
+            LEXER_TRACE("Token TOKEN_IDENTIFIER %s\n", token->data.identifier);
+            break;
+            
+        case TOKEN_STRING:
+            LEXER_TRACE("Token TOKEN_STRING \"%s\"\n", token->data.string);
+            break;
+            
+#define PRINT_CASE(id) case id: LEXER_TRACE("Token %s\n", #id); break
+            PRINT_CASE(TOKEN_BOOLEAN);
+            PRINT_CASE(TOKEN_CHARACTER);
+            PRINT_CASE(TOKEN_LIST_START);
+            PRINT_CASE(TOKEN_LIST_END);
+            PRINT_CASE(TOKEN_VECTOR_START);
+            PRINT_CASE(TOKEN_QUOTE);
+            PRINT_CASE(TOKEN_BACKTICK);
+            PRINT_CASE(TOKEN_COMMA);
+            PRINT_CASE(TOKEN_COMMA_AT);
+            PRINT_CASE(TOKEN_DOT);
+#undef PRINT_CASE
     }
     
-	void add_quote()
-	{
-		add_basic(TOKEN_QUOTE);
-	}
-    
-	void add_dot()
-	{
-		add_basic(TOKEN_DOT);
-	}
-    
-    void add_comma_at()
-    {
-        add_basic(TOKEN_COMMA_AT);
-    }
-    
-    void add_comma()
-    {
-        add_basic(TOKEN_COMMA);
-    }
-    
-	void add_identifier(void)
-	{
-		tokens[next].type = TOKEN_IDENTIFIER;
-		tokens[next].data.identifier = buffer_copy_and_reset();
-		tokens[next].print();
-		next++;
-	}
-    
-	void add_string(void)
-	{
-		tokens[next].type = TOKEN_STRING;
-		tokens[next].data.string = buffer_copy_and_reset();
-		tokens[next].print();
-		next++;
-	}
-    
-	void add_number(double number)
-	{
-		tokens[next].type = TOKEN_NUMBER;
-		tokens[next].data.number = number;
-		tokens[next].print();
-		next++;
-	}
-	
-	void add_character(char value)
-	{
-		tokens[next].type = TOKEN_CHARACTER;
-		tokens[next].data.character = value;
-		tokens[next].print();
-		next++;
-	}
-    
-	void add_boolean(bool value)
-	{
-		tokens[next].type = TOKEN_BOOLEAN;
-		tokens[next].data.boolean= value;
-		tokens[next].print();
-		next++;
-	}
-    
-	void init(Environment* env, int size)
-	{
-		next   = 0;
-		length = size;
-		tokens = (Token*)malloc(size*sizeof(Token));
-        
-		buffer_position = 0;
-		buffer_length	= 64;
-		buffer_data = (char*)malloc(buffer_length);
-		this->env = env;
-	}
-    
-	void destroy()
-	{
-		free(tokens);
-		free(buffer_data);
-	}
-    
-	const Token* peek(void) const
-	{
-		if (next < length)
-		{
-			return tokens + next;
-		}
-		return NULL;
-	}
-    
-	void skip(void)
-	{
-		next++;
-	}
-};
+ 
+}
 
+static void token_init(Token* token, TokenType type)
+{
+    token->type = type;
+    token_print(token);
+}
+
+static void token_backtick(Token* token)
+{
+    token_init(token, TOKEN_BACKTICK);
+}
+
+static void token_list_start(Token* token)
+{
+    token_init(token, TOKEN_LIST_START);
+}
+
+static void token_list_end(Token* token)
+{
+    token_init(token, TOKEN_LIST_END);
+}
+
+static void token_vector_start(Token* token)
+{
+    token_init(token, TOKEN_VECTOR_START);
+}
+
+static void token_quote(Token* token)
+{
+    token_init(token, TOKEN_QUOTE);
+}
+
+static void token_dot(Token* token)
+{
+    token_init(token, TOKEN_DOT);
+}
+
+static void token_comma_at(Token* token)
+{
+    token_init(token, TOKEN_COMMA_AT);
+}
+
+static void token_comma(Token* token)
+{
+    token_init(token, TOKEN_COMMA);
+}
+
+static void token_number(Token* token, double number)
+{
+    token->type = TOKEN_NUMBER;
+    token->data.number = number;
+    token_print(token);
+}
+
+static void token_character(Token* token, char value)
+{
+    token->type = TOKEN_CHARACTER;
+    token->data.character = value;
+    token_print(token);
+}
+
+static void token_boolean(Token* token, bool value)
+{
+    token->type = TOKEN_BOOLEAN;
+    token->data.boolean = value;
+    token_print(token);
+}
+
+static void token_identifier(Token* token, struct character_buffer* buffer)
+{
+    token->type = TOKEN_IDENTIFIER;
+    token->data.identifier = character_buffer_copy(buffer);
+    token_print(token);
+    character_buffer_reset(buffer);
+}
+
+static void token_string(Token* token, struct character_buffer* buffer)
+{
+    token->type = TOKEN_STRING;
+    token->data.identifier = character_buffer_copy(buffer);
+    token_print(token);
+    character_buffer_reset(buffer);
+}
 
 struct Input
 {
 	unsigned	  line;
 	unsigned	  column;
 	const char*   data;
-	TokenList*	  tokens;
-	Continuation* cont;
     
 	void init(Continuation* c, const char* d)
 	{
 		line	= 1;
 		column	= 1;
 		data	= d;
-		cont    = c;
+//		cont    = c;
 		
 	}
 	
@@ -1138,7 +1100,7 @@ void read_identifier(Input& input)
     
 }
 
-void read_token(Input& input)
+void read_token(Input& input, Token* token)
 {
 	skip_whitespace(input);
 	
@@ -3920,8 +3882,6 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 	
 	Input input;
 	input.init(cont, data);
-	TokenList tokens;
-	input.tokens = &tokens;
 	
 	
 	tokens.init(env, 1000);
