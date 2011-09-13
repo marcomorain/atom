@@ -48,8 +48,6 @@
 ## Booleans
 ## Pairs and lists
 * reverse
-* list-tail
-* list-ref
 * memq
 * memv
 * member
