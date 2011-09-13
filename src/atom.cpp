@@ -661,6 +661,14 @@ void character_buffer_init(struct character_buffer* buffer)
     buffer->data = (char*)malloc(buffer->size);
 }
 
+void character_buffer_destory(struct character_buffer* buffer)
+{
+    free(buffer->data);
+    buffer->used = 0;
+    buffer->size = 0;
+    buffer->data = NULL;
+}
+
 void character_buffer_push(struct character_buffer* buffer, char value)
 {
     if (buffer->used == buffer->size)
@@ -859,7 +867,8 @@ struct Input
 
 void syntax_error(Input& input, const char* message)
 {
-    signal_error(input.cont, "Syntax error line %d column %d: %s", input.line, input.column, message);
+    // TODO: pass in a cont.
+    signal_error(NULL, "Syntax error line %d column %d: %s", input.line, input.column, message);
 }
 
 void skip_whitespace(Input& input)
@@ -956,7 +965,7 @@ static bool is_subsequent(char c)
 	return is_initial(c) || isdigit(c) || is_special_subsequent(c);
 }
 
-static void read_character(Input& input)
+static void read_character(Input& input, Token* token)
 {
 	char c = input.get();
 	switch(c)
@@ -967,7 +976,7 @@ static void read_character(Input& input)
                 if (input.next() != 'c') syntax_error(input, "space expected");
                 if (input.next() != 'e') syntax_error(input, "space expected");
                 if (!is_delimeter(input.next())) syntax_error(input, "space expected");
-                input.tokens->add_character(' ');
+                token_character(token, ' ');
                 return;
             }
             else goto success;
@@ -980,8 +989,8 @@ static void read_character(Input& input)
 				if (input.next() != 'n') syntax_error(input, "newline expected");
 				if (input.next() != 'e') syntax_error(input, "newline expected");
 				if (!is_delimeter(input.next())) syntax_error(input, "newline expected");
-				input.tokens->add_character('\n'); // newline
-				return;
+                token_character(token, '\n');
+                return;
 			}
 			else goto success;
             
@@ -992,7 +1001,7 @@ success:
     
 	if (is_delimeter(input.next()))
 	{
-		input.tokens->add_character(c);
+        token_character(token, c);
 		return;
 	}
     
@@ -1007,7 +1016,7 @@ static double char_to_double(char c)
 	return c - '0';
 }
 
-void read_number(Input& input)
+void read_number(Input& input, Token* token)
 {
 	char c = input.get();
     
@@ -1019,7 +1028,7 @@ void read_number(Input& input)
         
 		if (!isdigit(c))
 		{
-			input.tokens->add_number(accum);
+            token_number(token, accum);
 			return;
 		}
 		
@@ -1028,8 +1037,11 @@ void read_number(Input& input)
 	}
 }
 
-void read_string(Input& input)
+void read_string(Input& input, Token* token)
 {
+    struct character_buffer buffer;
+    character_buffer_init(&buffer);
+    
 	assert(input.get() == '"');
     
 	for (;;)
@@ -1038,7 +1050,8 @@ void read_string(Input& input)
         
 		if (c == '"'){
 			input.next();
-			input.tokens->add_string();
+            token_string(token, &buffer);
+            character_buffer_destory(&buffer);
 			return;
 		}
         
@@ -1046,7 +1059,7 @@ void read_string(Input& input)
 			c = input.next();
 			if (c == '"' || c == '\\')
 			{
-				input.tokens->buffer_push(c);
+                character_buffer_push(&buffer, c);
 				continue;
 			}
 			syntax_error(input, "malformed string");
@@ -1054,7 +1067,7 @@ void read_string(Input& input)
         
 		if (isprint(c))
 		{
-			input.tokens->buffer_push(c);
+            character_buffer_push(&buffer, c);
 			continue;
 		}
         
@@ -1068,12 +1081,15 @@ bool is_peculiar_identifier(char c)
 	return c == '+' || c == '-';
 }
 
-void read_identifier(Input& input)
+void read_identifier(Input& input, Token* token)
 {
+    struct character_buffer buffer;
+    character_buffer_init(&buffer);
+    
 	char c = input.get();
 	if (is_initial(c))
 	{
-		input.tokens->buffer_push(c);
+        character_buffer_push(&buffer, c);
         
 		for (;;)
 		{
@@ -1083,12 +1099,12 @@ void read_identifier(Input& input)
 			{
 				syntax_error(input, "malformed identifier");
 			}
-			input.tokens->buffer_push(c);
+            character_buffer_push(&buffer, c);
 		}
 	}
 	else if (is_peculiar_identifier(c))
 	{
-		input.tokens->buffer_push(c);
+        character_buffer_push(&buffer, c);
 		input.next();
 	}
 	else
@@ -1096,8 +1112,8 @@ void read_identifier(Input& input)
 		syntax_error(input, "malformed identifier");
 	}
     
-	input.tokens->add_identifier();
-    
+    token_identifier(token, &buffer);
+    character_buffer_destory(&buffer);
 }
 
 void read_token(Input& input, Token* token)
@@ -1108,11 +1124,11 @@ void read_token(Input& input, Token* token)
 	
 	switch(c)
 	{
-		case '(':  input.next(); input.tokens->add_list_start(); break;
-		case ')':  input.next(); input.tokens->add_list_end();   break;
-		case '\'': input.next(); input.tokens->add_quote();      break;
-		case '`':  input.next(); input.tokens->add_backtick();   break;
-		case '.':  input.next(); input.tokens->add_dot();        break;
+		case '(':  input.next(); token_list_start(token); return;
+		case ')':  input.next(); token_list_end(token);   return;
+		case '\'': input.next(); token_quote(token);      return;
+		case '`':  input.next(); token_backtick(token);   return;
+		case '.':  input.next(); token_dot(token);        return;
             
         case ',':
         {
@@ -1120,11 +1136,11 @@ void read_token(Input& input, Token* token)
             if(input.get() == '@')
             {
                 input.next();
-                input.tokens->add_comma_at();
+                token_comma_at(token);
             }
             else
             {
-                input.tokens->add_comma();
+                token_comma(token);
             }
             
             break;
@@ -1136,17 +1152,17 @@ void read_token(Input& input, Token* token)
 			switch(c)
 			{
                     // @todo: check for next character here (should be a delimiter)
-				case 't':  input.next(); input.tokens->add_boolean(true);  break;
-				case 'f':  input.next(); input.tokens->add_boolean(false); break;
-				case '\\': input.next(); read_character(input);			   break;
-                case '(':  input.next(); input.tokens->add_vector_start(); break;
+				case 't':  input.next(); token_boolean(token, true);   return;
+				case 'f':  input.next(); token_boolean(token, false);  return;
+				case '\\': input.next(); read_character(input, token); return;
+                case '(':  input.next(); token_vector_start(token);    return;
                 default:   syntax_error(input, "malformed identifier after #");
 			}
             
 			break;
 		}
             
-		case '"': read_string(input); break;
+		case '"': read_string(input, token); break;
             
 		case 0: break;
             
@@ -1154,11 +1170,11 @@ void read_token(Input& input, Token* token)
 		{
 			if (isdigit(c))
 			{
-				read_number(input);
+				read_number(input, token);
 			}
 			else
 			{
-				read_identifier(input);
+				read_identifier(input, token);
 			}
             
 			break;
@@ -1166,10 +1182,8 @@ void read_token(Input& input, Token* token)
 	}
 }
 
-Cell* parse_datum(TokenList& tokens);
-
 Cell* parse_vector(TokenList& tokens)
-{
+{    
     Environment* env = tokens.env;
     const Token* t = tokens.peek();
     
@@ -1211,7 +1225,8 @@ Cell* parse_vector(TokenList& tokens)
 
 Cell* parse_abreviation(TokenList& tokens)
 {
-	const Token* t = tokens.peek();
+	Token token;
+    
 	
 	Environment* env = tokens.env;
     
@@ -3890,9 +3905,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 	{
 		read_token(input);
 	}
-    
-	tokens.start_parse();
-	
+
 	for(;;)
 	{
 		Cell* cell = parse_datum(tokens);
