@@ -130,6 +130,7 @@ static Cell cell_false = { TYPE_BOOLEAN, {false}, NULL, false };
 
 enum TokenType
 {
+    TOKEN_NONE,
 	TOKEN_IDENTIFIER,
 	TOKEN_BOOLEAN,
 	TOKEN_NUMBER,
@@ -729,6 +730,7 @@ static void token_print(Token* token)
             break;
             
 #define PRINT_CASE(id) case id: LEXER_TRACE("Token %s\n", #id); break
+            PRINT_CASE(TOKEN_NONE);
             PRINT_CASE(TOKEN_BOOLEAN);
             PRINT_CASE(TOKEN_CHARACTER);
             PRINT_CASE(TOKEN_LIST_START);
@@ -865,15 +867,15 @@ struct Input
 	};
 };
 
-void syntax_error(Input& input, const char* message)
+void syntax_error(Input* input, const char* message)
 {
     // TODO: pass in a cont.
-    signal_error(NULL, "Syntax error line %d column %d: %s", input.line, input.column, message);
+    signal_error(NULL, "Syntax error line %d column %d: %s", input->line, input->column, message);
 }
 
-void skip_whitespace(Input& input)
+void skip_whitespace(Input* input)
 {
-	for(char c = input.get(); c; c = input.next())
+	for(char c = input->get(); c; c = input->next())
 	{
 		switch(c)
 		{
@@ -883,7 +885,7 @@ void skip_whitespace(Input& input)
                 continue;
                 
 			case ';':
-                for (char d = input.next(); d != '\n'; d = input.next())
+                for (char d = input->next(); d != '\n'; d = input->next())
                 {
                     if (!d) return;
                 }
@@ -965,30 +967,30 @@ static bool is_subsequent(char c)
 	return is_initial(c) || isdigit(c) || is_special_subsequent(c);
 }
 
-static void read_character(Input& input, Token* token)
+static void read_character(Input* input, Token* token)
 {
-	char c = input.get();
+	char c = input->get();
 	switch(c)
 	{
 		case 's':
-            if (input.next() == 'p'){
-                if (input.next() != 'a') syntax_error(input, "space expected");
-                if (input.next() != 'c') syntax_error(input, "space expected");
-                if (input.next() != 'e') syntax_error(input, "space expected");
-                if (!is_delimeter(input.next())) syntax_error(input, "space expected");
+            if (input->next() == 'p'){
+                if (input->next() != 'a') syntax_error(input, "space expected");
+                if (input->next() != 'c') syntax_error(input, "space expected");
+                if (input->next() != 'e') syntax_error(input, "space expected");
+                if (!is_delimeter(input->next())) syntax_error(input, "space expected");
                 token_character(token, ' ');
                 return;
             }
             else goto success;
             
 		case 'n':
-			if (input.next() == 'e'){
-				if (input.next() != 'w') syntax_error(input, "newline expected");
-				if (input.next() != 'l') syntax_error(input, "newline expected");
-				if (input.next() != 'i') syntax_error(input, "newline expected");
-				if (input.next() != 'n') syntax_error(input, "newline expected");
-				if (input.next() != 'e') syntax_error(input, "newline expected");
-				if (!is_delimeter(input.next())) syntax_error(input, "newline expected");
+			if (input->next() == 'e'){
+				if (input->next() != 'w') syntax_error(input, "newline expected");
+				if (input->next() != 'l') syntax_error(input, "newline expected");
+				if (input->next() != 'i') syntax_error(input, "newline expected");
+				if (input->next() != 'n') syntax_error(input, "newline expected");
+				if (input->next() != 'e') syntax_error(input, "newline expected");
+				if (!is_delimeter(input->next())) syntax_error(input, "newline expected");
                 token_character(token, '\n');
                 return;
 			}
@@ -999,7 +1001,7 @@ static void read_character(Input& input, Token* token)
     
 success:
     
-	if (is_delimeter(input.next()))
+	if (is_delimeter(input->next()))
 	{
         token_character(token, c);
 		return;
@@ -1016,15 +1018,15 @@ static double char_to_double(char c)
 	return c - '0';
 }
 
-void read_number(Input& input, Token* token)
+void read_number(Input* input, Token* token)
 {
-	char c = input.get();
+	char c = input->get();
     
 	double accum = char_to_double(c);
     
 	for (;;)
 	{
-		c = input.next();
+		c = input->next();
         
 		if (!isdigit(c))
 		{
@@ -1037,26 +1039,26 @@ void read_number(Input& input, Token* token)
 	}
 }
 
-void read_string(Input& input, Token* token)
+void read_string(Input* input, Token* token)
 {
     struct character_buffer buffer;
     character_buffer_init(&buffer);
     
-	assert(input.get() == '"');
+	assert(input->get() == '"');
     
 	for (;;)
 	{
-		char c = input.next();
+		char c = input->next();
         
 		if (c == '"'){
-			input.next();
+			input->next();
             token_string(token, &buffer);
             character_buffer_destory(&buffer);
 			return;
 		}
         
 		if (c == '\\'){
-			c = input.next();
+			c = input->next();
 			if (c == '"' || c == '\\')
 			{
                 character_buffer_push(&buffer, c);
@@ -1081,19 +1083,19 @@ bool is_peculiar_identifier(char c)
 	return c == '+' || c == '-';
 }
 
-void read_identifier(Input& input, Token* token)
+void read_identifier(Input* input, Token* token)
 {
     struct character_buffer buffer;
     character_buffer_init(&buffer);
     
-	char c = input.get();
+	char c = input->get();
 	if (is_initial(c))
 	{
         character_buffer_push(&buffer, c);
         
 		for (;;)
 		{
-			c = input.next();
+			c = input->next();
 			if (is_delimeter(c)) break;
 			if (!is_subsequent(c))
 			{
@@ -1105,7 +1107,7 @@ void read_identifier(Input& input, Token* token)
 	else if (is_peculiar_identifier(c))
 	{
         character_buffer_push(&buffer, c);
-		input.next();
+		input->next();
 	}
 	else
 	{
@@ -1116,26 +1118,27 @@ void read_identifier(Input& input, Token* token)
     character_buffer_destory(&buffer);
 }
 
-void read_token(Input& input, Token* token)
+void read_token(Input* input, Token* token)
 {
 	skip_whitespace(input);
+    token->type = TOKEN_NONE;
 	
-	char c = input.get();
+	char c = input->get();
 	
 	switch(c)
 	{
-		case '(':  input.next(); token_list_start(token); return;
-		case ')':  input.next(); token_list_end(token);   return;
-		case '\'': input.next(); token_quote(token);      return;
-		case '`':  input.next(); token_backtick(token);   return;
-		case '.':  input.next(); token_dot(token);        return;
+		case '(':  input->next(); token_list_start(token); return;
+		case ')':  input->next(); token_list_end(token);   return;
+		case '\'': input->next(); token_quote(token);      return;
+		case '`':  input->next(); token_backtick(token);   return;
+		case '.':  input->next(); token_dot(token);        return;
             
         case ',':
         {
-            input.next();
-            if(input.get() == '@')
+            input->next();
+            if(input->get() == '@')
             {
-                input.next();
+                input->next();
                 token_comma_at(token);
             }
             else
@@ -1148,14 +1151,14 @@ void read_token(Input& input, Token* token)
             
 		case '#':
 		{
-			c = input.next();
+			c = input->next();
 			switch(c)
 			{
                     // @todo: check for next character here (should be a delimiter)
-				case 't':  input.next(); token_boolean(token, true);   return;
-				case 'f':  input.next(); token_boolean(token, false);  return;
-				case '\\': input.next(); read_character(input, token); return;
-                case '(':  input.next(); token_vector_start(token);    return;
+				case 't':  input->next(); token_boolean(token, true);   return;
+				case 'f':  input->next(); token_boolean(token, false);  return;
+				case '\\': input->next(); read_character(input, token); return;
+                case '(':  input->next(); token_vector_start(token);    return;
                 default:   syntax_error(input, "malformed identifier after #");
 			}
             
@@ -1182,20 +1185,17 @@ void read_token(Input& input, Token* token)
 	}
 }
 
-Cell* parse_vector(TokenList& tokens)
-{    
-    Environment* env = tokens.env;
-    const Token* t = tokens.peek();
-    
-	if (!tokens.peek()) return NULL;
-    
-    if (t->type != TOKEN_VECTOR_START)
+Cell* parse_datum(Environment* env, Input* input, Token* token);
+
+
+Cell* parse_vector(Environment* env, Input* input, Token* token)
+{
+    if (token->type != TOKEN_VECTOR_START)
     {
         return NULL;
     }
     
     // skip the #(
-    tokens.skip();
     
     int length = 0;
     
@@ -1203,13 +1203,15 @@ Cell* parse_vector(TokenList& tokens)
     
     for (;;)
     {
-        const Token* next = tokens.peek();
-        if (!next) signal_error(env->cont, "unexpected end of input");
-        if (next->type == TOKEN_LIST_END)
+        Token next;
+        read_token(input, &next);
+        
+        if (next.type == TOKEN_NONE) signal_error(env->cont, "unexpected end of input");
+        if (next.type == TOKEN_LIST_END)
         {
             break;
         }
-        stack.push_back(parse_datum(tokens));
+        stack.push_back(parse_datum(env, input, &next));
         length++;
     }
     
@@ -1223,17 +1225,10 @@ Cell* parse_vector(TokenList& tokens)
 	return vector;
 }
 
-Cell* parse_abreviation(TokenList& tokens)
+Cell* parse_abreviation(Environment* env, Input* input, Token* token)
 {
-	Token token;
-    
-	
-	Environment* env = tokens.env;
-    
-	if (!t) signal_error(env->cont, "unexpected end of input");
-    
     const char* symbol = NULL;
-    switch(t->type)
+    switch(token->type)
     {
         case TOKEN_QUOTE:
             symbol = "quote";
@@ -1257,44 +1252,47 @@ Cell* parse_abreviation(TokenList& tokens)
     }
     
     Cell* abreviation = make_symbol(env, symbol);
-    tokens.skip();
-    return cons(env, abreviation, cons(env, parse_datum(tokens), NULL));
+
+    Token body;
+    read_token(input, &body);
+    
+    return cons(env, abreviation, cons(env, parse_datum(env, input, &body), NULL));
 }
 
-Cell* parse_list(TokenList& tokens)
+Cell* parse_list(Environment* env, Input* input, Token* token)
 {
 	// todo: pass this in
-	Continuation* cont = tokens.env->cont;
+	Continuation* cont = env->cont;
 	
-	if (!tokens.peek()) return NULL;
-	
-	if (tokens.peek()->type != TOKEN_LIST_START)
+	if (token->type != TOKEN_LIST_START)
 	{
-		return parse_abreviation(tokens);
+		return parse_abreviation(env, input, token);
 	}
     
 	// skip the start list token
-	tokens.skip();
+	Token first;
+    read_token(input, &first);
+	Cell* cell = parse_datum(env, input, &first);
 	
-	Cell* cell = parse_datum(tokens);
-	
-	Cell* list = cons(tokens.env, cell, NULL);
+	Cell* list = cons(env, cell, NULL);
     
 	Cell* head = list;
     
 	for (;;)
 	{
-		
-		if (!tokens.peek())
-		{
-			signal_error(cont, "Unexpected end of input.");
+		Token next;
+        read_token(input, &next);
+        
+        if (next.type == TOKEN_NONE)
+        {
+			signal_error(cont, "Unexpected end of input->");
 		}
 		
-		if (tokens.peek()->type == TOKEN_DOT)
+		if (next.type == TOKEN_DOT)
 		{
-			tokens.skip();
-			Cell* cell = parse_datum(tokens);
-            
+            Token second;
+            read_token(input, &second);
+			Cell* cell = parse_datum(env, input, &second);
 			
 			if (!cell)
 			{
@@ -1303,28 +1301,29 @@ Cell* parse_list(TokenList& tokens)
             
 			set_cdr(list, cell);
             
-			if (tokens.peek()->type != TOKEN_LIST_END)
+            Token end;
+            read_token(input, &end);
+            
+			if (end.type != TOKEN_LIST_END)
 			{
 				signal_error(cont, "expecting )");
 			}
-            
-			tokens.skip();
 			break;
 		}
-		else if (tokens.peek()->type == TOKEN_LIST_END)
+		else if (next.type == TOKEN_LIST_END)
 		{
-			tokens.skip();
 			break; // success
 		}
 		
-		Cell* car = parse_datum(tokens);
+		Cell* car = parse_datum(env, input, &next);
         
 		if (!car)
 		{
 			signal_error(cont, "is this unexpected end of input? todo");
+            break;
 		}
         
-		Cell* rest = cons(tokens.env, car, NULL);
+		Cell* rest = cons(env, car, NULL);
 		set_cdr(list, rest);
 		list = rest;
 	}
@@ -1333,69 +1332,42 @@ Cell* parse_list(TokenList& tokens)
 	return head;
 }
 
-Cell* parse_compound_datum(TokenList& tokens)
+Cell* parse_compound_datum(Environment* env, Input* input, Token* token)
 {
-	if (Cell* list   = parse_list(tokens))   return list;
-    if (Cell* vector = parse_vector(tokens)) return vector;
+	if (Cell* list   = parse_list(env, input, token))   return list;
+    if (Cell* vector = parse_vector(env, input, token)) return vector;
 	return NULL;
 }
 
-Cell* parse_simple_datum(TokenList& tokens)
-{
-	const Token* t = tokens.peek();
-	
-	if (!t) return NULL;
-    
+Cell* parse_simple_datum(Environment* env, Token* t)
+{	    
 	switch (t->type)
 	{
 		case TOKEN_BOOLEAN:
-		{
-			Cell* cell = make_cell(tokens.env, TYPE_BOOLEAN);
-			cell->data.boolean = t->data.boolean;
-			tokens.skip();
-			return cell;
-		}
+            return make_boolean(t->data.boolean);
             
         case TOKEN_NUMBER:
-		{
-			Cell* cell = make_number(tokens.env, t->data.number);
-			tokens.skip();
-			return cell;
-		}
+			return make_number(env, t->data.number);
             
 		case TOKEN_CHARACTER:
-		{
-			
-			Cell* cell = make_cell(tokens.env, TYPE_CHARACTER);
-			cell->data.character = t->data.character;
-			tokens.skip();
-			return cell;
-		}
+            return make_character(env, t->data.character);
             
         case TOKEN_STRING:
-		{
-			Cell* cell = make_string(tokens.env, (int)strlen(t->data.string), t->data.string);
-			tokens.skip();
-			return cell;
-		}
+			return make_string(env, (int)strlen(t->data.string), t->data.string);
             
 		case TOKEN_IDENTIFIER:
-		{
-			Cell* cell = make_symbol(tokens.env, t->data.identifier);
-			tokens.skip();
-			return cell;
-		}
+			return make_symbol(env, t->data.identifier);
             
 		default:
 			return NULL;
 	}
 }
 
-Cell* parse_datum(TokenList& tokens)
-{
-	if (Cell* simple_datum   = parse_simple_datum(tokens))   return simple_datum;
-    if (Cell* compound_datum = parse_compound_datum(tokens)) return compound_datum;
-    //assert(false);
+Cell* parse_datum(Environment* env, Input* input, Token* token)
+{    
+	if (Cell* simple_datum   = parse_simple_datum(env, token))   return simple_datum;
+    if (Cell* compound_datum = parse_compound_datum(env, input, token)) return compound_datum;
+    //assert(false);?
     return NULL;
 }
 
@@ -3915,7 +3887,6 @@ static Cell* always_false(Environment* env, Cell* params)
 static void atom_api_load(Continuation* cont, const char* data, size_t length)
 {	
     //printf("input> %s", data);
-    
 	Environment* env = cont->env;
     
 	JumpBuffer* prev = cont->escape;
@@ -3935,18 +3906,12 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 	
 	Input input;
 	input.init(cont, data);
-	
-	
-	tokens.init(env, 1000);
-    
-	while (input.get())
-	{
-		read_token(input);
-	}
 
 	for(;;)
 	{
-		Cell* cell = parse_datum(tokens);
+        Token next;
+        read_token(&input, &next);
+		Cell* cell = parse_datum(env, &input, &next);
         
 		if (!cell)
 		{
@@ -3962,8 +3927,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 	}
     
 cleanup:
-    
-	tokens.destroy();	
+
 	collect_garbage(cont);
 	
 	// restore the old jump buffer
