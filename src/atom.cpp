@@ -11,8 +11,6 @@
 #include <cstring>
 #include <new>
 
-
-
 // For a stack in parse_vector
 #include <vector>
 
@@ -41,6 +39,7 @@ enum CellType
     TYPE_CHARACTER,
     TYPE_NUMBER,
     TYPE_STRING,
+    TYPE_EMPTY_LIST,
     TYPE_PAIR,
     TYPE_VECTOR,
     TYPE_SYMBOL,
@@ -55,6 +54,7 @@ const static char* typenames [] = {
 	"character",
 	"number",
 	"string",
+    "empty list",
 	"pair",
 	"vector",
 	"symbol",
@@ -125,8 +125,9 @@ struct Cell
 	bool	 mark;
 };
 
-static Cell cell_true  = { TYPE_BOOLEAN, {true }, NULL, false };
-static Cell cell_false = { TYPE_BOOLEAN, {false}, NULL, false };
+static Cell cell_empty_list = { TYPE_EMPTY_LIST, {NULL}, NULL, false };
+static Cell cell_true       = { TYPE_BOOLEAN,   {true }, NULL, false };
+static Cell cell_false      = { TYPE_BOOLEAN,   {false}, NULL, false };
 
 enum TokenType
 {
@@ -157,10 +158,14 @@ struct Symbol
 
 static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 {
-	if (!cell) return;
+    assert(cell);
     
 	switch(cell->type)
 	{
+        case TYPE_EMPTY_LIST:
+            fprintf(output, "()");
+            break;
+            
         case TYPE_BOOLEAN:
             fprintf(output, "#%c", (cell->data.boolean ? 't' : 'f'));
             break;
@@ -252,7 +257,6 @@ static void print(FILE* output, const Cell* cell, bool human)
 	print_rec(output, cell, human, 1);
 	fprintf(output, "\n");
 }
-
 
 static bool power_of_two(int v)
 {
@@ -623,17 +627,21 @@ static Cell* cdr(const Cell* cell)
 static void set_car(Cell* list, Cell* car)
 {
 	assert(list->type == TYPE_PAIR);
+    assert(car);
 	list->data.pair.car = car;
 }
 
 static void set_cdr(Cell* list, Cell* cdr)
 {
 	assert(list->type == TYPE_PAIR);
+    assert(cdr);
 	list->data.pair.cdr = cdr;
 }
 
 static Cell* cons(Environment* env, Cell* car, Cell* cdr)
 {
+    assert(car);
+    assert(cdr);
 	Cell* cell = make_cell(env, TYPE_PAIR);
 	set_car(cell, car);
 	set_cdr(cell, cdr);
@@ -645,8 +653,6 @@ static bool is_false(const Cell* cell)
 	return	cell->type == TYPE_BOOLEAN &&
     cell->data.boolean == false;
 }
-
-
 
 struct character_buffer
 {
@@ -1215,6 +1221,7 @@ Cell* parse_vector(Environment* env, Input* input, Token* token)
         length++;
     }
     
+    // Fill with empty list or null?
     Cell* vector = make_vector(env, length, NULL);
     
     for (int i=0; i<length; i++)
@@ -1261,75 +1268,53 @@ Cell* parse_abreviation(Environment* env, Input* input, Token* token)
 
 Cell* parse_list(Environment* env, Input* input, Token* token)
 {
-	// todo: pass this in
-	Continuation* cont = env->cont;
-	
-	if (token->type != TOKEN_LIST_START)
+    Continuation* cont = env->cont;
+    
+    if (token->type != TOKEN_LIST_START)
 	{
 		return parse_abreviation(env, input, token);
 	}
+ 
+    // Token was '(', skip it and move on.
+	Token next;
+    read_token(input, &next);
     
-	// skip the start list token
-	Token first;
-    read_token(input, &first);
-	Cell* cell = parse_datum(env, input, &first);
-	
-	Cell* list = cons(env, cell, NULL);
-    
-	Cell* head = list;
-    
-	for (;;)
-	{
-		Token next;
-        read_token(input, &next);
-        
-        if (next.type == TOKEN_NONE)
+    switch(next.type)
+    {
+        case TOKEN_LIST_END:
+        // Empty list
+        return &cell_empty_list;
+            
+        case TOKEN_DOT:
         {
-			signal_error(cont, "Unexpected end of input->");
-		}
-		
-		if (next.type == TOKEN_DOT)
-		{
             Token second;
             read_token(input, &second);
-			Cell* cell = parse_datum(env, input, &second);
-			
-			if (!cell)
-			{
-				signal_error(cont, "expecting a datum after a dot");
-			}
+            Cell* cdr_cell = parse_datum(env, input, &second);
             
-			set_cdr(list, cell);
+            if (!cdr_cell)
+            {
+                signal_error(cont, "expecting a datum after a dot");
+            }
             
             Token end;
             read_token(input, &end);
             
-			if (end.type != TOKEN_LIST_END)
-			{
-				signal_error(cont, "expecting )");
-			}
-			break;
-		}
-		else if (next.type == TOKEN_LIST_END)
-		{
-			break; // success
-		}
-		
-		Cell* car = parse_datum(env, input, &next);
-        
-		if (!car)
-		{
-			signal_error(cont, "is this unexpected end of input? todo");
-            break;
-		}
-        
-		Cell* rest = cons(env, car, NULL);
-		set_cdr(list, rest);
-		list = rest;
-	}
-    
-	// success, allocate a list
-	return head;
+            if (end.type != TOKEN_LIST_END)
+            {
+                signal_error(cont, "expecting )");
+            }
+            
+            return cdr_cell;
+        }
+            
+        default:
+        {
+            Cell* data = parse_datum(env, input, &next);
+            Token rest;
+            read_token(input, &rest);
+            return cons(env, data, parse_list(env, input, &rest));
+        }
+    }
 }
 
 Cell* parse_compound_datum(Environment* env, Input* input, Token* token)
