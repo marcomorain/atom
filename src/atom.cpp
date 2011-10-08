@@ -351,7 +351,7 @@ static Symbol* find_or_insert_symbol(Continuation* cont, const char* name)
     return new_symbol;
 }
 
-static void signal_error(Continuation* cont, const char* message, ...)
+static Cell* signal_error(Continuation* cont, const char* message, ...)
 {
 	va_list args;
 	va_start(args, message);
@@ -360,6 +360,7 @@ static void signal_error(Continuation* cont, const char* message, ...)
 	fprintf(stderr, "\n");
 	va_end(args);
 	longjmp(cont->escape->buffer, 1);
+    return &cell_empty_list;
 }
 
 static void type_check(Continuation* cont, int expected, int actual)
@@ -430,6 +431,7 @@ static void mark(Cell* cell)
 	
 	switch(cell->type)
 	{
+        case TYPE_EMPTY_LIST:
 		case TYPE_BOOLEAN:
 		case TYPE_CHARACTER:
 		case TYPE_NUMBER:
@@ -1212,7 +1214,7 @@ Cell* parse_vector(Environment* env, Input* input, Token* token)
         Token next;
         read_token(input, &next);
         
-        if (next.type == TOKEN_NONE) signal_error(env->cont, "unexpected end of input");
+        if (next.type == TOKEN_NONE) return signal_error(env->cont, "unexpected end of input");
         if (next.type == TOKEN_LIST_END)
         {
             break;
@@ -1263,13 +1265,54 @@ Cell* parse_abreviation(Environment* env, Input* input, Token* token)
     Token body;
     read_token(input, &body);
     
-    return cons(env, abreviation, cons(env, parse_datum(env, input, &body), NULL));
+    return cons(env, abreviation, cons(env, parse_datum(env, input, &body), &cell_empty_list));
+}
+
+Cell* parse_list_tail(Environment* env, Input* input, Token* token)
+{
+    switch(token->type)
+    {
+        case TOKEN_LIST_END:
+            // Empty list
+            return &cell_empty_list;
+            
+        case TOKEN_DOT:
+        {
+            Token next;
+            read_token(input, &next);
+            Cell* cdr_cell = parse_datum(env, input, &next);
+            
+            if (!cdr_cell)
+            {
+                return signal_error(env->cont, "expecting a datum after a dot");
+            }
+            
+            Token end;
+            read_token(input, &end);
+            
+            if (end.type != TOKEN_LIST_END)
+            {
+                return signal_error(env->cont, "expecting )");
+            }
+            
+            return cdr_cell;
+        }
+            
+        default:
+        {
+            Cell* data = parse_datum(env, input, token);
+            assert(data);
+            Token rest;
+            read_token(input, &rest);
+            Cell* rest_cell = parse_list_tail(env, input, &rest);
+            assert(rest_cell);
+            return cons(env, data, rest_cell);
+        }
+    }
 }
 
 Cell* parse_list(Environment* env, Input* input, Token* token)
 {
-    Continuation* cont = env->cont;
-    
     if (token->type != TOKEN_LIST_START)
 	{
 		return parse_abreviation(env, input, token);
@@ -1278,43 +1321,7 @@ Cell* parse_list(Environment* env, Input* input, Token* token)
     // Token was '(', skip it and move on.
 	Token next;
     read_token(input, &next);
-    
-    switch(next.type)
-    {
-        case TOKEN_LIST_END:
-        // Empty list
-        return &cell_empty_list;
-            
-        case TOKEN_DOT:
-        {
-            Token second;
-            read_token(input, &second);
-            Cell* cdr_cell = parse_datum(env, input, &second);
-            
-            if (!cdr_cell)
-            {
-                signal_error(cont, "expecting a datum after a dot");
-            }
-            
-            Token end;
-            read_token(input, &end);
-            
-            if (end.type != TOKEN_LIST_END)
-            {
-                signal_error(cont, "expecting )");
-            }
-            
-            return cdr_cell;
-        }
-            
-        default:
-        {
-            Cell* data = parse_datum(env, input, &next);
-            Token rest;
-            read_token(input, &rest);
-            return cons(env, data, parse_list(env, input, &rest));
-        }
-    }
+    return parse_list_tail(env, input, &next);
 }
 
 Cell* parse_compound_datum(Environment* env, Input* input, Token* token)
@@ -1446,8 +1453,7 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 		return environment_get(env->parent, symbol);
 	}
     
-	signal_error(env->cont, "reference to undefined identifier: %s", symbol->data.symbol->name);
-	return NULL;
+	return signal_error(env->cont, "reference to undefined identifier: %s", symbol->data.symbol->name);
 	
 }
 
@@ -1531,7 +1537,7 @@ static Cell* nth_param_any(Environment* env, Cell* params, int n)
     
     if (!result)
     {
-        signal_error(env->cont, "Too few parameters passed (%d expected)", n);
+        return signal_error(env->cont, "Too few parameters passed (%d expected)", n);
     }
     
     return result;
@@ -1604,6 +1610,12 @@ static Cell* optional_second_param(Environment* env, Cell* params)
 	
 	Cell* result = eval(env, car(rest));
 	return result;
+}
+
+static bool is_pair(const Cell* cell)
+{
+    assert(cell);
+    return cell->type == TYPE_PAIR;
 }
 
 // 4.1.2
@@ -1700,7 +1712,7 @@ static Cell* atom_set_b(Environment* env, Cell* params)
 
 static Cell* atom_cond(Environment* env, Cell* params)
 {
-	for(Cell* clause = params; clause; clause = cdr(clause))
+	for(Cell* clause = params; is_pair(clause); clause = cdr(clause))
 	{
 		Cell* test = car(clause);
         
@@ -1722,7 +1734,7 @@ static Cell* atom_cond(Environment* env, Cell* params)
 		Cell* last_result = NULL;
 		
 		// @todo: assert there is at least one expression.
-		for (Cell* expr = cdr(test); expr; expr = cdr(expr))
+		for (Cell* expr = cdr(test); is_pair(expr); expr = cdr(expr))
 		{
 			last_result = eval(env, car(expr));
 		}
@@ -1770,11 +1782,11 @@ static Cell* atom_and(Environment* env, Cell* params)
 {
 	if (!car(params))
 	{
-		signal_error(env->cont, "syntax error. at least 1 test exptected in (and ...)");
+		return signal_error(env->cont, "syntax error. at least 1 test exptected in (and ...)");
 	}
     
 	Cell* last_result;
-	for (Cell* cell = params; cell; cell = cdr(cell))
+	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
 	{
 		last_result = eval(env, car(cell));
 		
@@ -1797,10 +1809,10 @@ static Cell* atom_or(Environment* env, Cell* params)
 {
 	if (!car(params))
 	{
-		signal_error(env->cont, "syntax error. at least 1 test exptected in (or ...)");
+		return signal_error(env->cont, "syntax error. at least 1 test exptected in (or ...)");
 	}
     
-	for (Cell* cell = params; cell; cell = cdr(cell))
+	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
 	{
 		Cell* test = eval(env, car(cell));
 		
@@ -1832,14 +1844,14 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 	
 	if (!body)
 	{
-		signal_error(env->cont, "No expression in body");
+		return signal_error(env->cont, "No expression in body");
 	}
 	
 	Environment* child = create_environment(env->cont, env);
 	
 	Environment* target = star ? child : env;
     
-	for (Cell* b = bindings; b; b = cdr(b))
+	for (Cell* b = bindings; is_pair(b); b = cdr(b))
 	{
 		Cell* pair = car(b);
 		Cell* symbol = car(pair);
@@ -1850,7 +1862,7 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 	
 	Cell* last = NULL;
     
-	for (Cell* b = body; b; b = cdr(b))
+	for (Cell* b = body; is_pair(b); b = cdr(b))
 	{
 		Cell* expr = car(b);
 		last = eval(child, expr);
@@ -1918,7 +1930,7 @@ static Cell* atom_define(Environment* env, Cell* params)
             
 		default:
             // todo: make this a syntax error.
-            signal_error(env->cont, "symbol or pair expected as parameter 1 to define");
+            return signal_error(env->cont, "symbol or pair expected as parameter 1 to define");
 	}
 	
 	assert(variable && value);
@@ -2032,8 +2044,7 @@ static Cell* atom_error(Environment* env, Cell* params)
 	{
 		str = message->data.string.data;
 	}
-	signal_error(env->cont, "%s", str);
-	return NULL;
+	return signal_error(env->cont, "%s", str);
 }
 
 static Cell* atom_lambda(Environment* env, Cell* params)
@@ -2051,7 +2062,7 @@ static Cell* atom_lambda(Environment* env, Cell* params)
 static Cell* atom_begin(Environment* env, Cell* params)
 {
 	Cell* last = NULL;
-	for (Cell* cell = params; cell; cell = cdr(cell))
+	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
 	{
 		// todo: tail recursion.
 		last = eval(env, car(cell));
@@ -2069,7 +2080,7 @@ static Cell* plus_mul_helper(Environment* env,
 {
 	double result = identity;
 	
-	for (Cell* z = params; z; z = cdr(z))
+	for (Cell* z = params; is_pair(z); z = cdr(z))
 	{
 		Cell* n = car(z);
 		
@@ -2113,7 +2124,7 @@ static Cell* sub_div_helper(Environment* env, Cell* params, bool is_sub)
 	
 	if (cdr(params))
 	{
-		for (Cell* cell = cdr(params); cell; cell = cdr(cell))
+		for (Cell* cell = cdr(params); is_pair(cell); cell = cdr(cell))
 		{
 			Cell* num = eval(env, car(cell));
 			type_check(env->cont, TYPE_NUMBER, num->type);
@@ -2546,7 +2557,7 @@ static Cell* min_max_helper(Environment* env, Cell* params, bool is_min)
 {
 	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
 	
-	for (Cell* x = cdr(params); x; x = cdr(x))
+	for (Cell* x = cdr(params); is_pair(x); x = cdr(x))
 	{
 		Cell* n = eval(env, car(x));
 		type_check(env->cont, TYPE_NUMBER, n->type);
@@ -2697,7 +2708,7 @@ static Cell* atom_length(Environment* env, Cell* params)
 {	
 	int length = 1;
     
-	for (Cell* list = eval(env, car(params)); list; list = list->data.pair.cdr)
+	for (Cell* list = eval(env, car(params)); is_pair(list); list = list->data.pair.cdr)
 	{
 		type_check(env->cont, TYPE_PAIR, list->type);
 		length++;
@@ -2743,7 +2754,7 @@ static Cell* list_tail_helper(Environment* env, Cell* params)
 	for (int k = nth_param_integer(env, params, 2); k>0; k--)
 	{
 		list = cdr(list);
-		if (!list) signal_error(env->cont, "The given list must have at least K elements");
+		if (!list) return signal_error(env->cont, "The given list must have at least K elements");
 	}
 	return list;
 }
@@ -2797,12 +2808,12 @@ static Cell* atom_symbol_to_string(Environment* env, Cell* params)
 static Cell* atom_string(Environment* env, Cell* params)
 {
     int count = 0;
-    for (Cell* p = params; p; p = cdr(p))
+    for (Cell* p = params; is_pair(p); p = cdr(p))
     {
         count++;
     }
 
-    if (count < 1) signal_error(env->cont, "At least one parameter must be passed to (string char ...)");
+    if (count < 1) return signal_error(env->cont, "At least one parameter must be passed to (string char ...)");
 
     std::vector<char> stack;
 
@@ -2915,7 +2926,7 @@ static Cell* atom_substring(Environment* env, Cell* params)
     const int length = end - start;
     
     if (start < 0 || start >= end || end > cell->data.string.length){
-        signal_error(env->cont,
+        return signal_error(env->cont,
                      "Invalid indices (%d, %d) passed to substring. String has length %d",
                      start, end, cell->data.string.length);
     }
@@ -2936,7 +2947,7 @@ static Cell* atom_string_append(Environment* env, Cell* params)
 {
     std::vector<char> stack;
     
-    for (Cell* param = params; param; param = cdr(param))
+    for (Cell* param = params; is_pair(param); param = cdr(param))
     {
         Cell* str = eval(env, car(param));
         type_check(env->cont, TYPE_STRING, str->type);
@@ -2985,7 +2996,7 @@ static Cell* atom_list_to_string(Environment* env, Cell* params)
     
     int length = 0;
     
-    for (Cell* c = list; c; c = cdr(c))
+    for (Cell* c = list; is_pair(c); c = cdr(c))
     {
         type_check(env->cont, TYPE_CHARACTER, car(c)->type);
         length = length + 1;
@@ -2994,7 +3005,7 @@ static Cell* atom_list_to_string(Environment* env, Cell* params)
     Cell* string = make_empty_string(env, length);
     
     int i = 0;
-    for (Cell* c = list; c; c = cdr(c))
+    for (Cell* c = list; is_pair(c); c = cdr(c))
     {
         assert(TYPE_CHARACTER == car(c)->type);
         string->data.string.data[i] = car(c)->data.character;
@@ -3243,7 +3254,7 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 	
 	if (k < 0)
 	{
-		signal_error(env->cont, "positive integer length required");
+		return signal_error(env->cont, "positive integer length required");
 	}
     
     return make_string_filled(env, k, fill);
@@ -3274,7 +3285,7 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 	// todo: watch this cast.
 	if (k < 0 || k < string->data.string.length)
 	{
-		signal_error(env->cont, "k is not a valid index of the given string");
+		return signal_error(env->cont, "k is not a valid index of the given string");
 	}
 	
 	return make_character(env, string->data.string.data[k]);
@@ -3335,7 +3346,7 @@ static Cell* atom_make_vector(Environment* env, Cell* params)
 static Cell* atom_vector(Environment* env, Cell* params)
 {
     int length = 0;
-    for (Cell* p = params; p; p = cdr(p))
+    for (Cell* p = params; is_pair(p); p = cdr(p))
     {
         length++;
     }
@@ -3344,7 +3355,7 @@ static Cell* atom_vector(Environment* env, Cell* params)
     
     int i = 0;
     
-    for (Cell* p = params; p; p = cdr(p))
+    for (Cell* p = params; is_pair(p); p = cdr(p))
     {
         v->data.vector.data[i] = eval(env, car(p));
         i++;
@@ -3376,7 +3387,7 @@ static Cell* atom_vector_ref(Environment* env, Cell* params)
 	
 	if (!valid_vector_index(v, k))
 	{
-		signal_error(env->cont, "Invalid vector index");
+		return signal_error(env->cont, "Invalid vector index");
 	}
 	
 	Cell* result = v->data.vector.data[k];
@@ -3385,7 +3396,7 @@ static Cell* atom_vector_ref(Environment* env, Cell* params)
 	if (!result)
 	{
 		// todo: format error message better
-		signal_error(env->cont, "Cannot access unitialized vector");
+		return signal_error(env->cont, "Cannot access unitialized vector");
 	}
 	return result;
 }
@@ -3436,12 +3447,12 @@ static Cell* atom_list_to_vector(Environment* env, Cell* params)
     Cell* list = nth_param(env, params, 1, TYPE_PAIR);
     
     int length = 0;
-    for (Cell* cell = list; cell; cell = cdr(cell)) length++;
+    for (Cell* cell = list; is_pair(cell); cell = cdr(cell)) length++;
     
     Cell* vector = make_vector(env, length, NULL);
     
     int i = 0;
-    for (Cell* cell = list; cell; cell = cdr(cell))
+    for (Cell* cell = list; is_pair(cell); cell = cdr(cell))
     {
         vector->data.vector.data[i] = car(cell);
         i++;
@@ -3483,7 +3494,7 @@ static Cell* apply_recursive(Environment* env, Cell* function, Cell* args)
     }
     
     return cons(env, eval(env, cons(env, function,
-                                         cons(env, car(args), NULL))),
+                                         cons(env, car(args), &cell_empty_list))),
                      apply_recursive(env, function, cdr(args)));
 }
 
@@ -3496,7 +3507,7 @@ static Cell* atom_apply(Environment* env, Cell* params)
     
     int num_args = 0;
     
-    for (Cell* param = params; param; param = cdr(param)) num_args++;
+    for (Cell* param = params; is_pair(param); param = cdr(param)) num_args++;
     
     Cell* list = nth_param(env, params, num_args, TYPE_PAIR);
     
@@ -3532,7 +3543,7 @@ static Cell* atom_apply(Environment* env, Cell* params)
 static Cell* atom_scheme_report_environment(Environment* env, Cell* params)
 {
     const int version = nth_param_integer(env, params, 1);
-    if (version != 5) signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    if (version != 5) return signal_error(env->cont, "Expected version 5, but %d was specified", version);
     
     while (env->parent) env = env->parent;
     
@@ -3546,7 +3557,7 @@ static Cell* atom_scheme_report_environment(Environment* env, Cell* params)
 static Cell* atom_null_environment(Environment* env, Cell* params)
 {
     const int version = nth_param_integer(env, params, 1);
-    if (version != 5) signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    if (version != 5) return signal_error(env->cont, "Expected version 5, but %d was specified", version);
     
     while (env->parent) env = env->parent;
     
@@ -3564,7 +3575,7 @@ static Cell* atom_null_environment(Environment* env, Cell* params)
 static Cell* atom_interaction_environment(Environment* env, Cell* params)
 {
     const int version = nth_param_integer(env, params, 1);
-    if (version != 5) signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    if (version != 5) return signal_error(env->cont, "Expected version 5, but %d was specified", version);
     
     while (env->parent) env = env->parent;
     
@@ -3646,7 +3657,7 @@ static Cell* file_open_helper(Environment* env, Cell* params, int n, bool read)
     
     if (!file)
     {
-        signal_error(env->cont, "Error opening file: %s", filename);
+        return signal_error(env->cont, "Error opening file: %s", filename);
     }
     
     
@@ -3900,7 +3911,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
         
 		if (!cell)
 		{
-            print(stdout, cell, false);
+            printf("read null\n");
 			break;
 		}
         
@@ -3951,7 +3962,7 @@ tailcall:
     
 	switch(cell->type)
 	{
-            // basic types will self evaluate
+        // basic types will self evaluate
 		case TYPE_BOOLEAN:
 		case TYPE_NUMBER:
 		case TYPE_STRING:
@@ -3963,13 +3974,16 @@ tailcall:
 		case TYPE_SYMBOL:
 			return environment_get(env, cell);
             
+        default:
+            return signal_error(env->cont, "Cannot call %s", typenames[cell->type]);
+            
 		case TYPE_PAIR:
 		{
 			Cell* symbol = car(cell);
             
             if (!symbol)
             {
-                signal_error(env->cont, "missing procedure in expression");
+                return signal_error(env->cont, "missing procedure in expression");
             }
 			
 			type_check(env->cont, TYPE_SYMBOL, symbol->type);
@@ -3981,12 +3995,12 @@ tailcall:
 			
 			if (!function)
 			{
-				signal_error(env->cont, "Undefined symbol '%s'", symbol->data.symbol);
+				return signal_error(env->cont, "Undefined symbol '%s'", symbol->data.symbol);
 			}
             
 			if (function->type != TYPE_PROCEDURE)
 			{
-				signal_error(env->cont, "%s is not a function", symbol->data.symbol);
+				return signal_error(env->cont, "%s is not a function", symbol->data.symbol);
 			}
 			
 			const Cell::Procedure* proc = &function->data.procedure;
@@ -3999,7 +4013,7 @@ tailcall:
 			Environment* new_env = create_environment(proc->env->cont, proc->env);
 			
 			Cell* params = cdr(cell);
-			for (const Cell* formals = proc->formals; formals; formals = cdr(formals))
+			for (const Cell* formals = proc->formals; is_pair(formals); formals = cdr(formals))
 			{
 				// @todo: formals should be NULL for (lambda () 'noop)
 				if (car(formals))
@@ -4017,7 +4031,7 @@ tailcall:
 			
 			Cell* last_result = NULL;
 			
-			for (const Cell* statement = proc->body; statement; statement = cdr(statement))
+			for (const Cell* statement = proc->body; is_pair(statement); statement = cdr(statement))
 			{
 				bool last = cdr(statement) == NULL;
 				
@@ -4036,10 +4050,6 @@ tailcall:
 			assert(false); // @todo - i don't think this can happen
 			return last_result;
 		}
-            
-		default:
-			assert(false);
-			return 0;
 	}
 }
 
