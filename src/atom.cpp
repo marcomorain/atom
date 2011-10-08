@@ -1280,11 +1280,8 @@ Cell* parse_list_tail(Environment* env, Input* input, Token* token)
 
 Cell* parse_list(Environment* env, Input* input, Token* token)
 {
-    if (token->type != TOKEN_LIST_START)
-	{
-		return parse_abreviation(env, input, token);
-	}
- 
+    assert(token->type == TOKEN_LIST_START);
+    
     // Token was '(', skip it and move on.
 	Token next;
     read_token(input, &next);
@@ -1293,10 +1290,7 @@ Cell* parse_list(Environment* env, Input* input, Token* token)
 
 Cell* parse_vector(Environment* env, Input* input, Token* token)
 {
-    if (token->type != TOKEN_VECTOR_START)
-    {
-        return NULL;
-    }
+    assert(token->type == TOKEN_VECTOR_START);
     
     // Token was '(', skip it and move on.
 	Token next;
@@ -1327,44 +1321,40 @@ Cell* parse_vector(Environment* env, Input* input, Token* token)
 	return vector;
 }
 
-
-Cell* parse_compound_datum(Environment* env, Input* input, Token* token)
-{
-	if (Cell* list   = parse_list(env, input, token))   return list;
-    if (Cell* vector = parse_vector(env, input, token)) return vector;
-	return NULL;
-}
-
-Cell* parse_simple_datum(Environment* env, Token* t)
+Cell* parse_datum(Environment* env, Input* input, Token* token)
 {	    
-	switch (t->type)
+	switch (token->type)
 	{
 		case TOKEN_BOOLEAN:
-            return make_boolean(t->data.boolean);
+            return make_boolean(token->data.boolean);
             
         case TOKEN_NUMBER:
-			return make_number(env, t->data.number);
+			return make_number(env, token->data.number);
             
 		case TOKEN_CHARACTER:
-            return make_character(env, t->data.character);
+            return make_character(env, token->data.character);
             
         case TOKEN_STRING:
-			return make_string(env, (int)strlen(t->data.string), t->data.string);
+			return make_string(env, (int)strlen(token->data.string), token->data.string);
             
 		case TOKEN_IDENTIFIER:
-			return make_symbol(env, t->data.identifier);
+			return make_symbol(env, token->data.identifier);
             
-		default:
-			return NULL;
+        case TOKEN_LIST_START:
+            return parse_list(env, input, token);
+            
+        case TOKEN_VECTOR_START:
+            return parse_vector(env, input, token);
+            
+        case TOKEN_QUOTE:
+        case TOKEN_BACKTICK:
+        case TOKEN_COMMA:
+        case TOKEN_COMMA_AT:
+            return parse_abreviation(env, input, token);
+            
+        default:
+            return NULL;
 	}
-}
-
-Cell* parse_datum(Environment* env, Input* input, Token* token)
-{    
-	if (Cell* simple_datum   = parse_simple_datum(env, token))   return simple_datum;
-    if (Cell* compound_datum = parse_compound_datum(env, input, token)) return compound_datum;
-    //assert(false);?
-    return NULL;
 }
 
 
