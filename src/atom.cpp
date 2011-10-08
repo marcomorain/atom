@@ -3,25 +3,17 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <iostream>
 #include <string>
-#include <cassert>
 #include <stdlib.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <setjmp.h>
-#include <cstring>
-#include <new>
-
-// For a stack in parse_vector
-#include <vector>
+#include <assert.h>
+#include <math.h>
 
 // For REPL
 extern "C" {
 #include "linenoise.h"
 }
-
-// fmod (in atom_modulo) brings in a dependancy on math.h
-// todo: split / remove break?
-#include <math.h>
 
 #define DEBUG_LEXER (1)
 
@@ -712,13 +704,18 @@ char* character_buffer_copy(const struct character_buffer* buffer)
     return dup;
 }
 
+size_t character_buffer_length(const struct character_buffer* buffer)
+{
+    return buffer->used;
+}
+
+const char* character_buffer_data(const struct character_buffer* buffer)
+{
+    return buffer->data;
+}
 
 struct Token
 {
-	void print(void) const
-	{
-			}
-    
 	union Data
 	{
 		double		number;
@@ -1204,45 +1201,6 @@ void read_token(Input* input, Token* token)
 
 Cell* parse_datum(Environment* env, Input* input, Token* token);
 
-
-Cell* parse_vector(Environment* env, Input* input, Token* token)
-{
-    if (token->type != TOKEN_VECTOR_START)
-    {
-        return NULL;
-    }
-    
-    // skip the #(
-    
-    int length = 0;
-    
-    std::vector<Cell*> stack;
-    
-    for (;;)
-    {
-        Token next;
-        read_token(input, &next);
-        
-        if (next.type == TOKEN_NONE) return signal_error(env->cont, "unexpected end of input");
-        if (next.type == TOKEN_LIST_END)
-        {
-            break;
-        }
-        stack.push_back(parse_datum(env, input, &next));
-        length++;
-    }
-    
-    // Fill with empty list or null?
-    Cell* vector = make_vector(env, length, NULL);
-    
-    for (int i=0; i<length; i++)
-    {
-        vector->data.vector.data[i] = stack[i];
-    }
-    
-	return vector;
-}
-
 Cell* parse_abreviation(Environment* env, Input* input, Token* token)
 {
     const char* symbol = NULL;
@@ -1332,6 +1290,43 @@ Cell* parse_list(Environment* env, Input* input, Token* token)
     read_token(input, &next);
     return parse_list_tail(env, input, &next);
 }
+
+Cell* parse_vector(Environment* env, Input* input, Token* token)
+{
+    if (token->type != TOKEN_VECTOR_START)
+    {
+        return NULL;
+    }
+    
+    // Token was '(', skip it and move on.
+	Token next;
+    read_token(input, &next);
+    Cell* list = parse_list_tail(env, input, &next);
+    
+    if (list == NULL)
+    {
+        return NULL;
+    }
+    
+    unsigned length = 0;
+    for (Cell* c = list; is_pair(c); c = cdr(c))
+    {
+        length++;
+    }
+    
+    // TODO: Fill with empty list or null?
+    Cell* vector = make_vector(env, length, NULL);
+    
+    unsigned i = 0;
+    for (Cell* c = list; is_pair(c); c = cdr(c))
+    {
+        vector->data.vector.data[i++] = car(c);
+        //printf("Vector [%d] = ", i);
+        //print(stdout, car(c), true);
+    }
+	return vector;
+}
+
 
 Cell* parse_compound_datum(Environment* env, Input* input, Token* token)
 {
@@ -2672,21 +2667,22 @@ static Cell* atom_null_q(Environment* env, Cell* params)
 // lists have finite length and are terminated by the empty list.
 static Cell* atom_list_q(Environment* env, Cell* params)
 {
-	Cell* obj = nth_param_any(env, params, 1);
-	
-	if (obj->type == TYPE_PAIR)
-	{
-		if (Cell* rest = obj->data.pair.cdr)
-		{
-			// @todo: should this recurse O(N)
-			// to see it list terminates?
-			return make_boolean(rest->type == TYPE_PAIR);
-		}
-		
-		return make_boolean(true);
-	}
-	
-	return make_boolean(false);
+    for (Cell* obj = nth_param_any(env, params, 1);; obj = cdr(obj))
+    {
+        switch(obj->type)
+        {
+            case TYPE_EMPTY_LIST:
+                return make_boolean(true);
+
+            case TYPE_PAIR:
+                continue;
+                
+            default:
+                return make_boolean(false);
+        }
+    }
+    
+    return make_boolean(false);
 }
 
 // (list obj ...)
@@ -2817,15 +2813,19 @@ static Cell* atom_string(Environment* env, Cell* params)
     }
 
     if (count < 1) return signal_error(env->cont, "At least one parameter must be passed to (string char ...)");
-
-    std::vector<char> stack;
+    
+    character_buffer buffer;
+    character_buffer_init(&buffer);
 
     for (int i=1; i<=count; i++){
-        stack.push_back(nth_param_character(env, params, i));
+        character_buffer_push(&buffer, nth_param_character(env, params, i));
     }
+    
+    character_buffer_push(&buffer, 0);
+    Cell* str = make_string(env, count, character_buffer_data(&buffer));
+    character_buffer_destory(&buffer);
 
-    stack.push_back(0);
-    return make_string(env, count, &stack.front());
+    return str;
 }
 
 static int compare_strings(Environment* env, Cell* params)
@@ -2948,7 +2948,10 @@ static Cell* atom_substring(Environment* env, Cell* params)
 // the given strings.
 static Cell* atom_string_append(Environment* env, Cell* params)
 {
-    std::vector<char> stack;
+    character_buffer buffer;
+    character_buffer_init(&buffer);
+    
+    
     
     for (Cell* param = params; is_pair(param); param = cdr(param))
     {
@@ -2957,16 +2960,17 @@ static Cell* atom_string_append(Environment* env, Cell* params)
         
         for (int i=0; i<str->data.string.length; i++)
         {
-            stack.push_back(str->data.string.data[i]);
+            character_buffer_push(&buffer, str->data.string.data[i]);
         }
     }
     
-    int length = (int)stack.size();
+    int length = (int)character_buffer_length(&buffer);
+    
     Cell* result = make_empty_string(env, length);
     
     if (length > 0)
-    {    
-        strncpy(result->data.string.data, &stack[0], length);
+    {
+        strncpy(result->data.string.data, character_buffer_data(&buffer), length);
     }
     
     return result;
@@ -3910,19 +3914,14 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 	{
         Token next;
         read_token(&input, &next);
-		Cell* cell = parse_datum(env, &input, &next);
-        
-		if (!cell)
+		if (Cell* cell = parse_datum(env, &input, &next))
 		{
-            printf("read null\n");
-			break;
-		}
-        
-		printf("parsed> ");
-		print(stdout, cell, false);
-		const Cell* result =
-        eval(env, cell);
-		print(stdout, result, false);
+            printf("parsed> ");
+            print(stdout, cell, false);
+            const Cell* result =
+            eval(env, cell);
+            print(stdout, result, false);
+        }
 	}
     
 cleanup:
