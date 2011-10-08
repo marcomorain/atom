@@ -129,6 +129,24 @@ static Cell cell_empty_list = { TYPE_EMPTY_LIST, {NULL}, NULL, false };
 static Cell cell_true       = { TYPE_BOOLEAN,   {true }, NULL, false };
 static Cell cell_false      = { TYPE_BOOLEAN,   {false}, NULL, false };
 
+static Cell* car(const Cell* cell)
+{
+	assert(cell->type == TYPE_PAIR);
+	return cell->data.pair.car;
+}
+
+static Cell* cdr(const Cell* cell)
+{
+	assert(cell->type == TYPE_PAIR);
+	return cell->data.pair.cdr;
+}
+
+static bool is_pair(const Cell* cell)
+{
+    assert(cell);
+    return cell->type == TYPE_PAIR;
+}
+
 enum TokenType
 {
     TOKEN_NONE,
@@ -211,17 +229,20 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             break;
             
         case TYPE_PAIR:
+        {
             if (is_car) fprintf(output, "(");
             print_rec(output, cell->data.pair.car, human, 1);
             
-            if (Cell* c = cell->data.pair.cdr)
+            Cell* c = cdr(cell);
+            
+            if (c->type != TYPE_EMPTY_LIST)
             {
                 fprintf(output, " ");
-                if (c->type != TYPE_PAIR) fprintf(output, ". ");
                 print_rec(output, c, human, 0);
             }
-            
+
             if (is_car) fprintf(output, ")");
+        }
             break;
             
         case TYPE_INPUT_PORT:
@@ -612,18 +633,6 @@ static Cell* make_string_filled(Environment* env, int length, char fill)
 	memset(string->data.string.data, fill, length);
     assert((int)strlen(string->data.string.data) == length);
 	return string;
-}
-
-static Cell* car(const Cell* cell)
-{
-	assert(cell->type == TYPE_PAIR);
-	return cell->data.pair.car;
-}
-
-static Cell* cdr(const Cell* cell)
-{
-	assert(cell->type == TYPE_PAIR);
-	return cell->data.pair.cdr;
 }
 
 static void set_car(Cell* list, Cell* car)
@@ -1610,12 +1619,6 @@ static Cell* optional_second_param(Environment* env, Cell* params)
 	
 	Cell* result = eval(env, car(rest));
 	return result;
-}
-
-static bool is_pair(const Cell* cell)
-{
-    assert(cell);
-    return cell->type == TYPE_PAIR;
 }
 
 // 4.1.2
@@ -3989,7 +3992,7 @@ tailcall:
 			type_check(env->cont, TYPE_SYMBOL, symbol->type);
 			
 			//for (int i=0; i<level; i++) printf("  ");
-			//printf("Calling function %s\n", symbol->data.symbol);
+			printf("Calling function %s\n", symbol->data.symbol->name);
 			
 			const Cell* function = environment_get(env, symbol);
 			
@@ -4022,8 +4025,8 @@ tailcall:
 					Cell* value = eval(env, car(params));
 					environment_define(new_env, car(formals)->data.symbol, value);
 					
-					//printf("%s: ", car(formals)->data.symbol);
-					//print(value);
+					printf("%s: ", car(formals)->data.symbol->name);
+					print(stdout, value, true);
 					
 					params = cdr(params);
 				}
@@ -4033,7 +4036,7 @@ tailcall:
 			
 			for (const Cell* statement = proc->body; is_pair(statement); statement = cdr(statement))
 			{
-				bool last = cdr(statement) == NULL;
+				bool last = cdr(statement)->type == TYPE_EMPTY_LIST;
 				
 				// tailcall optimization for the 
 				// last statement in the list.
@@ -4054,7 +4057,7 @@ tailcall:
 }
 
 static void add_builtin(Environment* env, const char* name, atom_function function)
-{
+{   
 	assert(env);
 	assert(name);
 	assert(function);
