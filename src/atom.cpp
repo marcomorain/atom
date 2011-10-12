@@ -35,7 +35,8 @@ enum CellType
     TYPE_PAIR,
     TYPE_VECTOR,
     TYPE_SYMBOL,
-    TYPE_PROCEDURE,
+    TYPE_BUILT_IN,
+    TYPE_CLOSURE,
     TYPE_INPUT_PORT,
     TYPE_OUTPUT_PORT,
     TYPE_ENVIRONMENT
@@ -82,12 +83,13 @@ struct Cell
         char* data;
         int   length;
     };
+    
+    
 	
-	struct Procedure
+	struct Closure
 	{
 		// If function is null, then the procedure
 		// was created in scheme, otherwise it is a built-in
-		atom_function   function;
 		Cell*    		formals;
 		Cell*    		body;
 		Environment*	env;
@@ -105,7 +107,8 @@ struct Cell
 		Pair            pair;
 		const Symbol*   symbol;
 		Vector          vector;
-		Procedure       procedure;
+        atom_function   built_in;
+        Closure         closure;
 		FILE*           input_port;
         FILE*           output_port;
         Environment*    env;
@@ -235,6 +238,10 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 
             if (is_car) fprintf(output, ")");
         }
+        break;
+            
+        case TYPE_CLOSURE:
+            fprintf(output, "#<input port %p>", cell->data.input_port);
             break;
             
         case TYPE_INPUT_PORT:
@@ -249,8 +256,8 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             fprintf(output, "#<environment %p>", cell->data.env);
             break;
         
-        case TYPE_PROCEDURE:
-            fprintf(output, "#<procedure %p>",  &cell->data.procedure);
+        case TYPE_BUILT_IN:
+            fprintf(output, "#<built-in %p>",  cell->data.built_in);
             break;
             
         case TYPE_VECTOR:
@@ -450,6 +457,7 @@ static void mark(Cell* cell)
 		case TYPE_NUMBER:
 		case TYPE_STRING:
 		case TYPE_SYMBOL:
+        case TYPE_BUILT_IN:
         case TYPE_INPUT_PORT:
         case TYPE_OUTPUT_PORT:
 			break;
@@ -466,15 +474,12 @@ static void mark(Cell* cell)
             }
 			break;
             
-		case TYPE_PROCEDURE:
+		case TYPE_CLOSURE:
 		{
-			Cell::Procedure& p = cell->data.procedure;
-			if (!p.function)
-			{
-				mark(p.formals);
-				mark(p.body);
-				mark_environment(p.env);	
-			}
+			Cell::Closure& closure = cell->data.closure;
+            mark(closure.formals);
+            mark(closure.body);
+            mark_environment(closure.env);
 			break;
 		}
             
@@ -570,11 +575,11 @@ static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
 	type_check(env->cont, TYPE_PAIR, formals->type);
 	type_check(env->cont, TYPE_PAIR, body->type);
     
-	Cell* proc = make_cell(env, TYPE_PROCEDURE);
-	proc->data.procedure.formals = formals;
-	proc->data.procedure.body    = body;
-	proc->data.procedure.env	 = env;
-	return proc;	
+	Cell* closure = make_cell(env, TYPE_CLOSURE);
+	closure->data.closure.formals = formals;
+	closure->data.closure.body    = body;
+	closure->data.closure.env	 = env;
+	return closure;	
 }
 
 static Cell* make_vector(Environment* env, int length, Cell* fill)
@@ -2646,10 +2651,7 @@ static Cell* atom_set_cdr_b(Environment* env, Cell* params)
 // Returns #t if obj is the empty list, otherwise returns #f.
 static Cell* atom_null_q(Environment* env, Cell* params)
 {
-	Cell* obj = nth_param_any(env, params, 1);
-	return make_boolean(obj->type == TYPE_PAIR &&
-						obj->data.pair.car == NULL &&
-						obj->data.pair.cdr == NULL);
+	return type_q_helper(env, params, TYPE_EMPTY_LIST);
 }
 
 // (list? obj)
@@ -3480,7 +3482,8 @@ static Cell* atom_vector_fill_b(Environment* env, Cell* params)
 // Returns #t if obj is a procedure, otherwise returns #f.
 static Cell* atom_procedure_q(Environment* env, Cell* params)
 {
-	return type_q_helper(env, params, TYPE_PROCEDURE);
+    Cell* obj = eval(env, car(params));
+	return make_boolean(obj->type == TYPE_CLOSURE || obj->type == TYPE_BUILT_IN);
 }
 
 static Cell* apply_recursive(Environment* env, Cell* function, Cell* args)
@@ -3500,7 +3503,7 @@ static Cell* apply_recursive(Environment* env, Cell* function, Cell* args)
 // elements of the list (append (list arg1 ...) args) as the actual arguments.
 static Cell* atom_apply(Environment* env, Cell* params)
 {
-    Cell* func = nth_param(env, params, 1, TYPE_PROCEDURE);
+    Cell* func = nth_param_any(env, params, 1);
     
     int num_args = 0;
     
@@ -3912,6 +3915,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
             eval(env, cell);
             print(stdout, result, false);
         }
+        else break;
 	}
     
 cleanup:
@@ -3990,57 +3994,58 @@ tailcall:
 				return signal_error(env->cont, "Undefined symbol '%s'", symbol->data.symbol);
 			}
             
-			if (function->type != TYPE_PROCEDURE)
-			{
-				return signal_error(env->cont, "%s is not a function", symbol->data.symbol);
-			}
-			
-			const Cell::Procedure* proc = &function->data.procedure;
-			
-			if (atom_function f = proc->function)
-			{
-				return f(env, cdr(cell));
-			}
-			
-			Environment* new_env = create_environment(proc->env->cont, proc->env);
-			
-			Cell* params = cdr(cell);
-			for (const Cell* formals = proc->formals; is_pair(formals); formals = cdr(formals))
-			{
-				// @todo: formals should be NULL for (lambda () 'noop)
-				if (car(formals))
-				{
-					assert(car(formals)->type == TYPE_SYMBOL);
-					Cell* value = eval(env, car(params));
-					environment_define(new_env, car(formals)->data.symbol, value);
-					
-					printf("%s: ", car(formals)->data.symbol->name);
-					print(stdout, value, true);
-					
-					params = cdr(params);
-				}
-			}
-			
-			Cell* last_result = NULL;
-			
-			for (const Cell* statement = proc->body; is_pair(statement); statement = cdr(statement))
-			{
-				bool last = cdr(statement)->type == TYPE_EMPTY_LIST;
-				
-				// tailcall optimization for the 
-				// last statement in the list.
-				if (last)
-				{
-					env  = new_env;
-					cell = car(statement);
-					goto tailcall;
-				}
-				
-				last_result = eval(new_env, car(statement));
-			}
-			
-			assert(false); // @todo - i don't think this can happen
-			return last_result;
+            switch(function->type)
+            {
+                default:    
+                return signal_error(env->cont, "%s is not a function", symbol->data.symbol);
+                case TYPE_BUILT_IN:
+                {
+                    return function->data.built_in(env, cdr(cell));
+                }
+                case TYPE_CLOSURE:
+                {
+                    const Cell::Closure& closure = function->data.closure;
+                    Environment* new_env = create_environment(closure.env->cont, closure.env);
+                    
+                    Cell* params = cdr(cell);
+                    for (const Cell* formals = closure.formals; is_pair(formals); formals = cdr(formals))
+                    {
+                        // @todo: formals should be NULL for (lambda () 'noop)
+                        if (car(formals))
+                        {
+                            assert(car(formals)->type == TYPE_SYMBOL);
+                            Cell* value = eval(env, car(params));
+                            environment_define(new_env, car(formals)->data.symbol, value);
+                            
+                            printf("%s: ", car(formals)->data.symbol->name);
+                            print(stdout, value, true);
+                            
+                            params = cdr(params);
+                        }
+                    }
+                    
+                    Cell* last_result = NULL;
+                    
+                    for (const Cell* statement = closure.body; is_pair(statement); statement = cdr(statement))
+                    {
+                        bool last = cdr(statement)->type == TYPE_EMPTY_LIST;
+                        
+                        // tailcall optimization for the 
+                        // last statement in the list.
+                        if (last)
+                        {
+                            env  = new_env;
+                            cell = car(statement);
+                            goto tailcall;
+                        }
+                        
+                        last_result = eval(new_env, car(statement));
+                    }
+                    
+                    assert(false); // @todo - i don't think this can happen
+                    return last_result;
+                }
+            }
 		}
 	}
 }
@@ -4051,8 +4056,8 @@ static void add_builtin(Environment* env, const char* name, atom_function functi
 	assert(name);
 	assert(function);
 	
-	Cell* cell = make_cell(env, TYPE_PROCEDURE);
-	cell->data.procedure.function = function;
+	Cell* cell = make_cell(env, TYPE_BUILT_IN);
+	cell->data.built_in = function;
 	environment_define(env, find_or_insert_symbol(env->cont, name), cell);
 }
 
@@ -4303,7 +4308,6 @@ void atom_api_repl(Continuation* cont)
         free(line);
     }
 }
-
 
 static bool match(const char* input, const char* a, const char* b)
 {
