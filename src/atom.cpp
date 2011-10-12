@@ -37,6 +37,7 @@ enum CellType
     TYPE_SYMBOL,
     TYPE_BUILT_IN,
     TYPE_CLOSURE,
+    TYPE_SYNTAX,
     TYPE_INPUT_PORT,
     TYPE_OUTPUT_PORT,
     TYPE_ENVIRONMENT
@@ -83,8 +84,6 @@ struct Cell
         char* data;
         int   length;
     };
-    
-    
 	
 	struct Closure
 	{
@@ -108,6 +107,7 @@ struct Cell
 		const Symbol*   symbol;
 		Vector          vector;
         atom_function   built_in;
+        atom_function   syntax;
         Closure         closure;
 		FILE*           input_port;
         FILE*           output_port;
@@ -240,8 +240,12 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
         }
         break;
             
+        case TYPE_SYNTAX:
+            fprintf(output, "#<syntax %p>", cell->data.syntax);
+            break;
+            
         case TYPE_CLOSURE:
-            fprintf(output, "#<input port %p>", cell->data.input_port);
+            fprintf(output, "#<closure %p>", &cell->data.closure);
             break;
             
         case TYPE_INPUT_PORT:
@@ -322,6 +326,21 @@ struct JumpBuffer
 	JumpBuffer* prev;
 };
 
+
+struct cell_stack
+{
+    Cell** data;
+    size_t size;
+    size_t current;
+};
+
+void cell_stack_init(struct cell_stack* stack)
+{
+    stack->current = 0;
+    stack->size = 32;
+    stack->data = (Cell**)calloc(stack->size, sizeof(Cell*));
+}
+
 struct Continuation
 {
 	Environment*	env;
@@ -330,6 +349,7 @@ struct Continuation
 	int				allocated;
 	FILE*			input;
     FILE*           output;
+    cell_stack      stack;
     
     // The symbol table
     Symbol**        symbols;
@@ -458,6 +478,7 @@ static void mark(Cell* cell)
 		case TYPE_STRING:
 		case TYPE_SYMBOL:
         case TYPE_BUILT_IN:
+        case TYPE_SYNTAX:
         case TYPE_INPUT_PORT:
         case TYPE_OUTPUT_PORT:
 			break;
@@ -514,6 +535,18 @@ static void collect_garbage(Continuation* cont)
 		{
 		    switch(cell->type)
 		    {
+                case TYPE_CHARACTER:
+                case TYPE_BUILT_IN:
+                case TYPE_SYNTAX:
+                case TYPE_BOOLEAN:
+                case TYPE_NUMBER:
+                case TYPE_EMPTY_LIST:
+                case TYPE_PAIR:
+                case TYPE_CLOSURE:
+                case TYPE_ENVIRONMENT:
+                case TYPE_SYMBOL:
+                    break;
+                    
 		        case TYPE_INPUT_PORT:
                     if (cell->data.input_port != stdin)
                     {
@@ -527,16 +560,13 @@ static void collect_garbage(Continuation* cont)
                         fclose(cell->data.output_port);
                     }
                     break;
-                    
+                                        
                 case TYPE_STRING:
                     free(cell->data.string.data);
                     break;
                     
                 case TYPE_VECTOR:
                     free(cell->data.vector.data);
-                    break;
-                    
-                default:
                     break;
 		    }
 			cont->allocated--;
@@ -3970,7 +4000,12 @@ tailcall:
 		case TYPE_SYMBOL:
 			return environment_get(env, cell);
             
-        default:
+        case TYPE_EMPTY_LIST:
+        case TYPE_BUILT_IN:
+        case TYPE_CLOSURE:
+        case TYPE_SYNTAX:
+        case TYPE_INPUT_PORT:
+        case TYPE_OUTPUT_PORT:
             return signal_error(env->cont, "Cannot call %s", typenames[cell->type]);
             
 		case TYPE_PAIR:
@@ -3996,12 +4031,25 @@ tailcall:
             
             switch(function->type)
             {
-                default:    
+                case TYPE_BOOLEAN:
+                case TYPE_NUMBER:
+                case TYPE_STRING:
+                case TYPE_CHARACTER:
+                case TYPE_VECTOR:
+                case TYPE_ENVIRONMENT:
+                case TYPE_SYMBOL:
+                case TYPE_EMPTY_LIST:
+                case TYPE_INPUT_PORT:
+                case TYPE_OUTPUT_PORT:                    
+                case TYPE_PAIR:
                 return signal_error(env->cont, "%s is not a function", symbol->data.symbol);
+
+                case TYPE_SYNTAX:
+                    return function->data.syntax(env, cdr(cell));
+                    
                 case TYPE_BUILT_IN:
-                {
                     return function->data.built_in(env, cdr(cell));
-                }
+                    
                 case TYPE_CLOSURE:
                 {
                     const Cell::Closure& closure = function->data.closure;
@@ -4080,6 +4128,8 @@ Continuation* atom_api_open()
     cont->symbol_count  = 0;
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)malloc(sizeof(Symbol*) * (1+cont->symbol_mask));
+    
+    cell_stack_init(&cont->stack);
     
     const Library libs [] = {
         {"quote",           atom_quote},
