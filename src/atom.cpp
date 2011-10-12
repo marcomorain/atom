@@ -3910,6 +3910,8 @@ static Cell* always_false(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+static void compile(Cell* cell);
+
 static void atom_api_load(Continuation* cont, const char* data, size_t length)
 {	
     //printf("input> %s", data);
@@ -3939,6 +3941,7 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
         read_token(&input, &next);
 		if (Cell* cell = parse_datum(env, &input, &next))
 		{
+            compile(cell);
             printf("parsed> ");
             print(stdout, cell, false);
             const Cell* result =
@@ -3978,6 +3981,49 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	atom_api_load(cont, buffer, read);
 	
 	free(buffer);
+}
+
+enum {
+    INST_PUSH_CONSTANT,
+    INST_PUSH_VARIABLE,
+    INST_CALL
+};
+
+static void emit(int inst)
+{
+    switch(inst)
+    {
+        case INST_PUSH_CONSTANT: printf("-- push constant\n"); break;
+        case INST_PUSH_VARIABLE: printf("-- push variable\n"); break;
+        case INST_CALL:          printf("-- call\n"); break;
+        default: assert(false);
+    }
+}
+
+static void compile(Cell* cell)
+{
+    switch(cell->type)
+    {
+        case TYPE_PAIR:
+            compile(cdr(cell));
+            compile(car(cell));
+            break;
+        case TYPE_SYMBOL:
+            emit(INST_PUSH_VARIABLE);
+            break;
+		case TYPE_BOOLEAN:
+		case TYPE_NUMBER:
+		case TYPE_STRING:
+		case TYPE_CHARACTER:
+        case TYPE_VECTOR:
+        case TYPE_ENVIRONMENT:
+            emit(INST_PUSH_CONSTANT);
+            break;
+        default:
+            printf("dont know how to deal with ");
+            print(stdout, cell, true);
+            break;
+    }
 }
 
 static Cell* eval(Environment* env, Cell* cell)
