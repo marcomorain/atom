@@ -44,8 +44,12 @@ static void vector_free(struct vector_base* vector)
     free(vector);
 }
 
-static char* vector_data(
-                  
+// Return a pointer to the data storage for position i in the vector.
+static char* vector_data(const struct vector_base* vector, size_t i)
+{
+    return vector->elements + (i * vector->element_size);
+}
+
 static void vector_grow(struct vector_base* vector)
 {
     vector->capacity = 2 * vector->capacity;
@@ -60,14 +64,13 @@ void vector_init(struct vector_base* vector, size_t element_size)
     vector_grow(vector);
 }
 
-
-
-void vector_push(struct vector_base* vector, void* element)
+void vector_push(struct vector_base* vector, const char* element)
 {
     if (vector->capacity == vector->num_elements) vector_grow(vector);
-    void* destination = vector->
-    
+    char* destination = vector_data(vector, vector->num_elements);
+    memcpy(destination, element, vector->element_size);
 }
+
 
 static unsigned int MurmurHash2 (const void * key, int len);
 
@@ -372,19 +375,14 @@ struct JumpBuffer
 	JumpBuffer* prev;
 };
 
-
-struct cell_stack
+typedef vector_base vector_cell;
+const Cell** vector_cell_get(const vector_cell* vector, size_t i)
 {
-    Cell** data;
-    size_t size;
-    size_t current;
-};
-
-void cell_stack_init(struct cell_stack* stack)
+    return (const Cell**)vector_data(vector, i);
+}
+void vector_cell_init(vector_cell* vector)
 {
-    stack->current = 0;
-    stack->size = 32;
-    stack->data = (Cell**)calloc(stack->size, sizeof(Cell*));
+    vector_init(vector, sizeof(Cell*));
 }
 
 struct Continuation
@@ -395,7 +393,7 @@ struct Continuation
 	int				allocated;
 	FILE*			input;
     FILE*           output;
-    cell_stack      stack;
+    vector_cell     stack;
     
     // The symbol table
     Symbol**        symbols;
@@ -3973,15 +3971,14 @@ struct Closure
 {
     unsigned int instructions;
     size_t num_instructions;
-    struct cell_stack constants;
+    vector_cell constants;
 };
 
 static void closure_init(Closure* closure)
 {
     closure->num_instructions = 0;
-    cell_stack_init(&closure->constants);
+    vector_cell_init(&closure->constants);
 }
-
 
 enum {
     INST_DEFINE,
@@ -4294,7 +4291,7 @@ Continuation* atom_api_open()
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)malloc(sizeof(Symbol*) * (1+cont->symbol_mask));
     
-    cell_stack_init(&cont->stack);
+    vector_cell_init(&cont->stack);
     
     const Library libs [] = {
         {"quote",           atom_quote},
