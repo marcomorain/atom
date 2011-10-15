@@ -41,11 +41,14 @@ static void vector_free(struct vector_base* vector)
     vector->element_size = 0;
     vector->num_elements = 0;
     vector->elements = 0;
-    free(vector);
 }
 
-static char* vector_data(
-                  
+// Return a pointer to the data storage for position i in the vector.
+static char* vector_data(const struct vector_base* vector, size_t i)
+{
+    return vector->elements + (i * vector->element_size);
+}
+
 static void vector_grow(struct vector_base* vector)
 {
     vector->capacity = 2 * vector->capacity;
@@ -60,14 +63,14 @@ void vector_init(struct vector_base* vector, size_t element_size)
     vector_grow(vector);
 }
 
-
-
-void vector_push(struct vector_base* vector, void* element)
+void vector_push(struct vector_base* vector, const char* element)
 {
     if (vector->capacity == vector->num_elements) vector_grow(vector);
-    void* destination = vector->
-    
+    char* destination = vector_data(vector, vector->num_elements);
+    memcpy(destination, element, vector->element_size);
+    vector->num_elements = 1 + vector->num_elements;
 }
+
 
 static unsigned int MurmurHash2 (const void * key, int len);
 
@@ -372,19 +375,19 @@ struct JumpBuffer
 	JumpBuffer* prev;
 };
 
-
-struct cell_stack
+typedef vector_base vector_cell;
+const Cell** vector_cell_get(const vector_cell* vector, size_t i)
 {
-    Cell** data;
-    size_t size;
-    size_t current;
-};
-
-void cell_stack_init(struct cell_stack* stack)
+    return (const Cell**)vector_data(vector, i);
+}
+void vector_cell_init(vector_cell* vector)
 {
-    stack->current = 0;
-    stack->size = 32;
-    stack->data = (Cell**)calloc(stack->size, sizeof(Cell*));
+    vector_init(vector, sizeof(Cell*));
+}
+void vector_cell_push(vector_cell* vector, Cell* data)
+{
+    const char* raw_data = (const char*)&data;
+    vector_push(vector, raw_data);
 }
 
 struct Continuation
@@ -395,7 +398,7 @@ struct Continuation
 	int				allocated;
 	FILE*			input;
     FILE*           output;
-    cell_stack      stack;
+    vector_cell     stack;
     
     // The symbol table
     Symbol**        symbols;
@@ -3846,7 +3849,7 @@ static Cell* atom_write(Environment* env, Cell* params)
 // returned by current-input-port. It is an error to read from a closed port.
 static Cell* atom_read(Environment* env, Cell* params)
 {
-    FILE* port = get_input_port(env, params, 1);
+    //FILE* port = get_input_port(env, params, 1);
     // TODO: implement this
     return NULL;
 }
@@ -3973,15 +3976,14 @@ struct Closure
 {
     unsigned int instructions;
     size_t num_instructions;
-    struct cell_stack constants;
+    vector_cell constants;
 };
 
 static void closure_init(Closure* closure)
 {
     closure->num_instructions = 0;
-    cell_stack_init(&closure->constants);
+    vector_cell_init(&closure->constants);
 }
-
 
 enum {
     INST_DEFINE,
@@ -4294,7 +4296,7 @@ Continuation* atom_api_open()
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)malloc(sizeof(Symbol*) * (1+cont->symbol_mask));
     
-    cell_stack_init(&cont->stack);
+    vector_cell_init(&cont->stack);
     
     const Library libs [] = {
         {"quote",           atom_quote},
@@ -4530,10 +4532,45 @@ static bool match(const char* input, const char* a, const char* b)
     strcmp(input, b) == 0;
 }
 
+
+
+static void test_vector_cell()
+{
+    vector_cell vector;
+    vector_cell_init(&vector);
+    assert(vector.element_size == sizeof(Cell*));
+    
+    Cell* a = (Cell*)malloc(sizeof(Cell));
+    Cell* b = (Cell*)malloc(sizeof(Cell));
+    Cell* c = (Cell*)malloc(sizeof(Cell));
+    Cell* d = (Cell*)malloc(sizeof(Cell));
+    
+    assert(vector.num_elements == 0);
+    
+    vector_cell_push(&vector, a);
+    
+    assert(vector.num_elements == 1);
+    
+    vector_cell_push(&vector, b);
+    vector_cell_push(&vector, c);
+    vector_cell_push(&vector, d);
+    
+    assert(vector.num_elements == 4);
+    
+    free(a);
+    free(b);
+    free(c);
+    free(d);
+    
+    vector_free(&vector);
+}
+
 static const char* history = ".atom_history";
 
 int main (int argc, char * const argv[])
 {
+    test_vector_cell();
+    
     Continuation* atom = atom_api_open();
     
     bool repl = false;
@@ -4585,3 +4622,4 @@ int main (int argc, char * const argv[])
     
     return 0;
  }
+
