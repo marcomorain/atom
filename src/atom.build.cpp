@@ -23,6 +23,53 @@ extern "C" {
 #define LEXER_TRACE(format, ...)
 #endif
 
+struct vector_cell
+{
+    Cell**  elements;
+    size_t num_elements;
+    size_t capacity;
+};
+
+static void vector_cell_free(struct vector_cell* vector)
+{
+    // Free all of the data, and set all the values to 0 to
+    // flush out use-after-free bugs.
+    free(vector->elements);
+    vector->capacity = 0;
+    vector->element_size = 0;
+    vector->num_elements = 0;
+    vector->elements = 0;
+}
+
+// Return a pointer to the data storage for position i in the vector.
+static char* vector_data(const struct vector_base* vector, size_t i)
+{
+    return vector->elements + (i * vector->element_size);
+}
+
+static void vector_grow(struct vector_base* vector)
+{
+    vector->capacity = 2 * vector->capacity;
+    vector->elements = (char*)realloc(vector->elements, vector->capacity * vector->element_size);
+}
+
+void vector_init(struct vector_base* vector, size_t element_size)
+{
+    vector->element_size = element_size;
+    vector->num_elements = 0;
+    vector->capacity = 1;
+    vector_grow(vector);
+}
+
+void vector_push(struct vector_base* vector, const char* element)
+{
+    if (vector->capacity == vector->num_elements) vector_grow(vector);
+    char* destination = vector_data(vector, vector->num_elements);
+    memcpy(destination, element, vector->element_size);
+    vector->num_elements = 1 + vector->num_elements;
+}
+
+
 static unsigned int MurmurHash2 (const void * key, int len);
 
 enum CellType
@@ -141,48 +188,6 @@ static bool is_pair(const Cell* cell)
     assert(cell);
     return cell->type == TYPE_PAIR;
 }
-
-template<typename Type> struct stack
-{
-    Type*  elements;
-    size_t num_elements;
-    size_t capacity;
-};
-
-template<typename Type> static void stack_free(struct stack<Type>* stack)
-{
-    // Free all of the data, and set all the values to 0 to
-    // flush out use-after-free bugs.
-    free(stack->elements);
-    stack->capacity = 0;
-    stack->num_elements = 0;
-    stack->elements = 0;
-}
-
-template<typename Type> static void stack_grow(struct stack<Type>* stack)
-{
-    stack->capacity = 2 * stack->capacity;
-    stack->elements = (Type*)realloc(stack->elements, stack->capacity * sizeof(Type));
-}
-
-template <typename Type> void stack_init(struct stack<Type>* stack)
-{
-    stack->num_elements = 0;
-    stack->capacity = 1;
-    stack_grow(stack);
-}
-
-template <typename Type> void stack_push(struct stack<Type>* stack, const Type element)
-{
-    if (stack->capacity == stack->num_elements)
-        stack_grow(stack);
-    
-    stack->elements[stack->num_elements] = element;
-    stack->num_elements++;
-}
-
-
-
 
 enum TokenType
 {
@@ -368,15 +373,30 @@ struct JumpBuffer
 	JumpBuffer* prev;
 };
 
+typedef vector_base vector_cell;
+const Cell** vector_cell_get(const vector_cell* vector, size_t i)
+{
+    return (const Cell**)vector_data(vector, i);
+}
+void vector_cell_init(vector_cell* vector)
+{
+    vector_init(vector, sizeof(Cell*));
+}
+void vector_cell_push(vector_cell* vector, Cell* data)
+{
+    const char* raw_data = (const char*)&data;
+    vector_push(vector, raw_data);
+}
+
 struct Continuation
 {
-	Environment*        env;
-	Cell*               cells;
-	JumpBuffer*         escape;
-	int                 allocated;
-	FILE*               input;
-    FILE*               output;
-    struct stack<Cell*> stack;
+	Environment*	env;
+	Cell*			cells;
+	JumpBuffer*		escape;
+	int				allocated;
+	FILE*			input;
+    FILE*           output;
+    vector_cell     stack;
     
     // The symbol table
     Symbol**        symbols;
@@ -3952,14 +3972,15 @@ static Cell* always_false(Environment* env, Cell* params)
 
 struct Closure
 {
-    stack<unsigned int> instructions;
-    stack<Cell*>        constants;
+    unsigned int instructions;
+    size_t num_instructions;
+    vector_cell constants;
 };
 
 static void closure_init(Closure* closure)
 {
-    stack_init(&closure->instructions);
-    stack_init(&closure->constants);
+    closure->num_instructions = 0;
+    vector_cell_init(&closure->constants);
 }
 
 enum {
@@ -3976,10 +3997,9 @@ enum {
     INST_CALL
 };
 
-static void emit(Closure* closure, unsigned int inst)
+static void emit(int inst)
 {
-    stack_push(&closure->instructions, inst);
-    switch(inst)   
+    switch(inst)
     {
         case INST_PUSH_CONSTANT: printf("-- push constant\n"); break;
         case INST_PUSH_VARIABLE: printf("-- push variable\n"); break;
@@ -4019,7 +4039,6 @@ static void compile(Closure* closure, Cell* cell)
                 
                 if (strcmp(symbol->name, "if") == 0)
                 {
-                    emit(closure, INST_IF);
                     
                 }
                 
@@ -4275,7 +4294,7 @@ Continuation* atom_api_open()
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)malloc(sizeof(Symbol*) * (1+cont->symbol_mask));
     
-    stack_init(&cont->stack);
+    vector_cell_init(&cont->stack);
     
     const Library libs [] = {
         {"quote",           atom_quote},
@@ -4511,10 +4530,45 @@ static bool match(const char* input, const char* a, const char* b)
     strcmp(input, b) == 0;
 }
 
+
+
+static void test_vector_cell()
+{
+    vector_cell vector;
+    vector_cell_init(&vector);
+    assert(vector.element_size == sizeof(Cell*));
+    
+    Cell* a = (Cell*)malloc(sizeof(Cell));
+    Cell* b = (Cell*)malloc(sizeof(Cell));
+    Cell* c = (Cell*)malloc(sizeof(Cell));
+    Cell* d = (Cell*)malloc(sizeof(Cell));
+    
+    assert(vector.num_elements == 0);
+    
+    vector_cell_push(&vector, a);
+    
+    assert(vector.num_elements == 1);
+    
+    vector_cell_push(&vector, b);
+    vector_cell_push(&vector, c);
+    vector_cell_push(&vector, d);
+    
+    assert(vector.num_elements == 4);
+    
+    free(a);
+    free(b);
+    free(c);
+    free(d);
+    
+    vector_free(&vector);
+}
+
 static const char* history = ".atom_history";
 
 int main (int argc, char * const argv[])
 {
+    test_vector_cell();
+    
     Continuation* atom = atom_api_open();
     
     bool repl = false;
