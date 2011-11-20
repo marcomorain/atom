@@ -180,24 +180,6 @@ template <typename Type> Type stack_get(const struct stack<Type>* stack, size_t 
     return stack->elements[elem];
 }
 
-enum TokenType
-{
-    TOKEN_NONE,
-	TOKEN_IDENTIFIER,
-	TOKEN_BOOLEAN,
-	TOKEN_NUMBER,
-	TOKEN_CHARACTER,
-	TOKEN_STRING,
-	TOKEN_LIST_START,
-	TOKEN_LIST_END,
-    TOKEN_VECTOR_START,
-	TOKEN_QUOTE,
-	TOKEN_BACKTICK,
-	TOKEN_COMMA,
-	TOKEN_COMMA_AT,
-	TOKEN_DOT
-};
-
 struct Symbol
 {
     // TODO: allocate the string data right on the end of this struct.
@@ -330,7 +312,7 @@ static bool is_integer(double d)
 	return d == (int)d;
 }
 
-
+// This is a callstack level
 struct Environment
 {
 	struct Node
@@ -357,7 +339,8 @@ struct Environment
 	}
 };
 
-
+// There is a linked list of these JumpBuffers allocated on the stack to allow
+// error handling to jump out of the virtual machine at any point.
 struct JumpBuffer
 {
 	jmp_buf     buffer;
@@ -463,7 +446,6 @@ static Cell* make_io_port(Environment* env, int type, FILE* port)
 	cell->data.input_port = port;
 	return cell;
 }
-
 
 static Cell* make_input_port(Environment* env, FILE* port)
 {
@@ -763,6 +745,24 @@ const char* character_buffer_data(const struct character_buffer* buffer)
     return buffer->data;
 }
 
+enum TokenType
+{
+    TOKEN_NONE,
+	TOKEN_IDENTIFIER,
+	TOKEN_BOOLEAN,
+	TOKEN_NUMBER,
+	TOKEN_CHARACTER,
+	TOKEN_STRING,
+	TOKEN_LIST_START,
+	TOKEN_LIST_END,
+    TOKEN_VECTOR_START,
+	TOKEN_QUOTE,
+	TOKEN_BACKTICK,
+	TOKEN_COMMA,
+	TOKEN_COMMA_AT,
+	TOKEN_DOT
+};
+
 struct Token
 {
 	union Data
@@ -809,7 +809,6 @@ static void token_print(Token* token)
     
  
 }
-
 static void token_init(Token* token, TokenType type)
 {
     token->type = type;
@@ -1033,31 +1032,34 @@ static bool is_subsequent(char c)
 	return is_initial(c) || isdigit(c) || is_special_subsequent(c);
 }
 
+static void read_character_helper(Input* input, Token* token, char value, const char* rest, const char* error)
+{
+    while(*rest)
+    {
+        if (input->next() != *rest) syntax_error(input, error);
+        rest++;
+    }
+    if (!is_delimeter(input->next())) syntax_error(input, error);
+    token_character(token, value);
+}
+
 static void read_character(Input* input, Token* token)
 {
 	char c = input->get();
 	switch(c)
 	{
 		case 's':
-            if (input->next() == 'p'){
-                if (input->next() != 'a') syntax_error(input, "space expected");
-                if (input->next() != 'c') syntax_error(input, "space expected");
-                if (input->next() != 'e') syntax_error(input, "space expected");
-                if (!is_delimeter(input->next())) syntax_error(input, "space expected");
-                token_character(token, ' ');
+            if (input->next() == 'p')
+            {
+                read_character_helper(input, token, ' ', "ace", "space (' ') expected");
                 return;
             }
             else goto success;
             
 		case 'n':
-			if (input->next() == 'e'){
-				if (input->next() != 'w') syntax_error(input, "newline expected");
-				if (input->next() != 'l') syntax_error(input, "newline expected");
-				if (input->next() != 'i') syntax_error(input, "newline expected");
-				if (input->next() != 'n') syntax_error(input, "newline expected");
-				if (input->next() != 'e') syntax_error(input, "newline expected");
-				if (!is_delimeter(input->next())) syntax_error(input, "newline expected");
-                token_character(token, '\n');
+			if (input->next() == 'e')
+            {
+                read_character_helper(input, token, '\n', "wline", "newline ('\\n') expected");
                 return;
 			}
 			else goto success;
@@ -1548,14 +1550,52 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 	signal_error(env->cont, "No binding for %s in any scope.", symbol->name);
 }
 
-static Cell* eval(Environment* env, Cell* cell);
+static const Cell* stack_to_cell(Continuation* env, int index)
+{
+    if (index < 0)
+    {
+        index = atom_api_gettop(env) - index;
+    }
+    return stack_get(&env->stack, index);
+}
+
+int atom_api_gettop(Continuation* env)
+{
+    // TODO: Remove all casts here.
+    return (int)env->stack.num_elements;
+}
+
+int atom_api_type(Continuation* env, int index)
+{
+    return stack_to_cell(env, index)->type;
+}
+
+double atom_api_tonumber(Continuation* env, int index)
+{
+    const Cell* cell = stack_to_cell(env, index);
+    assert(cell->type == TYPE_NUMBER);
+    return cell->data.number;
+}
+
+int atom_aux_tointeger(Continuation* env, int index)
+{
+	double num = atom_api_tonumber(env, index);
+	if (!is_integer(num))
+	{
+		// todo: better error message
+		signal_error(env, "Stack index %d is not an integer", index);
+	}
+	return (int)num;
+}
+
+
+static Cell* eval(Environment* env, Closure* cell);
 
 static Cell* type_q_helper(Environment* env, Cell* params, int type)
 {
-	Cell* obj = eval(env, car(params));
-	return make_boolean(obj->type == type);
+    // TODO: Should this be 1 or -1 here?
+	return make_boolean(type == atom_api_type(env->cont, -1));
 }
-
 
 static Cell* nth_param_any_optional(Environment* env, Cell* params, int n)
 {
@@ -1623,27 +1663,6 @@ static char nth_param_character_lower(Environment* env, Cell* params, int n)
     return tolower(nth_param_character(env, params, n));
 }
 
-static const char* nth_param_string(Environment* env, Cell* params, int n)
-{
-    return nth_param(env, params, n, TYPE_STRING)->data.string.data;
-}
-
-static double nth_param_number(Environment* env, Cell* params, int n)
-{
-    return nth_param(env, params, n, TYPE_NUMBER)->data.number;
-}
-
-static int nth_param_integer(Environment* env, Cell* params, int n)
-{
-	double num = nth_param_number(env, params, n);
-	if (!is_integer(num))
-	{
-		// todo: better error message
-		signal_error(env->cont, "Parameter %d is not an integer", n);
-	}
-	return (int)num;
-}
-
 // Evaluate and return the second parameter, if one exists.
 // Return null otherwise.
 static Cell* optional_second_param(Environment* env, Cell* params)
@@ -1684,6 +1703,7 @@ static Cell* atom_quote(Environment* env, Cell* params)
 // the result of the expression is unspecified.
 static Cell* atom_if(Environment* env, Cell* params)
 {
+    /*
 	Cell* test = nth_param_any(env, params, 1);
 	
 	if (test->type == TYPE_BOOLEAN &&
@@ -1701,6 +1721,8 @@ static Cell* atom_if(Environment* env, Cell* params)
 	
 	// else eval consequent
 	return eval(env, car(cdr(params)));
+     */
+    assert(0);
 }
 
 // 4.1.6. Assignments
@@ -1965,10 +1987,11 @@ static Cell* atom_define(Environment* env, Cell* params)
 		case TYPE_PAIR:
 		{
 			// todo: handle dotted syntax
-			variable		= car(first);
-			Cell* formals	= cdr(first);
-			Cell* body		= cdr(params);
-			value = make_procedure(env, formals, body);
+			//variable		= car(first);
+			//Cell* formals	= cdr(first);
+			//Cell* body		= cdr(params);
+            //			value = make_procedure(env, formals, body);
+            assert(false);
 			break;
 		}
             
@@ -4014,11 +4037,16 @@ static void compile(Closure* closure, Cell* cell)
 {
     switch (cell->type)
     {
-        case TYPE_NUMBER:
-        case TYPE_BOOLEAN:
-        case TYPE_STRING:
+        // basic types will self evaluate
+		case TYPE_BOOLEAN:
+		case TYPE_NUMBER:
+		case TYPE_STRING:
+		case TYPE_CHARACTER:
+        case TYPE_VECTOR:
+        case TYPE_ENVIRONMENT:
             push_load_constant(closure, cell);
             break;
+
         case TYPE_PAIR:
             if (car(cell)->type == TYPE_SYMBOL)
             {
@@ -4026,7 +4054,7 @@ static void compile(Closure* closure, Cell* cell)
             }
             break;
         default:
-            printf("Syntax error. Expected a list.\n");
+            printf("Syntax error. Unexpected type %s.\n", typenames[cell->type]);
             return;
     }
         
@@ -4048,7 +4076,6 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
 		goto cleanup;
 	}
 	
-	
 	jb.prev = cont->escape;
 	cont->escape = &jb;
 	
@@ -4061,10 +4088,11 @@ static void atom_api_load(Continuation* cont, const char* data, size_t length)
         read_token(&input, &next);
 		if (Cell* cell = parse_datum(env, &input, &next))
 		{
-            struct Closure closure;
-            compile(&closure, cell);
             printf("parsed> ");
             print(stdout, cell, false);
+            
+            struct Closure closure;
+            compile(&closure, cell);
             const Cell* result =
             eval(env, cell);
             print(stdout, result, false);
@@ -4130,32 +4158,20 @@ tailcall:
             {
                 stack_push(&env->cont->stack, instruction.data.constant);
                 break;
+            }
+                
+            case INSTRUCTION_CALL:
+            {
+            }
+                
+            default: assert(false);
         }
     }
+}
     
     
-    
-	switch(cell->type)
-	{
-        // basic types will self evaluate
-		case TYPE_BOOLEAN:
-		case TYPE_NUMBER:
-		case TYPE_STRING:
-		case TYPE_CHARACTER:
-        case TYPE_VECTOR:
-        case TYPE_ENVIRONMENT:
-			return cell;
-            
-		case TYPE_SYMBOL:
-			return environment_get(env, cell);
-            
-        case TYPE_EMPTY_LIST:
-        case TYPE_BUILT_IN:
-        case TYPE_CLOSURE:
-        case TYPE_SYNTAX:
-        case TYPE_INPUT_PORT:
-        case TYPE_OUTPUT_PORT:
-            return signal_error(env->cont, "Cannot call %s", typenames[cell->type]);
+        //            return signal_error(env->cont, "Cannot call %s", typenames[cell->type]);
+        /*
             
 		case TYPE_PAIR:
 		{
@@ -4249,7 +4265,7 @@ tailcall:
             }
 		}
 	}
-}
+         */
 
 static void add_builtin(Environment* env, const char* name, atom_function function)
 {   
