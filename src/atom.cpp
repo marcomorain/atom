@@ -62,6 +62,7 @@ struct Environment;
 struct Continuation;
 struct Cell;
 struct Symbol;
+struct Closure;
 
 typedef Cell* (*atom_function) (Environment* env, Cell* params);
 
@@ -85,14 +86,6 @@ struct Cell
         int   length;
     };
 	
-	struct OldClosure
-	{
-		// If function is null, then the procedure
-		// was created in scheme, otherwise it is a built-in
-		Cell*    		formals;
-		Cell*    		body;
-		Environment*	env;
-	};
     
 	// todo: add a const string type? or a flag?
 	// todo: add a length to string type
@@ -108,7 +101,7 @@ struct Cell
 		Vector          vector;
         atom_function   built_in;
         atom_function   syntax;
-        OldClosure         closure;
+        Closure*        closure;
 		FILE*           input_port;
         FILE*           output_port;
         Environment*    env;
@@ -179,6 +172,12 @@ template <typename Type> void stack_push(struct stack<Type>* stack, const Type e
     
     stack->elements[stack->num_elements] = element;
     stack->num_elements++;
+}
+
+template <typename Type> Type stack_get(const struct stack<Type>* stack, size_t elem)
+{
+    assert(elem < stack->num_elements);
+    return stack->elements[elem];
 }
 
 enum TokenType
@@ -523,10 +522,11 @@ static void mark(Cell* cell)
             
 		case TYPE_CLOSURE:
 		{
-			Cell::OldClosure& closure = cell->data.closure;
-            mark(closure.formals);
-            mark(closure.body);
-            mark_environment(closure.env);
+            //TODO:
+            // GC closure
+            //mark(closure.formals);
+            //mark(closure.body);
+            //mark_environment(closure.env);
 			break;
 		}
             
@@ -624,18 +624,6 @@ static Cell* make_character(Environment* env, char c)
 	Cell* character = make_cell(env, TYPE_CHARACTER);
 	character->data.character = c;
 	return character;	
-}
-
-static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
-{
-	type_check(env->cont, TYPE_PAIR, formals->type);
-	type_check(env->cont, TYPE_PAIR, body->type);
-    
-	Cell* closure = make_cell(env, TYPE_CLOSURE);
-	closure->data.closure.formals = formals;
-	closure->data.closure.body    = body;
-	closure->data.closure.env	 = env;
-	return closure;	
 }
 
 static Cell* make_vector(Environment* env, int length, Cell* fill)
@@ -2106,7 +2094,8 @@ static Cell* atom_error(Environment* env, Cell* params)
 
 static Cell* atom_lambda(Environment* env, Cell* params)
 {
-	return make_procedure(env, car(params), cdr(params));
+    // TODO: This should be an opcode to close over a function
+	return make_boolean(false);
 }
 
 // 4.2.3 Sequencing
@@ -4115,11 +4104,36 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	free(buffer);
 }
 
-static Cell* eval(Environment* env, Cell* cell)
+static Cell* eval(Environment* env, Closure* closure)
 {
 tailcall:
     
-	assert(cell);
+    assert(closure);
+    
+    unsigned PC = 0;
+    
+    for(;;)
+    {
+        Instruction instruction = stack_get(&closure->instructions, PC);
+        switch (instruction.type)
+        {
+            // The most simple opcode.
+            // Load a constant from the constants table onto the top of the stack.
+            case INSTRUCTION_LOAD_CONSTANT:
+            {
+                stack_push(&env->cont->stack, instruction.data.constant);
+                break;
+            }
+                
+            // Load a local variable
+            case INSTRUCTION_LOAD:
+            {
+                stack_push(&env->cont->stack, instruction.data.constant);
+                break;
+        }
+    }
+    
+    
     
 	switch(cell->type)
 	{
