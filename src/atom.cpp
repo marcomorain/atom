@@ -181,9 +181,6 @@ template <typename Type> void stack_push(struct stack<Type>* stack, const Type e
     stack->num_elements++;
 }
 
-
-
-
 enum TokenType
 {
     TOKEN_NONE,
@@ -3950,9 +3947,26 @@ static Cell* always_false(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+enum
+{
+    INSTRUCTION_LOAD,
+    INSTRUCTION_LOAD_CONSTANT,
+    INSTRUCTION_CALL
+};
+
+struct Instruction
+{
+    char type;
+    union {
+        Cell* constant;
+        const Symbol* load;
+        unsigned call;
+    } data;
+};
+
 struct Closure
 {
-    stack<unsigned int> instructions;
+    stack<Instruction> instructions;
     stack<Cell*>        constants;
 };
 
@@ -3962,92 +3976,71 @@ static void closure_init(Closure* closure)
     stack_init(&closure->constants);
 }
 
-enum {
-    INST_DEFINE,
-    INST_LAMBDA,
-    INST_IF,
-    INST_QUOTE,
-    INST_UNQUOTE,
-    INST_QUASIQUOTE,
-    INST_UNQUOTE_SPLICING,
-    INST_SET,
-    INST_PUSH_CONSTANT,
-    INST_PUSH_VARIABLE,
-    INST_CALL
-};
 
-static void emit(Closure* closure, unsigned int inst)
+static void push_load_constant(Closure* closure, Cell* constant)
 {
-    stack_push(&closure->instructions, inst);
-    switch(inst)   
-    {
-        case INST_PUSH_CONSTANT: printf("-- push constant\n"); break;
-        case INST_PUSH_VARIABLE: printf("-- push variable\n"); break;
-        case INST_CALL:          printf("-- all\n"); break;
-        default: assert(false);
-    }
+    Instruction instruction;
+    instruction.type = INSTRUCTION_LOAD_CONSTANT;
+    instruction.data.constant = constant;
+    stack_push(&closure->instructions, instruction);
+    printf("Compiler: LOAD CONSTANT ");
+    print(stdout, constant, true);
 }
 
-
-static int compile_function_call(Cell* cell)
+static void push_call(Closure* closure, unsigned num_params)
 {
-    switch (cell->type) {
-        case TYPE_PAIR:
-        {
-            const int params = compile_function_call(cdr(cell));
-            if (params < 0) return -1;
-            printf("-- push list element: ");
-            print(stdout, car(cell), true);
-            return 1 + params;
-        }
-        case TYPE_EMPTY_LIST:
-            return 0;
-        default:
-            return -1;
+    Instruction instruction;
+    instruction.type = INSTRUCTION_CALL;
+    instruction.data.call = num_params;
+    stack_push(&closure->instructions, instruction);
+    printf("Compiler: CALL %d\n", num_params);
+}
+
+static void push_load(Closure* closure, const Symbol* symbol)
+{
+    Instruction instruction;
+    instruction.type = INSTRUCTION_LOAD;
+    instruction.data.load = symbol;
+    stack_push(&closure->instructions, instruction);
+    printf("Compiler: LOAD %s\n", symbol->name);
+}
+
+static void compile(Closure* closure, Cell* cell);
+
+static void compile_function_call(Closure* closure, const Symbol* head, Cell* params)
+{
+    unsigned num_params = 0;
+    push_load(closure, head);
+    
+    for(Cell* var = params; is_pair(var); var = cdr(var))
+    {
+        compile(closure, car(var));
+        num_params++;
     }
+    
+    push_call(closure, num_params);
 }
 
 static void compile(Closure* closure, Cell* cell)
 {
-    switch(cell->type)
+    switch (cell->type)
     {
+        case TYPE_NUMBER:
+        case TYPE_BOOLEAN:
+        case TYPE_STRING:
+            push_load_constant(closure, cell);
+            break;
         case TYPE_PAIR:
-        {
             if (car(cell)->type == TYPE_SYMBOL)
             {
-                const Symbol* symbol = car(cell)->data.symbol;
-                
-                if (strcmp(symbol->name, "if") == 0)
-                {
-                    emit(closure, INST_IF);
-                    
-                }
-                
+                compile_function_call(closure, car(cell)->data.symbol, cdr(cell));
             }
-            const int params = compile_function_call(cell);
-            emit(INST_CALL);
-            printf("-- function call %d\n", params);
             break;
-        }
-            
-        case TYPE_SYMBOL:
-            emit(INST_PUSH_VARIABLE);
-            break;
-            
-		case TYPE_BOOLEAN:
-		case TYPE_NUMBER:
-		case TYPE_STRING:
-		case TYPE_CHARACTER:
-        case TYPE_VECTOR:
-        case TYPE_ENVIRONMENT:
-            emit(INST_PUSH_CONSTANT);
-            break;
-            
         default:
-            printf("syntax error - don't know how to deal with: ");
-            print(stdout, cell, true);
-            break;
+            printf("Syntax error. Expected a list.\n");
+            return;
     }
+        
 }
 
 static void atom_api_load(Continuation* cont, const char* data, size_t length)
