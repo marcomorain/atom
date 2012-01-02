@@ -3983,7 +3983,7 @@ static void emit(Closure* closure, unsigned int inst)
     {
         case INST_PUSH_CONSTANT: printf("-- push constant\n"); break;
         case INST_PUSH_VARIABLE: printf("-- push variable\n"); break;
-        case INST_CALL:          printf("-- all\n"); break;
+        case INST_CALL:          printf("-- call\n"); break;
         default: assert(false);
     }
 }
@@ -4025,13 +4025,13 @@ static void compile(Closure* closure, Cell* cell)
                 
             }
             const int params = compile_function_call(cell);
-            emit(INST_CALL);
+            emit(closure, INST_CALL);
             printf("-- function call %d\n", params);
             break;
         }
             
         case TYPE_SYMBOL:
-            emit(INST_PUSH_VARIABLE);
+            emit(closure, INST_PUSH_VARIABLE);
             break;
             
 		case TYPE_BOOLEAN:
@@ -4040,7 +4040,7 @@ static void compile(Closure* closure, Cell* cell)
 		case TYPE_CHARACTER:
         case TYPE_VECTOR:
         case TYPE_ENVIRONMENT:
-            emit(INST_PUSH_CONSTANT);
+            emit(closure, INST_PUSH_CONSTANT);
             break;
             
         default:
