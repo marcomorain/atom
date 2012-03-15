@@ -10,10 +10,6 @@
 #include <assert.h>
 #include <math.h>
 
-// For REPL
-extern "C" {
-#include "linenoise.h"
-}
 
 #define DEBUG_LEXER (0)
 
@@ -4007,6 +4003,9 @@ static int compile_function_call(Cell* cell)
     }
 }
 
+
+static void emit(int){};
+
 static void compile(Closure* closure, Cell* cell)
 {
     switch(cell->type)
@@ -4050,7 +4049,7 @@ static void compile(Closure* closure, Cell* cell)
     }
 }
 
-static void atom_api_load(Continuation* cont, const char* data, size_t length)
+void atom_api_load(Continuation* cont, const char* data, size_t length)
 {	
     //printf("input> %s", data);
 	Environment* env = cont->env;
@@ -4483,86 +4482,3 @@ void atom_api_close(Continuation* cont)
     free(cont);
     
 }
-
-void atom_api_repl(Continuation* cont)
-{
-    for (;;)
-    {
-        char* line = linenoise("> ");
-        
-        if (!line) // eof/ctrl+d
-        {
-            break;
-        }
-        
-        if (*line)
-        {
-            linenoiseHistoryAdd(line);
-            atom_api_load(cont, line, strlen(line));
-        }
-        
-        free(line);
-    }
-}
-
-static bool match(const char* input, const char* a, const char* b)
-{
-    return	strcmp(input, a) == 0 ||
-    strcmp(input, b) == 0;
-}
-
-static const char* history = ".atom_history";
-
-int main (int argc, char * const argv[])
-{
-    Continuation* atom = atom_api_open();
-    
-    bool repl = false;
-    bool file = false;
-    const char* filename = NULL;
-    
-    for (int i=1; i<argc; i++)
-    {
-        if (match(argv[i], "-i", "--interactive"))
-        {
-            repl = true;
-        }
-        else if (match(argv[i], "-f", "--file"))
-        {
-            i++;
-            if (i == argc)
-            {
-                signal_error(atom, "filename expected");
-            }
-            file = true;
-            filename = argv[i];
-        }
-    }
-    
-    if (!file)
-    {
-        filename = "/Users/marcomorain/dev/scheme/test/the_little_schemer.scm";
-    }
-    
-    printf("Loading input from %s\n", filename);
-    
-    atom_api_loadfile(atom, filename);
-    
-    if (repl)
-    {
-        linenoiseHistoryLoad((char*)history);
-        printf("Now doing the REPL\n");
-        atom_api_repl(atom);
-        linenoiseHistorySave((char*)history);
-    }
-    else
-    {
-        printf("File done, no REPL.\n");
-    }
-    
-    atom_api_close(atom);
-    
-    printf("atom shutdwn ok\n");
-    
-    return 0;
- }

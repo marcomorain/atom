@@ -8,7 +8,9 @@
 
 /* Begin PBXBuildFile section */
 		493DC93514096291009876BE /* linenoise.c in Sources */ = {isa = PBXBuildFile; fileRef = 493DC93314096291009876BE /* linenoise.c */; };
+		4942A8131511C1080099D148 /* test.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4942A8121511C1080099D148 /* test.cpp */; };
 		4989F1DA144DFE0300EA571B /* atom.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4989F1D9144DFE0300EA571B /* atom.cpp */; };
+		49B0173E1511BA12009B5DAC /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 49B0173D1511BA12009B5DAC /* main.cpp */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -26,7 +28,10 @@
 /* Begin PBXFileReference section */
 		493DC93314096291009876BE /* linenoise.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linenoise.c; path = ../../linenoise/linenoise.c; sourceTree = "<group>"; };
 		493DC93414096291009876BE /* linenoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linenoise.h; path = ../../linenoise/linenoise.h; sourceTree = "<group>"; };
+		4942A8121511C1080099D148 /* test.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = test.cpp; path = ../../src/test.cpp; sourceTree = "<group>"; };
 		4989F1D9144DFE0300EA571B /* atom.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = atom.cpp; path = ../../src/atom.cpp; sourceTree = "<group>"; };
+		49B017381511B9CC009B5DAC /* minunit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = minunit.h; path = ../test/minunit.h; sourceTree = "<group>"; };
+		49B0173D1511BA12009B5DAC /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = main.cpp; path = ../../src/main.cpp; sourceTree = "<group>"; };
 		8FB66698135BCB15000DE583 /* atom */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = atom; sourceTree = BUILT_PRODUCTS_DIR; };
 		8FB6669E135BCB15000DE583 /* atom.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = atom.1; sourceTree = "<group>"; };
 		8FB666A5135BCBD4000DE583 /* atom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atom.h; path = ../../src/atom.h; sourceTree = "<group>"; };
@@ -43,11 +48,28 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		8FB6668D135BCB14000DE583 = {
+		49B0173B1511B9D4009B5DAC /* test */ = {
+			isa = PBXGroup;
+			children = (
+				49B017381511B9CC009B5DAC /* minunit.h */,
+			);
+			name = test;
+			sourceTree = "<group>";
+		};
+		49B0173C1511B9E0009B5DAC /* linenoise */ = {
 			isa = PBXGroup;
 			children = (
 				493DC93314096291009876BE /* linenoise.c */,
 				493DC93414096291009876BE /* linenoise.h */,
+			);
+			name = linenoise;
+			sourceTree = "<group>";
+		};
+		8FB6668D135BCB14000DE583 = {
+			isa = PBXGroup;
+			children = (
+				49B0173C1511B9E0009B5DAC /* linenoise */,
+				49B0173B1511B9D4009B5DAC /* test */,
 				8FB6669B135BCB15000DE583 /* atom */,
 				8FB66699135BCB15000DE583 /* Products */,
 			);
@@ -65,6 +87,8 @@
 			isa = PBXGroup;
 			children = (
 				4989F1D9144DFE0300EA571B /* atom.cpp */,
+				49B0173D1511BA12009B5DAC /* main.cpp */,
+				4942A8121511C1080099D148 /* test.cpp */,
 				8FB666A5135BCBD4000DE583 /* atom.h */,
 				8FB6669E135BCB15000DE583 /* atom.1 */,
 			);
@@ -97,6 +121,7 @@
 		8FB6668F135BCB14000DE583 /* Project object */ = {
 			isa = PBXProject;
 			attributes = {
+				LastUpgradeCheck = 0420;
 				ORGANIZATIONNAME = yTR3m9aXwX;
 			};
 			buildConfigurationList = 8FB66692135BCB14000DE583 /* Build configuration list for PBXProject "atom" */;
@@ -123,6 +148,8 @@
 			files = (
 				493DC93514096291009876BE /* linenoise.c in Sources */,
 				4989F1DA144DFE0300EA571B /* atom.cpp in Sources */,
+				49B0173E1511BA12009B5DAC /* main.cpp in Sources */,
+				4942A8131511C1080099D148 /* test.cpp in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
