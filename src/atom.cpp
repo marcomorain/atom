@@ -40,18 +40,20 @@ enum CellType
 };
 
 const static char* typenames [] = {
-	"boolean",
-	"character",
-	"number",
-	"string",
-    "empty list",
-	"pair",
-	"vector",
-	"symbol",
-	"procedure",
-    "input-port",
-    "output-port",
-    "environment"
+    [TYPE_BOOLEAN]     = "boolean",
+    [TYPE_CHARACTER]   = "character",
+	[TYPE_NUMBER]      = "number",
+	[TYPE_STRING]      = "string",
+    [TYPE_EMPTY_LIST]  = "empty list",
+	[TYPE_PAIR]        = "pair",
+	[TYPE_VECTOR]      = "vector",
+	[TYPE_SYMBOL]      = "symbol",
+	[TYPE_BUILT_IN]    = "procedure",
+    [TYPE_CLOSURE]     = "procedure",
+    [TYPE_SYNTAX]      = "syntax",
+    [TYPE_INPUT_PORT]  = "input post",
+    [TYPE_OUTPUT_PORT] = "output port",
+    [TYPE_ENVIRONMENT] = "environment"
 };
 
 struct Environment;
@@ -104,7 +106,7 @@ struct Cell
 		Vector          vector;
         atom_function   built_in;
         atom_function   syntax;
-        OldClosure         closure;
+        OldClosure      closure;
 		FILE*           input_port;
         FILE*           output_port;
         Environment*    env;
@@ -349,9 +351,7 @@ struct Environment
 	{
 		assert(power_of_two(size));
 		mask = size-1;
-		const size_t num_bytes = size * sizeof(Node*);
-		data = (Node**)malloc(num_bytes);
-		memset(data, 0, num_bytes);
+		data = (Node**)calloc(size, sizeof(Node*));
 		parent = parent_env;
 		cont = c;
 	}
@@ -408,6 +408,7 @@ static Symbol* find_or_insert_symbol(Continuation* cont, const char* name)
     
     Symbol* new_symbol = (Symbol*)malloc(sizeof(Symbol));
     
+    // Insert front of linked list.
     new_symbol->name = strdup(name);
     new_symbol->next = cont->symbols[hash];
     cont->symbols[hash] = new_symbol;
@@ -653,14 +654,11 @@ static Cell* make_empty_string(Environment* env, int length)
 {
     Cell* string = make_cell(env, TYPE_STRING);
     string->data.string.length = length;
-    string->data.string.data   = (char*)malloc(length+1);
+    string->data.string.data   = (char*)calloc(length+1, sizeof(char));
         
     // Assert if the allocation fails.
     // TODO: handle this.
     assert(string->data.string.data);
-    
-    // Fill with zeros
-    memset(string->data.string.data, 0, length+1);
 
     return string;
 }
@@ -4272,7 +4270,7 @@ Continuation* atom_api_open()
     cont->output        = stdout;
     cont->symbol_count  = 0;
     cont->symbol_mask   = 0xFF;
-    cont->symbols       = (Symbol**)malloc(sizeof(Symbol*) * (1+cont->symbol_mask));
+    cont->symbols       = (Symbol**)calloc(1+cont->symbol_mask, sizeof(Symbol*));
     
     stack_init(&cont->stack);
     

@@ -8,3 +8,5 @@ void atom_api_close(struct Continuation* env);
 void atom_api_loadfile(struct Continuation* env, const char* filename);
 void atom_api_load(struct Continuation* cont, const char* data, size_t length);
 void atom_api_repl(struct Continuation* env);
+
+#define atom_api_loads(cont, data) (atom_api_load((cont), (data), strlen(data)))

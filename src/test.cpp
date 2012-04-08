@@ -23,14 +23,17 @@ static char * test_open_close() {
     return 0;
 }
 
-static char * test_bar() {
+static char * test_comile() {
+    struct Continuation* atom = atom_api_open();
+    atom_api_loads(atom, "1");
+    atom_api_close(atom);
     mu_assert("error, bar != 5", bar == 5);
     return 0;
 }
 
 static char * all_tests() {
     mu_run_test(test_open_close);
-    mu_run_test(test_bar);
+    mu_run_test(test_comile);
     return 0;
 }
 
