@@ -179,9 +179,6 @@ template <typename Type> void stack_push(struct stack<Type>* stack, const Type e
     stack->num_elements++;
 }
 
-
-
-
 enum TokenType
 {
     TOKEN_NONE,
@@ -383,6 +380,10 @@ struct Continuation
     // The number of symbols that exist in the table
     // This is used to know when to grow.
     size_t          symbol_count;
+    
+    // TODO:
+    // 1. count every byte allocated
+    // 2. free all memory on close
 };
 
 // Maybe insert a new symbol into the Cont's symbol table.
@@ -602,8 +603,14 @@ static void collect_garbage(Continuation* cont)
 	
 	cont->cells = remaining;
     
-	printf("GC: %d cells collected. %d remain allocated\n",
-           cells_before - cont->allocated, cont->allocated);
+    // Print GC stats
+    {
+        const int freed = cells_before - cont->allocated;
+        const float percent_freed = 100.0f * (float)freed / (float)cells_before;
+    
+        printf("GC: %d cells collected (%.1f%%). %d remain allocated\n",
+           freed, percent_freed, cont->allocated);
+    }
 	
 }
 
@@ -4001,9 +4008,6 @@ static int compile_function_call(Cell* cell)
     }
 }
 
-
-static void emit(int){};
-
 static void compile(Closure* closure, Cell* cell)
 {
     switch(cell->type)
@@ -4022,13 +4026,13 @@ static void compile(Closure* closure, Cell* cell)
                 
             }
             const int params = compile_function_call(cell);
-            emit(INST_CALL);
+            emit(closure, INST_CALL);
             printf("-- function call %d\n", params);
             break;
         }
             
         case TYPE_SYMBOL:
-            emit(INST_PUSH_VARIABLE);
+            emit(closure, INST_PUSH_VARIABLE);
             break;
             
 		case TYPE_BOOLEAN:
@@ -4037,7 +4041,7 @@ static void compile(Closure* closure, Cell* cell)
 		case TYPE_CHARACTER:
         case TYPE_VECTOR:
         case TYPE_ENVIRONMENT:
-            emit(INST_PUSH_CONSTANT);
+            emit(closure, INST_PUSH_CONSTANT);
             break;
             
         default:

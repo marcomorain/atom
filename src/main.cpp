@@ -46,6 +46,9 @@ int main (int argc, char** argv)
     if (test(argc, argv) != 0)
     {
         return EXIT_FAILURE;
+    } else
+    {
+        return EXIT_SUCCESS;
     }
     
     Continuation* atom = atom_api_open();
