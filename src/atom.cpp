@@ -179,6 +179,12 @@ template <typename Type> void stack_push(struct stack<Type>* stack, const Type e
     stack->num_elements++;
 }
 
+template <typename Type> Type stack_get(struct stack<Type>* stack, size_t element)
+{
+    assert(element < stack->num_elements);
+    return stack->elements[element];
+}
+
 enum TokenType
 {
     TOKEN_NONE,
@@ -1564,12 +1570,15 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 	signal_error(env->cont, "No binding for %s in any scope.", symbol->name);
 }
 
-static Cell* eval(Environment* env, Cell* cell);
+static Cell* eval(Continuation* env, struct Closure* closure);
+
 
 static Cell* type_q_helper(Environment* env, Cell* params, int type)
 {
-	Cell* obj = eval(env, car(params));
-	return make_boolean(obj->type == type);
+	//Cell* obj = eval(env, car(params));
+	//return make_boolean(obj->type == type);
+    assert(0);
+    return 0;
 }
 
 
@@ -1588,7 +1597,9 @@ static Cell* nth_param_any_optional(Environment* env, Cell* params, int n)
         return NULL;
 	}
 	
-	return eval(env, car(params));
+    assert(0);
+	//return eval(env, car(params));
+    return 0;
 }
 
 // return the nth parameter to a function.
@@ -1671,8 +1682,10 @@ static Cell* optional_second_param(Environment* env, Cell* params)
 		return NULL;
 	}
 	
-	Cell* result = eval(env, car(rest));
-	return result;
+	//Cell* result = eval(env, car(rest));
+	//return result;
+    assert(0);
+    return 0;
 }
 
 // 4.1.2
@@ -1708,7 +1721,9 @@ static Cell* atom_if(Environment* env, Cell* params)
 		Cell* alternate = cdr(cdr(params));
 		if (alternate && car(alternate))
 		{
-			return eval(env, car(alternate));
+			//return eval(env, car(alternate));
+            assert(0);
+            return 0;
 		}
         
 		// undefined, this is false though.
@@ -1716,7 +1731,9 @@ static Cell* atom_if(Environment* env, Cell* params)
 	}
 	
 	// else eval consequent
-	return eval(env, car(cdr(params)));
+	// return eval(env, car(cdr(params)));
+    assert(0);
+    return 0;
 }
 
 // 4.1.6. Assignments
@@ -1731,11 +1748,12 @@ static Cell* atom_set_b(Environment* env, Cell* params)
 {
 	Cell* variable   = car(params);
 	type_check(env->cont, TYPE_SYMBOL, variable->type);
-	Cell* expression = eval(env, car(cdr(params)));
-	
+	// Cell* expression = eval(env, car(cdr(params)));
 	// @todo: seperate env->set and env->define
-	environment_set(env, variable->data.symbol, expression);
-	return expression;
+	//environment_set(env, variable->data.symbol, expression);
+	//return expression;
+    assert(0);
+    return 0;
 }
 
 // 4.2.1. Conditionals
@@ -1780,7 +1798,8 @@ static Cell* atom_cond(Environment* env, Cell* params)
 		if (t->type != TYPE_SYMBOL ||
 			strcmp("else", t->data.string.data) != 0)
 		{
-			Cell* result = eval(env, t);	
+			Cell* result = 0; // eval(env, t);
+            assert(0);
 			if (result->type == TYPE_BOOLEAN &&
 				result->data.boolean == false)
 			{
@@ -1793,7 +1812,8 @@ static Cell* atom_cond(Environment* env, Cell* params)
 		// @todo: assert there is at least one expression.
 		for (Cell* expr = cdr(test); is_pair(expr); expr = cdr(expr))
 		{
-			last_result = eval(env, car(expr));
+            assert(0);
+			last_result = 0; // eval(env, car(expr));
 		}
 		
 		return last_result;
@@ -1846,7 +1866,8 @@ static Cell* atom_and(Environment* env, Cell* params)
 	Cell* last_result;
 	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
 	{
-		last_result = eval(env, car(cell));
+        assert(0);
+		last_result = 0; //eval(env, car(cell));
 		
 		if (is_false(last_result))
 		{
@@ -1873,7 +1894,8 @@ static Cell* atom_or(Environment* env, Cell* params)
     
 	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
 	{
-		Cell* test = eval(env, car(cell));
+        assert(0);
+		Cell* test = 0; //eval(env, car(cell));
 		
 		if (is_false(test))
 		{
@@ -1915,7 +1937,8 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 		Cell* pair = car(b);
 		Cell* symbol = car(pair);
 		type_check(env->cont, TYPE_SYMBOL, symbol->type);
-		Cell* init   = eval(target, car(cdr(pair)));
+		Cell* init   = 0; //eval(target, car(cdr(pair)));
+        assert(0);
 		environment_define(child, symbol->data.symbol, init);
 	}
 	
@@ -1924,7 +1947,8 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 	for (Cell* b = body; is_pair(b); b = cdr(b))
 	{
 		Cell* expr = car(b);
-		last = eval(child, expr);
+        assert(0);
+		last = 0;//eval(child, expr);
 	}
 	
 	return last;
@@ -1974,7 +1998,8 @@ static Cell* atom_define(Environment* env, Cell* params)
 		case TYPE_SYMBOL:
 		{
 			variable	= first;
-			value		= eval(env, car(cdr(params)));
+            assert(0);
+			value		= 0; //eval(env, car(cdr(params)));
 			break;
 		}
             
@@ -2062,11 +2087,13 @@ static Cell* quasiquote_helper(Environment* env, Cell* list)
         
         if (symbol_is(operation, "unquote"))
         {
-            new_head = eval(env, car(cdr(head)));
+            assert(0);
+            new_head = 0; //eval(env, car(cdr(head)));
         }
         else if (symbol_is(operation, "unquote-splicing"))
         {
-            new_head = eval(env, car(cdr(head)));
+            assert(0);
+            new_head = 0;//eval(env, car(cdr(head)));
             assert(new_head == NULL || new_head->type == TYPE_PAIR);
             return append_destructive(new_head, quasiquote_helper(env, rest));
         }
@@ -2126,7 +2153,8 @@ static Cell* atom_begin(Environment* env, Cell* params)
 	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
 	{
 		// todo: tail recursion.
-		last = eval(env, car(cell));
+		last = 0; //eval(env, car(cell));
+        assert(0);
 	}
 	return last;
 }
@@ -2147,7 +2175,8 @@ static Cell* plus_mul_helper(Environment* env,
 		
 		assert(n); // todo: trigger this assert and test
 		
-		Cell* value = eval(env, n);
+		Cell* value = 0; //eval(env, n);
+        assert(0);
         
 		type_check(env->cont, TYPE_NUMBER, value->type);
         
@@ -2187,7 +2216,8 @@ static Cell* sub_div_helper(Environment* env, Cell* params, bool is_sub)
 	{
 		for (Cell* cell = cdr(params); is_pair(cell); cell = cdr(cell))
 		{
-			Cell* num = eval(env, car(cell));
+			Cell* num = 0; //eval(env, car(cell));
+            assert(0);
 			type_check(env->cont, TYPE_NUMBER, num->type);
 			
 			if (is_sub)
@@ -2621,7 +2651,8 @@ static Cell* min_max_helper(Environment* env, Cell* params, bool is_min)
 	
 	for (Cell* x = cdr(params); is_pair(x); x = cdr(x))
 	{
-		Cell* n = eval(env, car(x));
+		Cell* n = 0; //eval(env, car(x));
+        assert(0);
 		type_check(env->cont, TYPE_NUMBER, n->type);
 		
 		if (is_min)
@@ -2656,7 +2687,8 @@ static Cell* atom_boolean_q(Environment* env, Cell* params)
 
 static Cell* atom_not(Environment* env, Cell* params)
 {
-	Cell* obj = eval(env, car(params));
+	Cell* obj = 0; //eval(env, car(params));
+    assert(0);
 	bool is_truthy = obj->type != TYPE_BOOLEAN || obj->data.boolean;
 	return make_boolean(!is_truthy);
 }
@@ -2692,7 +2724,8 @@ static Cell* set_car_cdr_helper(Environment* env, Cell* params, int is_car)
 {
 	// @todo: make an error here for constant lists	
 	Cell* pair = nth_param(env, params, 1, TYPE_PAIR);
-	Cell* obj  = eval(env, car(cdr(params)));
+	Cell* obj  = 0; //eval(env, car(cdr(params)));
+    assert(0);
 	
 	if (is_car)
 	{
@@ -2755,7 +2788,8 @@ static Cell* atom_list(Environment* env, Cell* params)
 	
 	for (;;)
 	{
-		set_car(result, eval(env, car(params)));
+		set_car(result, 0);//eval(env, car(params)));
+        assert(0);
 		set_cdr(result, cons(env, NULL, NULL));
 		params = cdr(params);
 	}
@@ -2768,8 +2802,9 @@ static Cell* atom_length(Environment* env, Cell* params)
 {	
 	int length = 1;
     
-	for (Cell* list = eval(env, car(params)); is_pair(list); list = list->data.pair.cdr)
+	for (Cell* list = 0; /*eval(env, car(params))*/ is_pair(list); list = list->data.pair.cdr)
 	{
+        assert(0);
 		type_check(env->cont, TYPE_PAIR, list->type);
 		length++;
 	}
@@ -3018,7 +3053,8 @@ static Cell* atom_string_append(Environment* env, Cell* params)
     
     for (Cell* param = params; is_pair(param); param = cdr(param))
     {
-        Cell* str = eval(env, car(param));
+        Cell* str = 0; //eval(env, car(param));
+        assert(0);
         type_check(env->cont, TYPE_STRING, str->type);
         
         for (int i=0; i<str->data.string.length; i++)
@@ -3427,7 +3463,8 @@ static Cell* atom_vector(Environment* env, Cell* params)
     
     for (Cell* p = params; is_pair(p); p = cdr(p))
     {
-        v->data.vector.data[i] = eval(env, car(p));
+        v->data.vector.data[i] = 0; //eval(env, car(p));
+        assert(0);
         i++;
     }
     
@@ -3553,7 +3590,8 @@ static Cell* atom_vector_fill_b(Environment* env, Cell* params)
 // Returns #t if obj is a procedure, otherwise returns #f.
 static Cell* atom_procedure_q(Environment* env, Cell* params)
 {
-    Cell* obj = eval(env, car(params));
+    Cell* obj = 0; //eval(env, car(params));
+    assert(0);
 	return make_boolean(obj->type == TYPE_CLOSURE || obj->type == TYPE_BUILT_IN);
 }
 
@@ -3564,8 +3602,9 @@ static Cell* apply_recursive(Environment* env, Cell* function, Cell* args)
         return NULL;
     }
     
-    return cons(env, eval(env, cons(env, function,
-                                         cons(env, car(args), &cell_empty_list))),
+    assert(0);
+    return cons(env, 0, //eval(env, cons(env, function,
+                        //cons(env, car(args), &cell_empty_list))),
                      apply_recursive(env, function, cdr(args)));
 }
 
@@ -3974,21 +4013,29 @@ enum {
     INST_SET,
     INST_PUSH_CONSTANT,
     INST_PUSH_VARIABLE,
-    INST_CALL
+    INST_CALL,
+    INST_RETURN
 };
 
 static void emit(Closure* closure, unsigned int inst)
 {
     stack_push(&closure->instructions, inst);
-    switch(inst)   
+    switch(inst & 0xF)   
     {
         case INST_PUSH_CONSTANT: printf("-- push constant\n"); break;
         case INST_PUSH_VARIABLE: printf("-- push variable\n"); break;
-        case INST_CALL:          printf("-- all\n"); break;
+        case INST_CALL:          printf("-- call\n"); break;
+        case INST_RETURN:        printf("-- return\n"); break;
         default: assert(false);
     }
 }
 
+static size_t closure_add_constant(struct Closure* closure, Cell* cell)
+{
+    assert(cell->type == TYPE_NUMBER);
+    stack_push(&closure->constants, cell);
+    return closure->constants.num_elements - 1;
+}
 
 static int compile_function_call(Cell* cell)
 {
@@ -4010,6 +4057,7 @@ static int compile_function_call(Cell* cell)
 
 static void compile(Closure* closure, Cell* cell)
 {
+    closure_init(closure);
     switch(cell->type)
     {
         case TYPE_PAIR:
@@ -4041,14 +4089,21 @@ static void compile(Closure* closure, Cell* cell)
 		case TYPE_CHARACTER:
         case TYPE_VECTOR:
         case TYPE_ENVIRONMENT:
-            emit(closure, INST_PUSH_CONSTANT);
+        {
+            size_t c = closure_add_constant(closure, cell);
+            int instruction = INST_PUSH_CONSTANT | (c << 4);
+            emit(closure, instruction);
             break;
+        }
             
         default:
             printf("syntax error - don't know how to deal with: ");
             print(stdout, cell, true);
             break;
     }
+    
+    // 1 return value
+    emit(closure, INST_RETURN | (1 << 4));
 }
 
 void atom_api_load(Continuation* cont, const char* data, size_t length)
@@ -4085,7 +4140,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
             printf("parsed> ");
             print(stdout, cell, false);
             const Cell* result =
-            eval(env, cell);
+            eval(cont, &closure);
             print(stdout, result, false);
         }
         else break;
@@ -4123,13 +4178,35 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	free(buffer);
 }
 
-static Cell* eval(Environment* env, Cell* cell)
+static Cell* eval(Continuation* env, struct Closure* closure)
 {
 tailcall:
     
-	assert(cell);
+	assert(env);
+    assert(closure);
     
-	switch(cell->type)
+    size_t pc = 0;    
+    for (;;)
+    {
+        const int instruction = stack_get(&closure->instructions, pc);
+        switch (instruction & 0xF)
+        {
+            case INST_PUSH_CONSTANT:
+            {
+                int c = (instruction >> 4);
+                stack_push(&env->stack, stack_get(&closure->constants, c));
+                break;
+            }
+            
+            case INST_RETURN:
+            {
+                int c = (instruction>>4);
+                return stack_get(&env->stack, 0);
+            }
+        }
+    }
+   /* 
+	switch(0)//cell->type)
 	{
         // basic types will self evaluate
 		case TYPE_BOOLEAN:
@@ -4243,6 +4320,7 @@ tailcall:
             }
 		}
 	}
+    */
 }
 
 static void add_builtin(Environment* env, const char* name, atom_function function)
