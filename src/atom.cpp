@@ -179,10 +179,22 @@ template <typename Type> void stack_push(struct stack<Type>* stack, const Type e
     stack->num_elements++;
 }
 
+template <typename Type> void stack_pop(struct stack<Type>* stack, int num)
+{
+    assert(stack->num_elements >= num);
+    stack->num_elements -= num;
+}
+
 template <typename Type> Type stack_get(struct stack<Type>* stack, size_t element)
 {
     assert(element < stack->num_elements);
     return stack->elements[element];
+}
+
+template <typename Type> Type stack_get_top(struct stack<Type>* stack)
+{
+    assert(stack->num_elements > 0);
+    return stack->elements[stack->num_elements - 1];
 }
 
 enum TokenType
@@ -550,6 +562,9 @@ static void collect_garbage(Continuation* cont)
     const int cells_before = cont->allocated;
 	
 	mark_environment(cont->env);
+    
+    for (int i=0; i<cont->stack.num_elements; i++)
+        mark(stack_get(&cont->stack, i));
 	
 	Cell* remaining = NULL;
 	Cell* next = NULL;
@@ -3990,10 +4005,24 @@ static Cell* always_false(Environment* env, Cell* params)
 	return make_boolean(false);
 }
 
+struct Instruction
+{
+    int op_code;
+    int operand;
+};
+
+Instruction make_instruction(int op_code, int operand)
+{
+    Instruction instruction;
+    instruction.op_code = op_code;
+    instruction.operand = operand;
+    return instruction;
+}
+
 struct Closure
 {
-    stack<unsigned int> instructions;
-    stack<Cell*>        constants;
+    stack<Instruction> instructions;
+    stack<Cell*>       constants;
 };
 
 static void closure_init(Closure* closure)
@@ -4003,27 +4032,27 @@ static void closure_init(Closure* closure)
 }
 
 enum {
-    INST_DEFINE,
-    INST_LAMBDA,
-    INST_IF,
-    INST_QUOTE,
-    INST_UNQUOTE,
-    INST_QUASIQUOTE,
-    INST_UNQUOTE_SPLICING,
-    INST_SET,
+    //    INST_DEFINE,
+    //INST_LAMBDA,
+    //INST_IF,
+    //INST_QUOTE,
+    //INST_UNQUOTE,
+    //INST_QUASIQUOTE,
+    //INST_UNQUOTE_SPLICING,
+    //INST_SET,
     INST_PUSH_CONSTANT,
-    INST_PUSH_VARIABLE,
+    INST_LOAD,
     INST_CALL,
     INST_RETURN
 };
 
-static void emit(Closure* closure, unsigned int inst)
+static void emit(Closure* closure, Instruction instruction)
 {
-    stack_push(&closure->instructions, inst);
-    switch(inst & 0xF)   
+    stack_push(&closure->instructions, instruction);
+    switch(instruction.op_code)
     {
         case INST_PUSH_CONSTANT: printf("-- push constant\n"); break;
-        case INST_PUSH_VARIABLE: printf("-- push variable\n"); break;
+        case INST_LOAD:          printf("-- load\n"); break;
         case INST_CALL:          printf("-- call\n"); break;
         case INST_RETURN:        printf("-- return\n"); break;
         default: assert(false);
@@ -4032,56 +4061,44 @@ static void emit(Closure* closure, unsigned int inst)
 
 static size_t closure_add_constant(struct Closure* closure, Cell* cell)
 {
-    assert(cell->type == TYPE_NUMBER);
+    // TODO: Share constants
+    assert(cell->type == TYPE_NUMBER || cell->type == TYPE_STRING || cell->type == TYPE_SYMBOL);
     stack_push(&closure->constants, cell);
     return closure->constants.num_elements - 1;
 }
 
-static int compile_function_call(Cell* cell)
-{
-    switch (cell->type) {
-        case TYPE_PAIR:
-        {
-            const int params = compile_function_call(cdr(cell));
-            if (params < 0) return -1;
-            printf("-- push list element: ");
-            print(stdout, car(cell), true);
-            return 1 + params;
-        }
-        case TYPE_EMPTY_LIST:
-            return 0;
-        default:
-            return -1;
-    }
-}
-
 static void compile(Closure* closure, Cell* cell)
 {
-    closure_init(closure);
     switch(cell->type)
     {
         case TYPE_PAIR:
         {
-            if (car(cell)->type == TYPE_SYMBOL)
+            if (car(cell)->type != TYPE_SYMBOL)
             {
-                const Symbol* symbol = car(cell)->data.symbol;
-                
-                if (strcmp(symbol->name, "if") == 0)
-                {
-                    emit(closure, INST_IF);
-                    
-                }
-                
+                fprintf(stderr, "Compile error: Expected symbol.\nGot:");
+                print(stderr, car(cell), true);                
             }
-            const int params = compile_function_call(cell);
-            emit(closure, INST_CALL);
-            printf("-- function call %d\n", params);
+            
+            int num_params = -1;
+            
+            for (Cell* node = cell; node->type != TYPE_EMPTY_LIST; node = cdr(node))
+            {
+                compile(closure, car(node));
+                num_params++;
+            }
+            
+            emit(closure, make_instruction(INST_CALL, num_params));
             break;
         }
             
         case TYPE_SYMBOL:
-            emit(closure, INST_PUSH_VARIABLE);
+        {
+            // Load the symbol
+            size_t c = closure_add_constant(closure, cell);
+            emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
+            emit(closure, make_instruction(INST_LOAD, 0));
             break;
+        }
             
 		case TYPE_BOOLEAN:
 		case TYPE_NUMBER:
@@ -4091,8 +4108,7 @@ static void compile(Closure* closure, Cell* cell)
         case TYPE_ENVIRONMENT:
         {
             size_t c = closure_add_constant(closure, cell);
-            int instruction = INST_PUSH_CONSTANT | (c << 4);
-            emit(closure, instruction);
+            emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
             break;
         }
             
@@ -4103,7 +4119,7 @@ static void compile(Closure* closure, Cell* cell)
     }
     
     // 1 return value
-    emit(closure, INST_RETURN | (1 << 4));
+    emit(closure, make_instruction(INST_RETURN, 1));
 }
 
 void atom_api_load(Continuation* cont, const char* data, size_t length)
@@ -4136,6 +4152,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
 		if (Cell* cell = parse_datum(env, &input, &next))
 		{
             struct Closure closure;
+            closure_init(&closure);
             compile(&closure, cell);
             printf("parsed> ");
             print(stdout, cell, false);
@@ -4178,31 +4195,47 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	free(buffer);
 }
 
-static Cell* eval(Continuation* env, struct Closure* closure)
+static Cell* eval(Continuation* cont, struct Closure* closure)
 {
 tailcall:
     
-	assert(env);
+	assert(cont);
     assert(closure);
     
-    size_t pc = 0;    
+    size_t pc = 0;
+    Environment* env = cont->env;
     for (;;)
     {
-        const int instruction = stack_get(&closure->instructions, pc);
-        switch (instruction & 0xF)
+        const Instruction instruction = stack_get(&closure->instructions, pc);
+        pc++;
+        switch (instruction.op_code)
         {
             case INST_PUSH_CONSTANT:
             {
-                int c = (instruction >> 4);
-                stack_push(&env->stack, stack_get(&closure->constants, c));
+                stack_push(&cont->stack, stack_get(&closure->constants, instruction.operand));
                 break;
             }
             
             case INST_RETURN:
             {
-                int c = (instruction>>4);
-                return stack_get(&env->stack, 0);
+                return stack_get(&cont->stack, 0);
             }
+                
+            case INST_LOAD:
+            {
+                Cell* data = environment_get(env, stack_get_top(&cont->stack));
+                stack_pop (&cont->stack, 1);
+                stack_push(&cont->stack, data);
+                break;
+            }
+                
+                //case INST_CALL:
+                //{
+                //}
+                
+            
+            default:
+                assert(0);
         }
     }
    /* 
@@ -4321,6 +4354,39 @@ tailcall:
 		}
 	}
     */
+}
+
+
+static Cell* load_register(struct Continuation* cont, int n)
+{
+    assert(n > 0);
+    return stack_get(&cont->stack, n-1);
+}
+
+size_t atom_api_get_top(struct Continuation* cont)
+{
+    return cont->stack.num_elements;
+}
+
+void atom_api_clear(struct Continuation* cont)
+{
+    cont->stack.num_elements = 0;
+}
+
+double atom_api_to_number(struct Continuation* cont, int n)
+{
+    Cell* cell = load_register(cont, n);
+    if (cell->type == TYPE_NUMBER)
+        return cell->data.number;
+    return 0;
+}
+
+const char* atom_api_to_string(struct Continuation* cont, int n)
+{
+    Cell* cell = load_register(cont, n);
+    if (cell->type == TYPE_STRING)
+        return cell->data.string.data;
+    return 0;
 }
 
 static void add_builtin(Environment* env, const char* name, atom_function function)
