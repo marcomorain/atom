@@ -4042,8 +4042,7 @@ enum {
     //INST_SET,
     INST_PUSH_CONSTANT,
     INST_LOAD,
-    INST_CALL,
-    INST_RETURN
+    INST_CALL
 };
 
 static void emit(Closure* closure, Instruction instruction)
@@ -4051,12 +4050,12 @@ static void emit(Closure* closure, Instruction instruction)
     stack_push(&closure->instructions, instruction);
     switch(instruction.op_code)
     {
-        case INST_PUSH_CONSTANT: printf("-- push constant\n"); break;
-        case INST_LOAD:          printf("-- load\n"); break;
-        case INST_CALL:          printf("-- call\n"); break;
-        case INST_RETURN:        printf("-- return\n"); break;
+        case INST_PUSH_CONSTANT: printf("-- push constant"); break;
+        case INST_LOAD:          printf("-- load"); break;
+        case INST_CALL:          printf("-- call"); break;
         default: assert(false);
     }
+    printf(" %d\n", instruction.operand);
 }
 
 static size_t closure_add_constant(struct Closure* closure, Cell* cell)
@@ -4117,9 +4116,6 @@ static void compile(Closure* closure, Cell* cell)
             print(stdout, cell, true);
             break;
     }
-    
-    // 1 return value
-    emit(closure, make_instruction(INST_RETURN, 1));
 }
 
 void atom_api_load(Continuation* cont, const char* data, size_t length)
@@ -4206,6 +4202,8 @@ tailcall:
     Environment* env = cont->env;
     for (;;)
     {
+        if (pc == closure->instructions.num_elements) return stack_get(&cont->stack, 0);
+        
         const Instruction instruction = stack_get(&closure->instructions, pc);
         pc++;
         switch (instruction.op_code)
@@ -4214,11 +4212,6 @@ tailcall:
             {
                 stack_push(&cont->stack, stack_get(&closure->constants, instruction.operand));
                 break;
-            }
-            
-            case INST_RETURN:
-            {
-                return stack_get(&cont->stack, 0);
             }
                 
             case INST_LOAD:
@@ -4229,9 +4222,25 @@ tailcall:
                 break;
             }
                 
-                //case INST_CALL:
-                //{
-                //}
+            case INST_CALL:
+            {
+                int num_params = instruction.operand;
+                assert(num_params >= 0);
+                int f = cont->stack.num_elements - (num_params + 1);
+                
+                Cell* function = stack_get(&cont->stack, f);
+                
+                if (function->type == TYPE_BUILT_IN)
+                {
+                    function->data.built_in(env, NULL);
+                }
+                else 
+                {
+                    assert(0);
+                }
+                
+                break;
+            }
                 
             
             default:
