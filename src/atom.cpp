@@ -1593,13 +1593,42 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 
 static Cell* eval(Continuation* env, struct Closure* closure);
 
-
-static Cell* type_q_helper(Environment* env, Cell* params, int type)
+static Cell* atom_pop_cell(Environment* env)
 {
-	//Cell* obj = eval(env, car(params));
-	//return make_boolean(obj->type == type);
-    assert(0);
-    return 0;
+    Cell* top = stack_get_top(&env->cont->stack);
+    stack_pop(&env->cont->stack, 1);
+    return top;
+}
+
+double atom_pop_number(Environment* env)
+{
+    // TODO: GC safety here
+    Cell* top = atom_pop_cell(env);
+    type_check(env->cont, TYPE_NUMBER, top->type);
+    return top->data.number;
+}
+
+void atom_push_cell(Environment* env, Cell* cell)
+{
+    stack_push(&env->cont->stack, cell);
+}
+
+void atom_push_boolean(Environment* env, bool boolean)
+{
+    atom_push_cell(env, make_boolean(boolean));
+}
+
+void atom_push_number(Environment* env, double x)
+{
+    atom_push_cell(env, make_number(env, x));
+}
+
+
+
+static void type_q_helper(Environment* env, int params, int type)
+{
+    Cell* cell = atom_pop_cell(env);
+    atom_push_boolean(env, type == cell->type);
 }
 
 
@@ -2276,28 +2305,12 @@ static void atom_div(Environment* env, int params)
 	sub_div_helper(env, params, false);
 }
 
-
-double atom_pop_number(Environment* env)
-{
-    Cell* top = stack_get_top(&env->cont->stack);
-    type_check(env->cont, TYPE_NUMBER, top->type);
-    double result = top->data.number;
-    stack_pop(&env->cont->stack, 1);
-    return result;
-}
-
-void atom_push_number(Environment* env, double x)
-{
-    stack_push(&env->cont->stack, make_number(env, x));
-}
-
 // (abs x)
 // Abs returns the absolute value of its argument.
 static void atom_abs(Environment* env, int params)
 {
     atom_push_number(env, fabs(atom_pop_number(env)));
 }
-
 
 // (floor x)    procedure
 // (ceiling x)  procedure
@@ -2347,18 +2360,18 @@ static void atom_sqrt(Environment* env, int params)
     atom_push_number(env, sqrt(atom_pop_number(env)));
 }
 
-static Cell* atom_expt(Environment* env, Cell* params)
+static void atom_expt(Environment* env, int params)
 {
-    return make_number(env, pow(nth_param_number(env, params, 1),
-                                nth_param_number(env, params, 2)));
+    double a = atom_pop_number(env);
+    double b = atom_pop_number(env);
+    atom_push_number(env, pow(a, b));
 }
 
-
-static Cell* atom_modulo(Environment* env, Cell* params)
+static void atom_modulo(Environment* env, int params)
 {
-	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
-	Cell* b = nth_param(env, params, 2, TYPE_NUMBER);
-	return make_number(env, fmod(a->data.number, b->data.number));
+    double a = atom_pop_number(env);
+    double b = atom_pop_number(env);
+    atom_push_number(env, fmod(a, b));
 }
 
 // These numerical predicates provide tests for the exactness of a quantity.
@@ -2493,19 +2506,19 @@ static Cell* atom_equal_q(Environment* env, Cell* params)
 	return make_boolean(eq_helper(obj1, obj2, true, true));
 }
 
-static Cell* atom_number_q(Environment* env, Cell* params)
+static void atom_number_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_NUMBER);
+    type_q_helper(env, params, TYPE_NUMBER);
 }
 
-static Cell* atom_integer_q(Environment* env, Cell* params)
+static void atom_integer_q(Environment* env, int params)
 {
-	Cell* obj = nth_param_any(env, params, 1);
-	
-	bool integer =	obj->type == TYPE_NUMBER &&
-    is_integer(obj->data.number);
-	
-	return make_boolean(integer);
+	Cell* obj = stack_get_top(&env->cont->stack);
+    stack_pop(&env->cont->stack, 1);
+
+	bool integer =	obj->type == TYPE_NUMBER && is_integer(obj->data.number);
+
+    atom_push_boolean(env, integer);
 }
 
 // (sin z)
@@ -2716,9 +2729,9 @@ static Cell* atom_max(Environment* env, Cell* params)
 
 // 6.3.1: Booleans
 
-static Cell* atom_boolean_q(Environment* env, Cell* params)
+static void atom_boolean_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_BOOLEAN);	
+	type_q_helper(env, params, TYPE_BOOLEAN);	
 }
 
 static Cell* atom_not(Environment* env, Cell* params)
@@ -2730,11 +2743,9 @@ static Cell* atom_not(Environment* env, Cell* params)
 }
 
 // 6.3.2 Pairs and lists
-
-
-static Cell* atom_pair_q(Environment* env, Cell* params)
+static void atom_pair_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_PAIR);	
+	type_q_helper(env, params, TYPE_PAIR);
 }
 
 static Cell* atom_cons(Environment* env, Cell* params)
@@ -2787,9 +2798,9 @@ static Cell* atom_set_cdr_b(Environment* env, Cell* params)
 }
 
 // Returns #t if obj is the empty list, otherwise returns #f.
-static Cell* atom_null_q(Environment* env, Cell* params)
+static void atom_null_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_EMPTY_LIST);
+    type_q_helper(env, params, TYPE_EMPTY_LIST);
 }
 
 // (list? obj)
@@ -2911,9 +2922,9 @@ static Cell* atom_list_ref(Environment* env, Cell* params)
 
 // (symbol? obj)
 // Returns #t if obj is a symbol, otherwise returns #f.
-static Cell* atom_symbol_q(Environment* env, Cell* params)
+static void atom_symbol_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_SYMBOL);
+	type_q_helper(env, params, TYPE_SYMBOL);
 }
 
 // (symbol->string symbol) procedure
@@ -3201,9 +3212,9 @@ static Cell* atom_string_to_symbol(Environment* env, Cell* params)
 
 // (char?	obj )	procedure
 // Returns #t if obj is a character, otherwise returns #f.
-static Cell* atom_char_q(Environment* env, Cell* params)
+static void atom_char_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_CHARACTER);	
+    type_q_helper(env, params, TYPE_CHARACTER);	
 }
 
 
@@ -3369,9 +3380,9 @@ static Cell* atom_integer_to_char(Environment* env, Cell* params)
 
 // (string? obj)	procedure
 // Returns #t if obj is a string, otherwise returns #f.
-static Cell* atom_string_q(Environment* env, Cell* params)
+static void atom_string_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_STRING);
+    type_q_helper(env, params, TYPE_STRING);
 }
 
 // (make-string k)      procedure
@@ -3464,9 +3475,9 @@ static Cell* atom_string_set(Environment* env, Cell* params)
 
 // (vector? obj)
 // Returns #t if obj is a vector, otherwise returns #f.
-static Cell* atom_vector_q(Environment* env, Cell* params)
+static void atom_vector_q(Environment* env, int params)
 {
-	return type_q_helper(env, params, TYPE_VECTOR);
+    type_q_helper(env, params, TYPE_VECTOR);
 }
 
 // (make-vector k)	procedure
@@ -3781,17 +3792,17 @@ static Cell* atom_call_with_output_file(Environment* env, Cell* params)
 // (input-port?  obj) procedure
 // Returns #t if obj is an input port or output port respectively,
 // otherwise returns #f.
-static Cell* atom_input_port_q(Environment* env, Cell* params)
+static void atom_input_port_q(Environment* env, int params)
 {
-    return type_q_helper(env, params, TYPE_INPUT_PORT);
+    type_q_helper(env, params, TYPE_INPUT_PORT);
 }
 
 // (output-port? obj) procedure
 // Returns #t if obj is an input port or output port respectively,
 // otherwise returns #f.
-static Cell* atom_output_port_q(Environment* env, Cell* params)
+static void atom_output_port_q(Environment* env, int params)
 {
-    return type_q_helper(env, params, TYPE_OUTPUT_PORT);
+    type_q_helper(env, params, TYPE_OUTPUT_PORT);
 }
 
 // Grab a string from a given param, and open that file in the given mode.
@@ -4021,9 +4032,9 @@ static Cell* atom_write_char(Environment* env, Cell* params)
 
 // This function always returns false.
 // It is used as a proxy for functions like complex? that are never true.
-static Cell* always_false(Environment* env, Cell* params)
+static void always_false(Environment* env, int params)
 {
-	return make_boolean(false);
+    atom_push_boolean(env, false);
 }
 
 struct Instruction
@@ -4283,122 +4294,6 @@ tailcall:
                 assert(0);
         }
     }
-   /* 
-	switch(0)//cell->type)
-	{
-        // basic types will self evaluate
-		case TYPE_BOOLEAN:
-		case TYPE_NUMBER:
-		case TYPE_STRING:
-		case TYPE_CHARACTER:
-        case TYPE_VECTOR:
-        case TYPE_ENVIRONMENT:
-			return cell;
-            
-		case TYPE_SYMBOL:
-			return environment_get(env, cell);
-            
-        case TYPE_EMPTY_LIST:
-        case TYPE_BUILT_IN:
-        case TYPE_CLOSURE:
-        case TYPE_SYNTAX:
-        case TYPE_INPUT_PORT:
-        case TYPE_OUTPUT_PORT:
-            return signal_error(env->cont, "Cannot call %s", typenames[cell->type]);
-            
-		case TYPE_PAIR:
-		{
-			Cell* symbol = car(cell);
-            
-            if (!symbol)
-            {
-                return signal_error(env->cont, "missing procedure in expression");
-            }
-			
-			type_check(env->cont, TYPE_SYMBOL, symbol->type);
-			
-			//for (int i=0; i<level; i++) printf("  ");
-			//printf("Calling function %s\n", symbol->data.symbol->name);
-			
-			const Cell* function = environment_get(env, symbol);
-			
-			if (!function)
-			{
-				return signal_error(env->cont, "Undefined symbol '%s'", symbol->data.symbol);
-			}
-            
-            switch(function->type)
-            {
-                case TYPE_BOOLEAN:
-                case TYPE_NUMBER:
-                case TYPE_STRING:
-                case TYPE_CHARACTER:
-                case TYPE_VECTOR:
-                case TYPE_ENVIRONMENT:
-                case TYPE_SYMBOL:
-                case TYPE_EMPTY_LIST:
-                case TYPE_INPUT_PORT:
-                case TYPE_OUTPUT_PORT:                    
-                case TYPE_PAIR:
-                return signal_error(env->cont, "%s is not a function", symbol->data.symbol);
-
-                case TYPE_SYNTAX:
-                    return function->data.syntax(env, cdr(cell));
-                    
-                case TYPE_BUILT_IN:
-                    return function->data.built_in(env, cdr(cell));
-                    
-                case TYPE_CLOSURE:
-                {
-                    const Cell::OldClosure& closure = function->data.closure;
-                    Environment* new_env = create_environment(closure.env->cont, closure.env);
-                    
-                    Cell* params = cdr(cell);
-                    for (const Cell* formals = closure.formals; 
-                         is_pair(formals);
-                         formals = cdr(formals))
-                    {
-                        // @todo: formals should be NULL for (lambda () 'noop)
-                        if (car(formals))
-                        {
-                            assert(car(formals)->type == TYPE_SYMBOL);
-                            Cell* value = eval(env, car(params));
-                            environment_define(new_env, car(formals)->data.symbol, value);
-                            
-                            //printf("%s: ", car(formals)->data.symbol->name);
-                            //print(stdout, value, true);
-                            
-                            params = cdr(params);
-                        }
-                    }
-                    
-                    Cell* last_result = NULL;
-                    
-                    for (const Cell* statement = closure.body; 
-                         is_pair(statement);
-                         statement = cdr(statement))
-                    {
-                        bool last = cdr(statement)->type == TYPE_EMPTY_LIST;
-                        
-                        // tailcall optimization for the 
-                        // last statement in the list.
-                        if (last)
-                        {
-                            env  = new_env;
-                            cell = car(statement);
-                            goto tailcall;
-                        }
-                        
-                        last_result = eval(new_env, car(statement));
-                    }
-                    
-                    assert(false); // @todo - i don't think this can happen
-                    return last_result;
-                }
-            }
-		}
-	}
-    */
 }
 
 
@@ -4486,15 +4381,15 @@ Continuation* atom_api_open()
         {"eqv?",			atom_eqv_q},
         {"eq?",				atom_eq_q},
         {"equal?",			atom_equal_q},
-        
+    */        
         // numeric
         {"number?",    		atom_number_q},
         {"complex?",   		always_false},
         {"real?",      		atom_number_q},
         {"rational?",  		always_false},
+
         {"integer?",   		atom_integer_q},
-         
-         */
+
         {"+",		   		atom_plus},
         {"*",		   		atom_mul},
         {"-",				atom_sub},
@@ -4509,10 +4404,11 @@ Continuation* atom_api_open()
         {"exp",             atom_exp},
         {"log",             atom_log},
         {"sqrt",            atom_sqrt},
-        /*
+        
         {"expt",            atom_expt},
         {"modulo",			atom_modulo},
         
+        /*
         {"exact?",			atom_exact_q},
         {"inexact?",		atom_inexact_q},
         {"=",				atom_comapre_equal},
