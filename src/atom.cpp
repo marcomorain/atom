@@ -2171,9 +2171,9 @@ static Cell* atom_quasiquote(Environment* env, Cell* params)
     return quasiquote_helper(env, car(params));
 }
 
-static Cell* atom_error(Environment* env, Cell* params)
+static void atom_error(Environment* env, int params)
 {
-	Cell* message = nth_param_any(env, params, 1);
+	Cell* message = atom_pop_cell(env);
 	
 	const char* str = "Error";
 	
@@ -2182,7 +2182,7 @@ static Cell* atom_error(Environment* env, Cell* params)
 	{
 		str = message->data.string.data;
 	}
-	return signal_error(env->cont, "%s", str);
+	atom_push_cell(env, signal_error(env->cont, "%s", str));
 }
 
 static Cell* atom_lambda(Environment* env, Cell* params)
@@ -3999,11 +3999,13 @@ static Cell* atom_newline(Environment* env, Cell* params)
 // Rationale:
 // For portability, load must operate on source files. Its operation on other
 // kinds of files necessarily varies among implementations.
-static Cell* atom_load(Environment* env, Cell* params)
+static void atom_load(Environment* env, int params)
 {
-	Cell* filename = nth_param(env, params, 1, TYPE_STRING);
+    Cell* filename = atom_pop_cell(env);
+    type_check(env->cont, TYPE_STRING, filename->type);
 	atom_api_loadfile(env->cont, filename->data.string.data);
-	return make_boolean(true);	
+    // TODO: return value here.
+    atom_push_boolean(env, true);
 }
 
 // (write-char char)      procedure
@@ -4544,13 +4546,13 @@ Continuation* atom_api_open()
         {"display",	   		atom_display},
         {"newline",	   		atom_newline},
         {"write-char",      atom_write_char},
-        
+         */        
         // output
         {"load",	   		atom_load},
         
         {"error",	   		atom_error},
          
-         */
+
         {NULL, NULL}
     };
     
