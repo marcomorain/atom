@@ -63,6 +63,11 @@ struct Symbol;
 
 typedef Cell* (*atom_function) (Environment* env, Cell* params);
 
+// Calling convention:
+// Pop params off the stack
+// Push (1) the result.
+typedef void (*atom_builtin) (Environment* env, int params);
+
 struct Cell
 {
 	struct Pair
@@ -104,7 +109,7 @@ struct Cell
 		Pair            pair;
 		const Symbol*   symbol;
 		Vector          vector;
-        atom_function   built_in;
+        atom_builtin    built_in;
         atom_function   syntax;
         OldClosure      closure;
 		FILE*           input_port;
@@ -167,6 +172,7 @@ template <typename Type> void stack_init(struct stack<Type>* stack)
 {
     stack->num_elements = 0;
     stack->capacity = 1;
+    stack->elements = NULL;
     stack_grow(stack);
 }
 
@@ -2177,48 +2183,44 @@ static Cell* atom_begin(Environment* env, Cell* params)
 // 6.2.5 Numerical Operations
 
 
-static Cell* plus_mul_helper(Environment* env,
-							 Cell* params,
-							 bool is_add,
-							 double identity)
+static void plus_mul_helper(Environment* env, int params, bool is_add)
 {
-	double result = identity;
-	
-	for (Cell* z = params; is_pair(z); z = cdr(z))
-	{
-		Cell* n = car(z);
-		
-		assert(n); // todo: trigger this assert and test
-		
-		Cell* value = 0; //eval(env, n);
-        assert(0);
+    // If we are adding the identity element is 0
+    // If we are adding the identity element is 1
+	double result = is_add ? 0 : 1;
         
-		type_check(env->cont, TYPE_NUMBER, value->type);
+    for (int i=0; i<params; i++)
+    {
+        Cell* top = stack_get_top(&env->cont->stack);
+        type_check(env->cont, TYPE_NUMBER, top->type);
         
-		if (is_add)
+        if (is_add)
 		{
-			result += value->data.number;
+			result += top->data.number;
 		}
 		else
 		{
-			result *= value->data.number;
+			result *= top->data.number;
 		}
-	}
-	return make_number(env, result);
+        
+        stack_pop(&env->cont->stack, 1);
+    }
+    
+    stack_push(&env->cont->stack, make_number(env, result));
 }
 
 // (+ z1 ...)
 // Return the sum or product of the arguments.
-static Cell* atom_plus(Environment* env, Cell* params)
+static void atom_plus(Environment* env, int params)
 {
-	return plus_mul_helper(env, params, true, 0);
+	plus_mul_helper(env, params, true);
 }
 
 // (* z1 ...)
 // Return the product of the arguments.
-static Cell* atom_mul(Environment* env, Cell* params)
+static void atom_mul(Environment* env, int params)
 {
-	return plus_mul_helper(env, params, false, 1);
+	plus_mul_helper(env, params, false);
 }
 
 
@@ -4072,19 +4074,31 @@ static void compile(Closure* closure, Cell* cell)
     {
         case TYPE_PAIR:
         {
-            if (car(cell)->type != TYPE_SYMBOL)
+            Cell* head = car(cell);
+            
+            // TODO: This is nonsense - evaluating the head could return a function
+            if (head->type != TYPE_SYMBOL)
             {
                 fprintf(stderr, "Compile error: Expected symbol.\nGot:");
-                print(stderr, car(cell), true);                
+                print(stderr, head, true);
+            }
+            if (head->type == TYPE_EMPTY_LIST)
+            {
+                fprintf(stderr, "Compile error: Expected symbol.\nGot:");
+                print(stderr, head, true);
             }
             
-            int num_params = -1;
-            
-            for (Cell* node = cell; node->type != TYPE_EMPTY_LIST; node = cdr(node))
+            int num_params = 0;
+
+            // Push the parameters
+            for (Cell* node = cdr(cell); node->type != TYPE_EMPTY_LIST; node = cdr(node))
             {
                 compile(closure, car(node));
                 num_params++;
             }
+            
+            // Push the function
+            compile(closure, head);
             
             emit(closure, make_instruction(INST_CALL, num_params));
             break;
@@ -4226,13 +4240,14 @@ tailcall:
             {
                 int num_params = instruction.operand;
                 assert(num_params >= 0);
-                int f = cont->stack.num_elements - (num_params + 1);
                 
-                Cell* function = stack_get(&cont->stack, f);
+                Cell* function = stack_get_top(&cont->stack);
+                
+                stack_pop(&cont->stack, 1);
                 
                 if (function->type == TYPE_BUILT_IN)
                 {
-                    function->data.built_in(env, NULL);
+                    function->data.built_in(env, num_params);
                 }
                 else 
                 {
@@ -4398,7 +4413,7 @@ const char* atom_api_to_string(struct Continuation* cont, int n)
     return 0;
 }
 
-static void add_builtin(Environment* env, const char* name, atom_function function)
+static void add_builtin(Environment* env, const char* name, atom_builtin function)
 {   
 	assert(env);
 	assert(name);
@@ -4411,8 +4426,8 @@ static void add_builtin(Environment* env, const char* name, atom_function functi
 
 struct Library
 {
-    const char*   name;
-    atom_function func;
+    const char*  name;
+    atom_builtin func;
 };
  
 Continuation* atom_api_open()
@@ -4432,6 +4447,8 @@ Continuation* atom_api_open()
     stack_init(&cont->stack);
     
     const Library libs [] = {
+        
+        /*
         {"quote",           atom_quote},
         {"lambda",          atom_lambda},
         {"if",				atom_if},
@@ -4455,8 +4472,12 @@ Continuation* atom_api_open()
         {"real?",      		atom_number_q},
         {"rational?",  		always_false},
         {"integer?",   		atom_integer_q},
+         
+         */
         {"+",		   		atom_plus},
         {"*",		   		atom_mul},
+        
+        /*
         {"-",				atom_sub},
         {"/",				atom_div},
         {"abs",             atom_abs},
@@ -4609,6 +4630,8 @@ Continuation* atom_api_open()
         {"load",	   		atom_load},
         
         {"error",	   		atom_error},
+         
+         */
         {NULL, NULL}
     };
     
