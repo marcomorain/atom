@@ -2313,39 +2313,38 @@ static void atom_floor(Environment* env, int params)
     atom_push_number(env, floor(atom_pop_number(env)));
 }
 
-static Cell* atom_ceiling(Environment* env, Cell* params)
+static void atom_ceiling(Environment* env, int params)
 {
-    //atom_push_number(env, ceil(atom_pop_number(env)));
-    return make_number(env,  ceil(nth_param_number(env, params, 1)));
+    atom_push_number(env, ceil(atom_pop_number(env)));
 }
 
-static Cell* atom_truncate(Environment* env, Cell* params)
+static void atom_truncate(Environment* env, int params)
 {
-    return make_number(env, trunc(nth_param_number(env, params, 1)));
+    atom_push_number(env, trunc(atom_pop_number(env)));
 }
 
-static Cell* atom_round(Environment* env, Cell* params)
+static void atom_round(Environment* env, int params)
 {
-    return make_number(env, round(nth_param_number(env, params, 1)));
+    atom_push_number(env, round(atom_pop_number(env)));
 }
 
-static Cell* atom_exp(Environment* env, Cell* params)
+static void atom_exp(Environment* env, int params)
 {
-    return make_number(env, exp(nth_param_number(env, params, 1)));
+    atom_push_number(env, exp(atom_pop_number(env)));
 }
 
-static Cell* atom_log(Environment* env, Cell* params)
+static void atom_log(Environment* env, int params)
 {
-    return make_number(env, log(nth_param_number(env, params, 1)));
+    atom_push_number(env, log(atom_pop_number(env)));
 }
 
 // (sqrt z)	procedure
 // Returns the principal square root of z.
 // The result will have either positive real part, or zero real part and
 // non-negative imaginary part.
-static Cell* atom_sqrt(Environment* env, Cell* params)
+static void atom_sqrt(Environment* env, int params)
 {
-    return make_number(env, sqrt(nth_param_number(env, params, 1)));
+    atom_push_number(env, sqrt(atom_pop_number(env)));
 }
 
 static Cell* atom_expt(Environment* env, Cell* params)
@@ -4503,15 +4502,17 @@ Continuation* atom_api_open()
         {"abs",             atom_abs},
         {"floor",           atom_floor},
         
-        /*
         {"ceiling",         atom_ceiling},
         {"truncate",        atom_truncate},
+        
         {"round",           atom_round},
         {"exp",             atom_exp},
         {"log",             atom_log},
         {"sqrt",            atom_sqrt},
+        /*
         {"expt",            atom_expt},
         {"modulo",			atom_modulo},
+        
         {"exact?",			atom_exact_q},
         {"inexact?",		atom_inexact_q},
         {"=",				atom_comapre_equal},
