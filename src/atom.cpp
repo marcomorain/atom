@@ -2376,10 +2376,10 @@ static void atom_modulo(Environment* env, int params)
 
 // These numerical predicates provide tests for the exactness of a quantity.
 // For any Scheme number, precisely one of these predicates is true.
-static Cell* atom_exact_q(Environment* env, Cell* params)
+static void atom_exact_q(Environment* env, int params)
 {
-	nth_param(env, params, 1, TYPE_NUMBER);
-	return make_boolean(false);
+    atom_pop_number(env);
+    atom_push_cell(env, make_boolean(false));
 }
 
 static Cell* atom_inexact_q(Environment* env, Cell* params)
@@ -2592,34 +2592,31 @@ static Cell* atom_atan(Environment* env, Cell* params)
 
 
 template <typename Compare>
-static Cell* comparison_helper(Environment* env, Cell* params)
+static void comparison_helper(Environment* env, int params)
 {
 	int n = 2;
     
-	Cell* a = nth_param(env, params, 1, TYPE_NUMBER);
+    double a = atom_pop_number(env);
+    params--;
 	
 	for (;;)
 	{
-		params = cdr(params);
-		Cell* b = nth_param(env, params, 1, TYPE_NUMBER);
+        double b = atom_pop_number(env);
+        params--;
         
-		double x = a->data.number;
-		double y = b->data.number;
-		if (!Compare::compare(x, y))
+		if (!Compare::compare(a, b))
 		{
-			return make_boolean(false);
+            atom_push_boolean(env, false);
+            return;
 		}
         
 		a = b;
 		n++;
         
-		if (!cdr(params))
-		{
-			break;
-		}
+        if (params < 1) break;
 	}
     
-	return make_boolean(true);
+	atom_push_boolean(env, true);
 };
 
 struct Equal		{ static bool compare(double a, double b) { return a == b; } };
@@ -2628,24 +2625,24 @@ struct Greater		{ static bool compare(double a, double b) { return a >  b; } };
 struct LessEq		{ static bool compare(double a, double b) { return a <= b; } };
 struct GreaterEq	{ static bool compare(double a, double b) { return a >= b; } };
 
-static Cell* atom_comapre_equal(Environment* env, Cell* params)
+static void atom_comapre_equal(Environment* env, int params)
 {
-	return comparison_helper<Equal>(env, params);
+	comparison_helper<Equal>(env, params);
 }
 
-static Cell* atom_compare_less(Environment* env, Cell* params)
+static void atom_compare_less(Environment* env, int params)
 {
-	return comparison_helper<Less>(env, params);
+	comparison_helper<Less>(env, params);
 }
 
-static Cell* atom_compare_greater(Environment* env, Cell* params)
+static void atom_compare_greater(Environment* env, int params)
 {
-	return comparison_helper<Greater>(env, params);
+    comparison_helper<Greater>(env, params);
 }
 
-static Cell* atom_compare_less_equal(Environment* env, Cell* params)
+static void atom_compare_less_equal(Environment* env, int params)
 {
-	return comparison_helper<LessEq>(env, params);
+	comparison_helper<LessEq>(env, params);
 }
 
 static Cell* atom_compare_greater_equal(Environment* env, Cell* params)
@@ -3747,24 +3744,27 @@ static Cell* atom_interaction_environment(Environment* env, Cell* params)
 // This function encapsulates that logic.
 // Given an env, params and a param number, it returns the specified output port, or the current output port
 // It will throw an error if the param is present, but not the correct type.
-static FILE* get_output_port(Environment* env, Cell* params, int n)
+static FILE* get_outport_port_param(Environment* env, bool param_present)
 {
-    if (Cell* port = nth_param_optional(env, params, n, TYPE_OUTPUT_PORT))
+    if (param_present)
     {
+        Cell* port = atom_pop_cell(env);
+        type_check(env->cont, TYPE_OUTPUT_PORT, port->type);
         return port->data.output_port;
     }
     return env->cont->output;
 }
 
-static FILE* get_input_port(Environment* env, Cell* params, int n)
+static FILE* get_input_port_param(Environment* env, bool param_present)
 {
-    if (Cell* port = nth_param_optional(env, params, n, TYPE_INPUT_PORT))
+    if (param_present)
     {
+        Cell* port = atom_pop_cell(env);
+        type_check(env->cont, TYPE_INPUT_PORT, port->type);
         return port->data.input_port;
     }
     return env->cont->input;
 }
-
 
 // (call-with-input-file string proc) library procedure
 // (call-with-output-file string proc) library procedure
@@ -3872,14 +3872,16 @@ static Cell* atom_close_output_port(Environment* env, Cell* params)
 
 // (current-input-port) procedure
 // Returns the current default input port.
-static Cell* atom_current_input_port(Environment* env, Cell* params)
+static void atom_current_input_port(Environment* env, int params)
 {
-	return make_input_port(env, env->cont->input);
+    assert(params == 0);
+    atom_push_cell(env, make_input_port(env, env->cont->input));
 }
 
-static Cell* atom_current_output_port(Environment*  env, Cell* params)
+static void atom_current_output_port(Environment*  env, int params)
 {
-    return make_output_port(env, env->cont->output);
+    assert(params == 0);
+    atom_push_cell(env, make_output_port(env, env->cont->output));
 }
 
 // (write obj) library procedure
@@ -3892,10 +3894,13 @@ static Cell* atom_current_output_port(Environment*  env, Cell* params)
 // Write returns an unspecified value.
 // The port argument may be omitted, in which case it defaults to the value
 // returned by current-output-port.
-static Cell* atom_write(Environment* env, Cell* params)
+static void atom_write(Environment* env, int params)
 {
-	print(get_output_port(env, params, 2), nth_param_any(env, params, 1), false);
-    return make_boolean(false);
+    assert(params < 3);
+    Cell* cell = atom_pop_cell(env);
+    FILE* port = get_outport_port_param(env, params == 2);
+	print(port, cell, false);
+    atom_push_boolean(env, false);
 }
 
 // (read)      library procedure
@@ -3925,14 +3930,14 @@ static Cell* atom_read(Environment* env, Cell* params)
 // to point to the following character. If no more characters are available, an
 // end of file object is returned. Port may be omitted, in which case it defaults
 // to the value returned by current-input-port.
-static Cell* atom_read_char(Environment* env, Cell* params)
+static void atom_read_char(Environment* env, int params)
 {
-    int c = fgetc(get_input_port(env, params, 1));
-    
+    assert(params < 2);
+    int c = fgetc(get_outport_port_param(env, params == 1));
     // TODO: test this cast. fgetc returns an unsigned char cast to int,
     // which is sure to be error prone.
     // TODO: test if c == EOF. Is EOF a different type to the EOF value?
-    return make_character(env, (char)c);
+    atom_push_cell(env, make_character(env, (char)c));
 }
 
 
@@ -3943,19 +3948,22 @@ static Cell* atom_read_char(Environment* env, Cell* params)
 // the port to point to the following character. If no more characters are
 // available, an end of file object is returned. Port may be omitted, in which
 // case it defaults to the value returned by current-input-port.
-static Cell* atom_peek_char(Environment* env, Cell* params)
+static void atom_peek_char(Environment* env, int params)
 {
-    FILE* file = get_input_port(env, params, 1);
-    return make_character(env, ungetc(fgetc(file), file));
+    assert(params < 2);
+    FILE* file = get_outport_port_param(env, params == 1);
+    atom_push_cell(env, make_character(env, ungetc(fgetc(file), file)));
 }
 
 // (eof-object?	obj) procedure
 // Returns #t if obj is an end of file object, otherwise returns #f. The precise
 // set of end of file objects will vary among implementations, but in any case
 // no end of file object will ever be an object that can be read in using read.
-static Cell* atom_eof_object_q(Environment* env, Cell* params)
+static void atom_eof_object_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character(env, params, 1) == EOF);
+    Cell* eof = atom_pop_cell(env);
+    type_check(env->cont, TYPE_CHARACTER, eof->type);
+    atom_push_cell(env, make_boolean(eof->data.character == EOF));
 }
 
 // (display	obj)
@@ -3967,10 +3975,12 @@ static Cell* atom_eof_object_q(Environment* env, Cell* params)
 // Display returns an unspecified value.
 // The port argument may be omitted, in which case it defaults to the
 // value returned by current-output-port.
-static Cell* atom_display(Environment* env, Cell* params)
+static void atom_display(Environment* env, int params)
 {
-	print(get_output_port(env, params, 2), nth_param_any(env, params, 1), true);
-    return make_boolean(false);
+    Cell* obj = atom_pop_cell(env);
+    FILE* port = get_outport_port_param(env, params == 2);
+	print(port, obj, true);
+    atom_push_cell(env, make_boolean(false));
 }
 
 
@@ -3982,10 +3992,12 @@ static Cell* atom_display(Environment* env, Cell* params)
 // Returns an unspecified value.
 // The port argument may be omitted, in which case it defaults to the
 // value returned by current-output-port.
-static Cell* atom_newline(Environment* env, Cell* params)
+static void atom_newline(Environment* env, int params)
 {
-	fputc('\n', get_output_port(env, params, 1));	
-	return make_boolean(false); // unspecified
+    assert(params < 2); // todo: fix  this.
+    FILE* port = get_outport_port_param(env, params == 1);
+	fputc('\n', port);
+	atom_push_boolean(env, false);
 }
 
 // 6.6.4. System interface
@@ -4013,11 +4025,13 @@ static void atom_load(Environment* env, int params)
 // Writes the character char (not an external representation of the character) to
 // the given port and returns an unspecified value. The port argument may be
 // omitted, in which case it defaults to the value returned by current-output-port.
-static Cell* atom_write_char(Environment* env, Cell* params)
+static void atom_write_char(Environment* env, int params)
 {
-    Cell* c = nth_param(env, params, 1, TYPE_CHARACTER);
-    fputc(c->data.character, get_output_port(env, params, 2));
-    return make_boolean(false);
+    assert(params < 3);
+    Cell* c = atom_pop_cell(env);
+    type_check(env->cont, TYPE_CHARACTER, c->type);
+    fputc(c->data.character, get_outport_port_param(env, params == 2));
+    atom_push_cell(env, make_boolean(false));
 }
 
 // (transcript-on filename) optional procedure 
@@ -4410,7 +4424,7 @@ Continuation* atom_api_open()
         {"expt",            atom_expt},
         {"modulo",			atom_modulo},
         
-        /*
+
         {"exact?",			atom_exact_q},
         {"inexact?",		atom_inexact_q},
         {"=",				atom_comapre_equal},
@@ -4431,7 +4445,7 @@ Continuation* atom_api_open()
         {"asin",            atom_asin},
         {"acos",            atom_acos},
         {"atan",            atom_atan},
-        
+        /*        
         // boolean
         {"not",		   		atom_not},
         {"boolean?",   		atom_boolean_q},
@@ -4533,20 +4547,20 @@ Continuation* atom_api_open()
         // io
         {"input-port?",             atom_input_port_q},
         {"output-port?",            atom_output_port_q},
-        
+         */        
         // input
         {"peek-char",               atom_peek_char},
         {"eof-object?",             atom_eof_object_q},
         {"read-char",               atom_read_char},
         {"current-input-port",      atom_current_input_port},
         {"current-output-port",     atom_current_output_port},
-        
+
         // output
         {"write",      		atom_write},
         {"display",	   		atom_display},
         {"newline",	   		atom_newline},
         {"write-char",      atom_write_char},
-         */        
+
         // output
         {"load",	   		atom_load},
         
