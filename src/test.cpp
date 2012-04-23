@@ -46,13 +46,32 @@ static char* test_comile() {
     return 0;
 }
 
+
+static double do_numeric_operation(struct Continuation* atom, const char* op)
+{
+    atom_api_loads(atom, op);
+    double number = atom_api_to_number(atom, 1);
+    atom_api_clear(atom);
+    return number;
+}
+
 static char* test_plus() {
     
     struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom, "(+ 1 2)");
-    double number = atom_api_to_number(atom, 1);
-    mu_assert_msg(number == 3.0);
-    mu_assert_msg(atom_api_get_top(atom) == 1);
+
+    mu_assert_msg(do_numeric_operation(atom, "(+)") == 0);
+    mu_assert_msg(do_numeric_operation(atom, "(+ 7)") == 7);
+    mu_assert_msg(do_numeric_operation(atom, "(+ 1 2 3 4)") == 10);
+    mu_assert_msg(do_numeric_operation(atom, "(*)") == 1);
+    mu_assert_msg(do_numeric_operation(atom, "(* 1 2 )") == 2);
+    mu_assert_msg(do_numeric_operation(atom, "(* 10 9 1)") == 90);
+    mu_assert_msg(do_numeric_operation(atom, "(* 2 3 4)") == 24);
+    
+    mu_assert_msg(do_numeric_operation(atom, "(- 1)") == -1);
+    mu_assert_msg(do_numeric_operation(atom, "(- 101 2)") == 99);
+    mu_assert_msg(do_numeric_operation(atom, "(- 2 5)") == -3);
+    mu_assert_msg(do_numeric_operation(atom, "(abs 5)") == 5);
+
     atom_api_close(atom);    
     return 0;
 }

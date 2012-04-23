@@ -2224,61 +2224,80 @@ static void atom_mul(Environment* env, int params)
 }
 
 
-static Cell* sub_div_helper(Environment* env, Cell* params, bool is_sub)
+static void sub_div_helper(Environment* env, int params, bool is_sub)
 {
-	Cell* z = nth_param(env, params, 1, TYPE_NUMBER);
-	double initial = z->data.number;
-	
-	if (cdr(params))
+	Cell* z = stack_get_top(&env->cont->stack);
+	double result = z->data.number;
+    stack_pop(&env->cont->stack, 1);
+    
+    params = params - 1;
+    
+    if (params > 0)
 	{
-		for (Cell* cell = cdr(params); is_pair(cell); cell = cdr(cell))
-		{
-			Cell* num = 0; //eval(env, car(cell));
-            assert(0);
+        for (int i=0; i<params; i++)
+        {
+			Cell* num = stack_get_top(&env->cont->stack);
 			type_check(env->cont, TYPE_NUMBER, num->type);
-			
+            stack_pop(&env->cont->stack, 1);
+
 			if (is_sub)
 			{
-				initial = initial - num->data.number;
+				result = result - num->data.number;
 			}
 			else
 			{
-				initial = initial / num->data.number;
+				result = result / num->data.number;
 			}
+                        
 		}
 	}
 	else
 	{
 		if (is_sub)
 		{
-			initial = -initial;
+			result = -result;
 		}
 		else
 		{
-			initial = 1/initial;
+			result = 1.0/result;
 		}
 	}
-	
-	return make_number(env, initial);
-	
+    
+    stack_push(&env->cont->stack, make_number(env, result));
 }
 
-static Cell* atom_sub(Environment* env, Cell* params)
+static void atom_sub(Environment* env, int params)
 {
-	return sub_div_helper(env, params, true);
+	sub_div_helper(env, params, true);
 }
 
-static Cell* atom_div(Environment* env, Cell* params)
+static void atom_div(Environment* env, int params)
 {
-	return sub_div_helper(env, params, false);
+	sub_div_helper(env, params, false);
+}
+
+
+double atom_pop_number(Environment* env)
+{
+    Cell* top = stack_get_top(&env->cont->stack);
+    type_check(env->cont, TYPE_NUMBER, top->type);
+    double result = top->data.number;
+    stack_pop(&env->cont->stack, 1);
+    return result;
+}
+
+void atom_push_number(Environment* env, double x)
+{
+    stack_push(&env->cont->stack, make_number(env, x));
 }
 
 // (abs x)
 // Abs returns the absolute value of its argument.
-static Cell* atom_abs(Environment* env, Cell* params)
+static void atom_abs(Environment* env, int params)
 {
-    return make_number(env, fabs(nth_param_number(env, params, 1)));
+    atom_push_number(env, fabs(atom_pop_number(env)));
 }
+
 
 // (floor x)    procedure
 // (ceiling x)  procedure
@@ -2289,13 +2308,14 @@ static Cell* atom_abs(Environment* env, Cell* params)
 // Truncate returns the integer closest to x whose absolute value is not larger
 // than the absolute value of x. Round returns the closest integer to x,
 // rounding to even when x is halfway between two integers.
-static Cell* atom_floor(Environment* env, Cell* params)
+static void atom_floor(Environment* env, int params)
 {
-    return make_number(env, floor(nth_param_number(env, params, 1)));
+    atom_push_number(env, floor(atom_pop_number(env)));
 }
 
 static Cell* atom_ceiling(Environment* env, Cell* params)
 {
+    //atom_push_number(env, ceil(atom_pop_number(env)));
     return make_number(env,  ceil(nth_param_number(env, params, 1)));
 }
 
@@ -4064,8 +4084,20 @@ static size_t closure_add_constant(struct Closure* closure, Cell* cell)
 {
     // TODO: Share constants
     assert(cell->type == TYPE_NUMBER || cell->type == TYPE_STRING || cell->type == TYPE_SYMBOL);
+    printf("Pushing constant: ");
+    print(stdout, cell, true);
     stack_push(&closure->constants, cell);
     return closure->constants.num_elements - 1;
+}
+
+static void compile(Closure* closure, Cell* cell);
+
+static int compile_reverse(Closure* closure, Cell* list)
+{
+    if (list->type == TYPE_EMPTY_LIST) return 0;
+    int depth = compile_reverse(closure, cdr(list));
+    compile(closure, car(list));
+    return 1 + depth;
 }
 
 static void compile(Closure* closure, Cell* cell)
@@ -4084,21 +4116,11 @@ static void compile(Closure* closure, Cell* cell)
             }
             if (head->type == TYPE_EMPTY_LIST)
             {
-                fprintf(stderr, "Compile error: Expected symbol.\nGot:");
+                fprintf(stderr, "Syntax error: A function call must contain a list of at least 1 element.\nGot:");
                 print(stderr, head, true);
             }
             
-            int num_params = 0;
-
-            // Push the parameters
-            for (Cell* node = cdr(cell); node->type != TYPE_EMPTY_LIST; node = cdr(node))
-            {
-                compile(closure, car(node));
-                num_params++;
-            }
-            
-            // Push the function
-            compile(closure, head);
+            int num_params = compile_reverse(closure, cell) - 1;
             
             emit(closure, make_instruction(INST_CALL, num_params));
             break;
@@ -4476,12 +4498,12 @@ Continuation* atom_api_open()
          */
         {"+",		   		atom_plus},
         {"*",		   		atom_mul},
-        
-        /*
         {"-",				atom_sub},
         {"/",				atom_div},
         {"abs",             atom_abs},
         {"floor",           atom_floor},
+        
+        /*
         {"ceiling",         atom_ceiling},
         {"truncate",        atom_truncate},
         {"round",           atom_round},
