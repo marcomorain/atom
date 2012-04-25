@@ -1600,12 +1600,40 @@ static Cell* atom_pop_cell(Environment* env)
     return top;
 }
 
+static Cell* atom_pop_a(Environment* env, int type)
+{
+    Cell* cell = atom_pop_cell(env);
+    type_check(env->cont, type, cell->type);
+    return cell;
+}
+
+Cell* atom_pop_list(Environment* env)
+{
+    return atom_pop_a(env, TYPE_PAIR);
+}
+
 double atom_pop_number(Environment* env)
 {
     // TODO: GC safety here
-    Cell* top = atom_pop_cell(env);
-    type_check(env->cont, TYPE_NUMBER, top->type);
-    return top->data.number;
+    return atom_pop_a(env, TYPE_NUMBER)->data.number;
+}
+
+int atom_pop_integer(Environment* env)
+{
+    double value = atom_pop_number(env);
+    int int_val = value;
+    if (int_val != value) signal_error(env->cont, "Expected an integer, got %g", value);
+    return int_val;
+}
+
+static char atom_pop_character(Environment* env)
+{
+    return atom_pop_a(env, TYPE_CHARACTER)->data.character;
+}
+
+static char atom_pop_character_lower(Environment* env)
+{
+    return tolower(atom_pop_character(env));
 }
 
 void atom_push_cell(Environment* env, Cell* cell)
@@ -1623,14 +1651,15 @@ void atom_push_number(Environment* env, double x)
     atom_push_cell(env, make_number(env, x));
 }
 
-
+void atom_push_character(Environment* env, char c)
+{
+    atom_push_cell(env, make_character(env, c));
+}
 
 static void type_q_helper(Environment* env, int params, int type)
 {
-    Cell* cell = atom_pop_cell(env);
-    atom_push_boolean(env, type == cell->type);
+    atom_push_boolean(env, atom_pop_cell(env)->type == type);
 }
-
 
 static Cell* nth_param_any_optional(Environment* env, Cell* params, int n)
 {
@@ -2382,10 +2411,11 @@ static void atom_exact_q(Environment* env, int params)
     atom_push_cell(env, make_boolean(false));
 }
 
-static Cell* atom_inexact_q(Environment* env, Cell* params)
+static void atom_inexact_q(Environment* env, int params)
 {
-	nth_param(env, params, 1, TYPE_NUMBER);
-	return make_boolean(true);
+    assert(params == 1);
+    atom_pop_number(env);
+	atom_push_cell(env, make_boolean(true));
 }
 
 static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings,
@@ -2547,47 +2577,53 @@ static void atom_integer_q(Environment* env, int params)
 // implementation of these functions. When it is possible these procedures
 // produce a real result from a real argument.
 
-static Cell* atom_sin(Environment* env, Cell* params)
+static void atom_sin(Environment* env, int params)
 {
-    return make_number(env, sin(nth_param_number(env, params, 1)));
+    assert(params == 1);
+    atom_push_number(env, sin(atom_pop_number(env)));
 }
 
-static Cell* atom_cos(Environment* env, Cell* params)
+static void atom_cos(Environment* env, int params)
 {
-    return make_number(env, cos(nth_param_number(env, params, 1)));
+    assert(params == 1);
+    atom_push_number(env, cos(atom_pop_number(env)));
 }
 
-static Cell* atom_tan(Environment* env, Cell* params)
+static void atom_tan(Environment* env, int params)
 {
-    return make_number(env, tan(nth_param_number(env, params, 1)));
+    assert(params == 1);
+    atom_push_number(env, tan(atom_pop_number(env)));
 }
 
-static Cell* atom_asin(Environment* env, Cell* params)
+static void atom_asin(Environment* env, int params)
 {
-    return make_number(env, asin(nth_param_number(env, params, 1)));
+    assert(params == 1);
+    atom_push_number(env, asin(atom_pop_number(env)));
 }
 
-static Cell* atom_acos(Environment* env, Cell* params)
+static void atom_acos(Environment* env, int params)
 {
-    return make_number(env, acos(nth_param_number(env, params, 1)));
+    assert(params == 1);
+    atom_push_number(env, acos(atom_pop_number(env)));
 }
 
-static Cell* atom_atan(Environment* env, Cell* params)
+static void atom_atan(Environment* env, int params)
 {
-    double y = nth_param_number(env, params, 1);
+    assert(params > 0 && params < 3);
+    double y = atom_pop_number(env);
     
     double result;
     
-    if (Cell* second = optional_second_param(env, params)){
-        type_check(env->cont, TYPE_NUMBER, second->type);
-        result = atan2(y, second->data.number);
+    if (params > 1)
+    {
+        result = atan2(y, atom_pop_number(env));
     }
     else
     {
         result = atan(y);
     }
     
-    return make_number(env, result);
+    atom_push_number(env, result);
 }
 
 
@@ -2645,9 +2681,9 @@ static void atom_compare_less_equal(Environment* env, int params)
 	comparison_helper<LessEq>(env, params);
 }
 
-static Cell* atom_compare_greater_equal(Environment* env, Cell* params)
+static void atom_compare_greater_equal(Environment* env, int params)
 {
-	return comparison_helper<GreaterEq>(env, params);
+    comparison_helper<GreaterEq>(env, params);
 }
 
 // (zero? z)
@@ -2657,70 +2693,76 @@ static Cell* atom_compare_greater_equal(Environment* env, Cell* params)
 // (even? n)
 // These numerical predicates test a number for a particular property, returning
 // #t or #f.
-static Cell* atom_zero_q(Environment* env, Cell* params)
+static void atom_zero_q(Environment* env, int params)
 {
-	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
-    return make_boolean(result == 0.0);
+	double result = atom_pop_number(env);
+    atom_push_boolean(env, result == 0.0);
 }
 
-static Cell* atom_positive_q(Environment* env, Cell* params)
+static void atom_positive_q(Environment* env, int params)
 {
-	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
-    return make_boolean(result > 0.0);
+    double result = atom_pop_number(env);
+    // TODO: > 0 or >= 0?
+    atom_push_boolean(env, result >= 0.0);
 }
 
-static Cell* atom_negative_q(Environment* env, Cell* params)
+static void atom_negative_q(Environment* env, int params)
 {
-	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
-    return make_boolean(result < 0.0);
+    double result = atom_pop_number(env);
+    // TODO: < 0 or <= 0?
+    atom_push_boolean(env, result < 0.0);
 }
 
-static Cell* atom_odd_q(Environment* env, Cell* params)
+static bool is_odd(Environment* env, int params)
 {
-	int result = nth_param_integer(env, params, 1);
-    return make_boolean(result & 1);
+    assert(params == 1);
+    int value = atom_pop_integer(env);
+    return value & 1;
 }
 
-static Cell* atom_even_q(Environment* env, Cell* params)
+static void atom_odd_q(Environment* env, int params)
 {
-	int result = nth_param_integer(env, params, 1);
-    return make_boolean(0 == (result & 1));
+    atom_push_boolean(env, is_odd(env, params));
+}
+
+static void atom_even_q(Environment* env, int params)
+{
+    atom_push_boolean(env, !is_odd(env, params));
 }
 
 // (max x1 x2 ...) library procedure
 // (min x1 x2 ...) library procedure
 // These procedures return the maximum or minimum of their arguments.
 
-static Cell* min_max_helper(Environment* env, Cell* params, bool is_min)
+static void min_max_helper(Environment* env, int params, bool is_min)
 {
-	double result = nth_param(env, params, 1, TYPE_NUMBER)->data.number;
-	
-	for (Cell* x = cdr(params); is_pair(x); x = cdr(x))
+    assert(params > 1);
+	double result = atom_pop_number(env);
+    
+    for (int i=1; i<params; i++)
 	{
-		Cell* n = 0; //eval(env, car(x));
-        assert(0);
-		type_check(env->cont, TYPE_NUMBER, n->type);
+        double n = atom_pop_number(env);
 		
 		if (is_min)
 		{
-			result = std::min(result, n->data.number);
+			result = std::min(result, n);
 		}
 		else
 		{
-			result = std::max(result, n->data.number);
+			result = std::max(result, n);
 		}
 	}
-	return make_number(env, result);
+	atom_push_number(env, result);
 }
 
-static Cell* atom_min(Environment* env, Cell* params)
+static void atom_min(Environment* env, int params)
 {
-	return min_max_helper(env, params, true);
+    min_max_helper(env, params, true);
 }
 
-static Cell* atom_max(Environment* env, Cell* params)
+static void atom_max(Environment* env, int params)
 {
-	return min_max_helper(env, params, false);
+	min_max_helper(env, params, false);
 }
 // 6.3
 
@@ -2731,12 +2773,12 @@ static void atom_boolean_q(Environment* env, int params)
 	type_q_helper(env, params, TYPE_BOOLEAN);	
 }
 
-static Cell* atom_not(Environment* env, Cell* params)
+static void atom_not(Environment* env, int params)
 {
-	Cell* obj = 0; //eval(env, car(params));
-    assert(0);
+    assert(params == 1);
+    Cell* obj = atom_pop_cell(env);
 	bool is_truthy = obj->type != TYPE_BOOLEAN || obj->data.boolean;
-	return make_boolean(!is_truthy);
+	atom_push_boolean(env, !is_truthy);
 }
 
 // 6.3.2 Pairs and lists
@@ -2745,31 +2787,34 @@ static void atom_pair_q(Environment* env, int params)
 	type_q_helper(env, params, TYPE_PAIR);
 }
 
-static Cell* atom_cons(Environment* env, Cell* params)
+static void atom_cons(Environment* env, int params)
 {
-	Cell* first  = nth_param_any(env, params, 1);
-	Cell* second = nth_param_any(env, params, 2);
-	return cons(env, first, second);
+    assert(params == 2);
+	Cell* first  = atom_pop_cell(env);
+	Cell* second = atom_pop_cell(env);
+	atom_push_cell(env, cons(env, first, second));
 }
 
-static Cell* atom_car(Environment* env, Cell* params)
+static void atom_car(Environment* env, int params)
 {
-	Cell* list = nth_param(env, params, 1, TYPE_PAIR);
-	return car(list);
+    assert(params == 1);
+	Cell* list = atom_pop_cell(env);
+	atom_push_cell(env, car(list));
 }
 
-static Cell* atom_cdr(Environment* env, Cell* params)
+static void atom_cdr(Environment* env, int params)
 {
-	Cell* list = nth_param(env, params, 1, TYPE_PAIR);
-	return cdr(list);
+    assert(params == 1);
+	Cell* list = atom_pop_cell(env);
+	atom_push_cell(env, cdr(list));
 }
 
-static Cell* set_car_cdr_helper(Environment* env, Cell* params, int is_car)
+static void set_car_cdr_helper(Environment* env, int params, int is_car)
 {
+    assert(params == 2);
 	// @todo: make an error here for constant lists	
-	Cell* pair = nth_param(env, params, 1, TYPE_PAIR);
-	Cell* obj  = 0; //eval(env, car(cdr(params)));
-    assert(0);
+    Cell* pair = atom_pop_list(env);
+	Cell* obj  = atom_pop_cell(env);
 	
 	if (is_car)
 	{
@@ -2781,17 +2826,17 @@ static Cell* set_car_cdr_helper(Environment* env, Cell* params, int is_car)
 	}
 	
 	// return value here is unspecified
-	return pair;	
+	atom_push_cell(env, pair);
 }
 
-static Cell* atom_set_car_b(Environment* env, Cell* params)
+static void atom_set_car_b(Environment* env, int params)
 {
-	return set_car_cdr_helper(env, params, 1);
+	set_car_cdr_helper(env, params, 1);
 }
 
-static Cell* atom_set_cdr_b(Environment* env, Cell* params)
+static void atom_set_cdr_b(Environment* env, int params)
 {
-	return set_car_cdr_helper(env, params, 0);
+    set_car_cdr_helper(env, params, 0);
 }
 
 // Returns #t if obj is the empty list, otherwise returns #f.
@@ -2800,60 +2845,57 @@ static void atom_null_q(Environment* env, int params)
     type_q_helper(env, params, TYPE_EMPTY_LIST);
 }
 
-// (list? obj)
-// Returns #t if obj is a list, otherwise returns #f. By definition, all
-// lists have finite length and are terminated by the empty list.
-static Cell* atom_list_q(Environment* env, Cell* params)
+static bool atom_list_q_helper(Environment* env, int params)
 {
-    for (Cell* obj = nth_param_any(env, params, 1);; obj = cdr(obj))
+    assert(params == 1);
+    for (Cell* obj = atom_pop_cell(env);; obj = cdr(obj))
     {
         switch(obj->type)
         {
-            case TYPE_EMPTY_LIST:
-                return make_boolean(true);
-
-            case TYPE_PAIR:
-                continue;
-                
-            default:
-                return make_boolean(false);
+            case TYPE_EMPTY_LIST: return true;
+            case TYPE_PAIR:       continue;
+            default:              return false;
         }
     }
-    
-    return make_boolean(false);
+    return false;
+}
+
+// (list? obj)
+// Returns #t if obj is a list, otherwise returns #f. By definition, all
+// lists have finite length and are terminated by the empty list.
+static void atom_list_q(Environment* env, int params)
+{
+    atom_push_boolean(env, atom_list_q_helper(env, params));
 }
 
 // (list obj ...)
 // Returns a newly allocated list of its arguments.
-static Cell* atom_list(Environment* env, Cell* params)
+static void atom_list(Environment* env, int params)
 {
-	// @todo: use an empty list type here.
-	Cell* result = cons(env, NULL, NULL);
+    // TODO: test this
+    assert(params > 0);
+	Cell* result = cons(env, atom_pop_cell(env), &cell_empty_list);
 	
-	for (;;)
+	for (int i = 1; i<params; i++)
 	{
-		set_car(result, 0);//eval(env, car(params)));
-        assert(0);
-		set_cdr(result, cons(env, NULL, NULL));
-		params = cdr(params);
+        Cell* next = cons(env, atom_pop_cell(env), &cell_empty_list);
+        set_cdr(result, next);
+        result = next;
 	}
-	
-	return result;
+    
+    atom_push_cell(env, result);
 }
 
 // (length list) Returns the length of list.
-static Cell* atom_length(Environment* env, Cell* params)
-{	
-	int length = 1;
-    
-	for (Cell* list = 0; /*eval(env, car(params))*/ is_pair(list); list = list->data.pair.cdr)
-	{
-        assert(0);
-		type_check(env->cont, TYPE_PAIR, list->type);
-		length++;
-	}
-	
-	return make_number(env, (double)length);
+static void atom_length(Environment* env, int params)
+{
+    assert(params == 1);
+	int length = 0;
+    for (Cell* list = atom_pop_list(env); is_pair(list); list = cdr(list))
+    {
+        length++;
+    }
+    atom_push_number(env, length);
 }
 
 
@@ -2862,18 +2904,16 @@ static Cell* atom_length(Environment* env, Cell* params)
 // (append list ...)
 // Returns a list consisting of the elements of the first list followed by
 // the elements of the other lists.
-static Cell* atom_append(Environment* env, Cell* params)
+static void atom_append(Environment* env, int params)
 {
+    assert(params > 0);
     Cell* result = NULL;
     
-    for (int n=1;; n++)
+    for (int i=1; i<params; i++)
     {
-        Cell* list = nth_param_optional(env, params, n, TYPE_PAIR);
-        if (!list) break;
-        result = append_destructive(result, duplicate(env, list));
+        result = append_destructive(result, duplicate(env, atom_pop_list(env)));
     }
-    
-    return result;
+    atom_push_cell(env, result);
 }
 
 
@@ -2886,31 +2926,33 @@ static Cell* atom_append(Environment* env, Cell* params)
 //     (if (zero? k)
 //        x
 //        (list-tail (cdr x) (- k 1)))))
-static Cell* list_tail_helper(Environment* env, Cell* params)
+static Cell* list_tail_helper(Environment* env, int params)
 {
-	Cell* list = nth_param(env, params, 1, TYPE_PAIR);
+    assert(params == 2);
+	Cell* list = atom_pop_list(env);
+    
 	
-	for (int k = nth_param_integer(env, params, 2); k>0; k--)
+	for (int k = atom_pop_integer(env); k>0; k--)
 	{
 		list = cdr(list);
-		if (!list) return signal_error(env->cont,
+		if (is_pair(list)) return signal_error(env->cont,
                                 "The given list must have at least K elements");
 	}
 	return list;
 }
 
-static Cell* atom_list_tail(Environment* env, Cell* params)
+static void atom_list_tail(Environment* env, int params)
 {
-	return list_tail_helper(env, params);
+	atom_push_cell(env, list_tail_helper(env, params));
 }
 
 // library procedure: list-ref list K
 // Returns the Kth element of LIST.  (This is the same as the car of
 // (list-tail LIST K).)  It is an error if LIST has fewer than K
 // elements.
-static Cell* atom_list_ref(Environment* env, Cell* params)
+static void atom_list_ref(Environment* env, int params)
 {
-	return car(list_tail_helper(env, params));
+	atom_push_cell(env, car(list_tail_helper(env, params)));
 }
 
 // a bunh of functions are missing here....
@@ -3214,6 +3256,21 @@ static void atom_char_q(Environment* env, int params)
     type_q_helper(env, params, TYPE_CHARACTER);	
 }
 
+static int character_compare(Environment* env, int params)
+{
+    assert(params == 2);
+    char a = atom_pop_character(env);
+    char b = atom_pop_character(env);
+    return a - b;
+}
+
+static int character_compare_lower(Environment* env, int params)
+{
+    assert(params == 2);
+    char a = atom_pop_character_lower(env);
+    char b = atom_pop_character_lower(env);
+    return a - b;
+}
 
 // (char=?	char1	char2 ) procedure
 // (char<?	char1	char2 ) procedure
@@ -3230,34 +3287,29 @@ static void atom_char_q(Environment* env, int params)
 // - Either all the digits precede all the lower case letters, or vice versa.
 // Some implementations may generalize these procedures to take more than two
 // arguments, as with the corresponding numerical predicates.
-static Cell* atom_char_equal_q(Environment* env, Cell* params)
+static void atom_char_equal_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character(env, params, 1) ==
-                        nth_param_character(env, params, 2));
+    atom_push_boolean(env, character_compare(env, params) == 0);
 }
 
-static Cell* atom_char_less_than_q(Environment* env, Cell* params)
+static void atom_char_less_than_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character(env, params, 1) <
-                        nth_param_character(env, params, 2));
+    atom_push_boolean(env, character_compare(env, params) < 0);
 }
 
-static Cell* atom_char_greater_than_q(Environment* env, Cell* params)
+static void atom_char_greater_than_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character(env, params, 1) >
-                        nth_param_character(env, params, 2));
+    atom_push_boolean(env, character_compare(env, params) > 0);
 }
 
-static Cell* atom_char_less_than_or_equal_q(Environment* env, Cell* params)
+static void atom_char_less_than_or_equal_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character(env, params, 1) >=
-                        nth_param_character(env, params, 2));
+    atom_push_boolean(env, character_compare(env, params) <= 0);
 }
 
-static Cell* atom_char_greater_than_or_equal_q(Environment* env, Cell* params)
+static void atom_char_greater_than_or_equal_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character(env, params, 1) <=
-                        nth_param_character(env, params, 2));
+    atom_push_boolean(env, character_compare(env, params) >= 0);
 }
 
 // (char-ci=?	char1	char2 ) library procedure
@@ -3269,34 +3321,29 @@ static Cell* atom_char_greater_than_or_equal_q(Environment* env, Cell* params)
 // and lower case letters as the same. For example, (char-ci=? #\A #\a) returns #t.
 // Some implementations may generalize these procedures to take more than two
 // arguments, as with the corresponding numerical predicates.
-static Cell* atom_char_ci_equal_q(Environment* env, Cell* params)
+static void atom_char_ci_equal_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character_lower(env, params, 1) ==
-                        nth_param_character_lower(env, params, 2));
+    atom_push_boolean(env, character_compare_lower(env, params) == 0);
 }
 
-static Cell* atom_char_ci_less_than_q(Environment* env, Cell* params)
+static void atom_char_ci_less_than_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character_lower(env, params, 1) <
-                        nth_param_character_lower(env, params, 2));
+    atom_push_boolean(env, character_compare_lower(env, params) < 0);
 }
 
-static Cell* atom_char_ci_greater_than_q(Environment* env, Cell* params)
+static void atom_char_ci_greater_than_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character_lower(env, params, 1) >
-                        nth_param_character_lower(env, params, 2));
+    atom_push_boolean(env, character_compare_lower(env, params) > 0);
 }
 
-static Cell* atom_char_ci_less_than_or_equal_q(Environment* env, Cell* params)
+static void atom_char_ci_less_than_or_equal_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character_lower(env, params, 1) >=
-                        nth_param_character_lower(env, params, 2));
+    atom_push_boolean(env, character_compare_lower(env, params) < 0);
 }
 
-static Cell* atom_char_ci_greater_than_or_equal_q(Environment* env, Cell* params)
+static void atom_char_ci_greater_than_or_equal_q(Environment* env, int params)
 {
-    return make_boolean(nth_param_character_lower(env, params, 1) <=
-                        nth_param_character_lower(env, params, 2));
+    atom_push_boolean(env, character_compare_lower(env, params) >= 0);
 }
 
 
@@ -3313,29 +3360,34 @@ static Cell* atom_char_ci_greater_than_or_equal_q(Environment* env, Cell* params
 // digits.
 // The whitespace characters are space, tab, line feed, form feed, and carriage
 // return.
-static Cell* atom_char_alphabetic_q(Environment* env, Cell* params)
+static void atom_char_alphabetic_q(Environment* env, int params)
 {
-    return make_boolean(isalpha(nth_param_character(env, params, 1)));
+    assert(params == 1);
+    atom_push_boolean(env, isalpha(atom_pop_character(env)));
 }
 
-static Cell* atom_char_numeric_q(Environment* env, Cell* params)
+static void atom_char_numeric_q(Environment* env, int params)
 {
-    return make_boolean(isdigit(nth_param_character(env, params, 1)));
+    assert(params == 1);
+    atom_push_boolean(env, isdigit(atom_pop_character(env)));
 }
 
-static Cell* atom_char_whitespace_q(Environment* env, Cell* params)
+static void atom_char_whitespace_q(Environment* env, int params)
 {
-    return make_boolean(isspace(nth_param_character(env, params, 1)));
+    assert(params == 1);
+    atom_push_boolean(env, isspace(atom_pop_character(env)));
 }
 
-static Cell* atom_char_upper_case_q(Environment* env, Cell* params)
+static void atom_char_upper_case_q(Environment* env, int params)
 {
-    return make_boolean(isupper(nth_param_character(env, params, 1)));
+    assert(params == 1);
+    atom_push_boolean(env, isupper(atom_pop_character(env)));
 }
 
-static Cell* atom_char_lower_case_q(Environment* env, Cell* params)
+static void atom_char_lower_case_q(Environment* env, int params)
 {
-    return make_boolean(islower(nth_param_character(env, params, 1)));
+    assert(params == 1);
+    atom_push_boolean(env, islower(atom_pop_character(env)));
 }
 
 // (char-upcase char)	library procedure
@@ -3343,14 +3395,16 @@ static Cell* atom_char_lower_case_q(Environment* env, Cell* params)
 // These procedures return a character char2 such that (char-ci=? char char2). In
 // addition, if char is alphabetic, then the result of char-upcase is upper case
 // and the result of char-downcase is lower case.
-static Cell* atom_char_upcase(Environment* env, Cell* params)
+static void atom_char_upcase(Environment* env, int params)
 {
-    return make_character(env, toupper(nth_param_character(env, params, 1)));
+    assert(params == 1);
+    atom_push_character(env, toupper(atom_pop_character(env)));
 }
 
-static Cell* atom_char_downcase(Environment* env, Cell* params)
+static void atom_char_downcase(Environment* env, int params)
 {
-    return make_character(env, tolower(nth_param_character(env, params, 1)));
+    assert(params == 1);
+    atom_push_character(env, tolower(atom_pop_character(env)));
 }
 
 // (char->integer char)	procedure
@@ -3361,16 +3415,17 @@ static Cell* atom_char_downcase(Environment* env, Cell* params)
 // These procedures implement order-preserving isomorphisms between the set
 // of characters under the char<=? ordering and some subset of the integers
 // under the <= ordering.
-static Cell* atom_char_to_integer(Environment* env, Cell* params)
+static void atom_char_to_integer(Environment* env, int params)
 {
-	Cell* obj = nth_param(env, params, 1, TYPE_CHARACTER);
-	return make_number(env, (double)obj->data.character);
+    assert(params == 1);
+    atom_push_number(env, atom_pop_character(env));
 }
 
-static Cell* atom_integer_to_char(Environment* env, Cell* params)
+static void atom_integer_to_char(Environment* env, int params)
 {
-	Cell* obj = nth_param(env, params, 1, TYPE_NUMBER);
-	return make_character(env, (char)obj->data.number);
+    // TODO: overflow?
+    assert(params == 1);
+    atom_push_character(env, atom_pop_integer(env));
 }
 
 // 6.3.5 Strings
@@ -4445,11 +4500,11 @@ Continuation* atom_api_open()
         {"asin",            atom_asin},
         {"acos",            atom_acos},
         {"atan",            atom_atan},
-        /*        
+   
         // boolean
         {"not",		   		atom_not},
         {"boolean?",   		atom_boolean_q},
-        
+         
         // lists
         {"pair?",      		atom_pair_q},
         {"cons",       		atom_cons},
@@ -4465,6 +4520,9 @@ Continuation* atom_api_open()
 		{"list-tail",		atom_list_tail},
 		{"list-ref",		atom_list_ref},
         
+        
+
+         
         // char
         {"char?",			atom_char_q},
         {"char=?",          atom_char_equal_q},
@@ -4472,7 +4530,8 @@ Continuation* atom_api_open()
         {"char>?",          atom_char_greater_than_q},
         {"char<=?",         atom_char_less_than_or_equal_q},
         {"char>=?",         atom_char_greater_than_or_equal_q},
-        
+
+
         {"char-ci=?",       atom_char_ci_equal_q},
         {"char-ci<?",       atom_char_ci_less_than_q},
         {"char-ci>?",       atom_char_ci_greater_than_q},
@@ -4490,7 +4549,7 @@ Continuation* atom_api_open()
         
         {"char->integer",	atom_char_to_integer},
         {"integer->char",	atom_integer_to_char},
-        
+       /*     
         // string
         {"string?",	   		atom_string_q},
         {"string",			atom_string},
