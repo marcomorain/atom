@@ -1656,6 +1656,11 @@ void atom_push_character(Environment* env, char c)
     atom_push_cell(env, make_character(env, c));
 }
 
+static void atom_push_undefined(Environment* env)
+{
+    atom_push_boolean(env, false);
+}
+
 static void type_q_helper(Environment* env, int params, int type)
 {
     atom_push_boolean(env, atom_pop_cell(env)->type == type);
@@ -2978,38 +2983,29 @@ static void atom_symbol_q(Environment* env, int params)
 // string->symbol.
 // It is an error to apply mutation procedures like string-set! to strings
 // returned by this procedure.
-static Cell* atom_symbol_to_string(Environment* env, Cell* params)
+static void atom_symbol_to_string(Environment* env, int params)
 {
-	const char* symbol = nth_param(env, params, 1, TYPE_SYMBOL)->data.symbol->name;
+	const char* symbol = atom_pop_a(env, TYPE_SYMBOL)->data.symbol->name;
     // TODO: bad type conversion here (size_t, int).
-	return make_string(env, (int)strlen(symbol), symbol);
+    atom_push_cell(env, make_string(env, (int)strlen(symbol), symbol));
 }
 
 // (string char ...) library procedure
 // Returns a newly allocated string composed of the arguments.
-static Cell* atom_string(Environment* env, Cell* params)
+static void atom_string(Environment* env, int params)
 {
-    int count = 0;
-    for (Cell* p = params; is_pair(p); p = cdr(p))
-    {
-        count++;
-    }
-
-    if (count < 1) return signal_error(env->cont,
-                "At least one parameter must be passed to (string char ...)");
+    assert(params > 0);
     
     character_buffer buffer;
     character_buffer_init(&buffer);
-
-    for (int i=1; i<=count; i++){
-        character_buffer_push(&buffer, nth_param_character(env, params, i));
-    }
     
-    character_buffer_push(&buffer, 0);
-    Cell* str = make_string(env, count, character_buffer_data(&buffer));
-    character_buffer_destory(&buffer);
+    for (int i=0; i<params; i++)
+        character_buffer_push(&buffer, atom_pop_character(env));
 
-    return str;
+    character_buffer_push(&buffer, 0);
+    
+    atom_push_cell(env, make_string(env, params, character_buffer_data(&buffer)));
+    character_buffer_destory(&buffer);
 }
 
 static int compare_strings(Environment* env, Cell* params)
@@ -3242,9 +3238,10 @@ static Cell* atom_string_fill_b(Environment* env, Cell* params)
 // with names containing special characters or letters in the non-standard
 // case, but it is usually a bad idea to create such symbols because in some
 // implementations of Scheme they cannot be read as themselves.
-static Cell* atom_string_to_symbol(Environment* env, Cell* params)
+static void atom_string_to_symbol(Environment* env, int params)
 {
-	return make_symbol(env, nth_param(env, params, 1, TYPE_STRING)->data.string.data);
+    assert(params == 1);
+	atom_push_cell(env, make_symbol(env, atom_pop_a(env, TYPE_STRING)->data.string.data));
 }
 
 // 6.3.4 Characters
@@ -3443,26 +3440,24 @@ static void atom_string_q(Environment* env, int params)
 // given, then all elements of the string are initialized to char,
 // otherwise the contents of the string are unspecified.
 // ATOM: The contents are zero.
-static Cell* atom_make_string(Environment* env, Cell* params)
+static void atom_make_string(Environment* env, int params)
 {
-	int k = nth_param_integer(env, params, 1);
+    assert(params < 3 && params > 0);
+	int k = atom_pop_integer(env);
     
 	char fill = 0;
-	
-	Cell* second = optional_second_param(env, params);
-	
-	if (second)
-	{
-		type_check(env->cont, TYPE_CHARACTER, second->type);
-		fill = second->data.character;
-	}
-	
+    
+    if (params == 2)
+    {
+        fill = atom_pop_character(env);
+    }
+    
 	if (k < 0)
 	{
-		return signal_error(env->cont, "positive integer length required");
+        signal_error(env->cont, "positive integer length required");
 	}
     
-    return make_string_filled(env, k, fill);
+    atom_push_cell(env, make_string_filled(env, k, fill));
 }
 
 
@@ -3473,27 +3468,27 @@ static Cell* atom_make_string(Environment* env, Cell* params)
 
 // (string-length string)	procedure
 // Returns the number of characters in the given string.
-static Cell* atom_string_length(Environment* env, Cell* params)
+static void atom_string_length(Environment* env, int params)
 {
-	Cell* string = nth_param(env, params, 1, TYPE_STRING);
-	return make_number(env, string->data.string.length);
+    assert(params == 1);
+	atom_push_number(env, atom_pop_a(env, TYPE_STRING)->data.string.length);
 }
 
 // (string-ref string k)	procedure
 // k must be a valid index of string. String-ref returns character k of
 // string using zero-origin indexing.
-static Cell* atom_string_ref(Environment* env, Cell* params)
+static void atom_string_ref(Environment* env, int params)
 {
-	Cell* string = nth_param(env, params, 1, TYPE_STRING);
-	int k        = nth_param_integer(env, params, 2);
+	Cell* string = atom_pop_a(env, TYPE_STRING);
+	int k        = atom_pop_integer(env);
 	
 	// todo: watch this cast.
 	if (k < 0 || k < string->data.string.length)
 	{
-		return signal_error(env->cont, "k is not a valid index of the given string");
+		signal_error(env->cont, "k is not a valid index of the given string");
 	}
-	
-	return make_character(env, string->data.string.data[k]);
+    
+    atom_push_character(env, string->data.string.data[k]);
 }
 
 
@@ -3501,28 +3496,30 @@ static Cell* atom_string_ref(Environment* env, Cell* params)
 // Asserts that string is a string
 // Asserts that c is a character
 // Raises an error if k is an invalid index.
-static void string_set_char(Environment* env, Cell* string, int k, Cell* c)
+static void string_set_char(Environment* env, Cell* string, int k, char c)
 {
     assert(string->type == TYPE_STRING);
-    assert(c->type      == TYPE_CHARACTER);
     
 	if (k < 0 || k >= string->data.string.length)
 	{
 		signal_error(env->cont, "invalid string index");
 	}
-	string->data.string.data[k] = c->data.character;
+	string->data.string.data[k] = c;
 }
 
 // (string-set! string k char)	procedure
 // k must be a valid index of string.
 // String-set! stores char in element k of string and returns an
 // unspecified value.
-static Cell* atom_string_set(Environment* env, Cell* params)
+static void atom_string_set(Environment* env, int params)
 {
-    string_set_char(env, nth_param(env, params, 1, TYPE_STRING),
-                    nth_param_integer(env, params, 2),
-                    nth_param(env, params, 3, TYPE_CHARACTER));
-    return make_boolean(false);
+    Cell* string = atom_pop_a(env, TYPE_STRING);
+    int k = atom_pop_integer(env);
+    char c = atom_pop_character(env);
+    
+    string_set_char(env, string, k, c);
+    
+    atom_push_undefined(env);
 }
 
 // (vector? obj)
@@ -4549,7 +4546,7 @@ Continuation* atom_api_open()
         
         {"char->integer",	atom_char_to_integer},
         {"integer->char",	atom_integer_to_char},
-       /*     
+
         // string
         {"string?",	   		atom_string_q},
         {"string",			atom_string},
@@ -4557,6 +4554,8 @@ Continuation* atom_api_open()
         {"string-length",	atom_string_length},
         {"string-ref",	   	atom_string_ref},
         {"string-set!",	   	atom_string_set},
+        
+/*     
         {"string=?",        atom_string_equal_q},
         {"string-ci=?",     atom_string_ci_equal_q},
         {"string<?",        atom_string_less_than_q},
@@ -4584,11 +4583,13 @@ Continuation* atom_api_open()
         {"list->vector",    atom_list_to_vector},
         {"vector-set!",		atom_vector_set_b},
         {"vector-fill!",	atom_vector_fill_b},
-        
+    */
         // symbols
         {"symbol?",    		atom_symbol_q},
         {"symbol->string",	atom_symbol_to_string},
         {"string->symbol",	atom_string_to_symbol},
+        
+        /*
         
         // control
         {"procedure?", 		atom_procedure_q},
