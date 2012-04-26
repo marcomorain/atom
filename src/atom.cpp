@@ -1591,7 +1591,7 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 	signal_error(env->cont, "No binding for %s in any scope.", symbol->name);
 }
 
-static Cell* eval(Continuation* env, struct Closure* closure);
+static void eval(Continuation* env, struct Closure* closure);
 
 static Cell* atom_pop_cell(Environment* env)
 {
@@ -2068,46 +2068,6 @@ static Cell* atom_let(Environment* env, Cell* params)
 static Cell* atom_let_s(Environment* env, Cell* params)
 {
 	return let_helper(env, params, true);
-}
-
-static Cell* atom_define(Environment* env, Cell* params)
-{
-	Cell* first  = car(params); // no eval
-    
-	Cell* variable = 0;
-	Cell* value    = 0;
-	
-	switch(first->type)
-	{
-		case TYPE_SYMBOL:
-		{
-			variable	= first;
-            assert(0);
-			value		= 0; //eval(env, car(cdr(params)));
-			break;
-		}
-            
-		case TYPE_PAIR:
-		{
-			// todo: handle dotted syntax
-			variable		= car(first);
-			Cell* formals	= cdr(first);
-			Cell* body		= cdr(params);
-			value = make_procedure(env, formals, body);
-			break;
-		}
-            
-		default:
-            // todo: make this a syntax error.
-            return signal_error(env->cont,
-                            "symbol or pair expected as parameter 1 to define");
-	}
-	
-	assert(variable && value);
-	type_check(env->cont, TYPE_SYMBOL, variable->type);
-	environment_define(env, variable->data.symbol, value);
-	// undefined result.
-	return make_boolean(false);
 }
 
 
@@ -4132,17 +4092,10 @@ static void closure_init(Closure* closure)
 }
 
 enum {
-    //    INST_DEFINE,
-    //INST_LAMBDA,
-    //INST_IF,
-    //INST_QUOTE,
-    //INST_UNQUOTE,
-    //INST_QUASIQUOTE,
-    //INST_UNQUOTE_SPLICING,
-    //INST_SET,
     INST_PUSH_CONSTANT,
     INST_LOAD,
-    INST_CALL
+    INST_CALL,
+    INST_DEFINE,
 };
 
 static void emit(Closure* closure, Instruction instruction)
@@ -4153,6 +4106,7 @@ static void emit(Closure* closure, Instruction instruction)
         case INST_PUSH_CONSTANT: printf("-- push constant"); break;
         case INST_LOAD:          printf("-- load"); break;
         case INST_CALL:          printf("-- call"); break;
+        case INST_DEFINE:        printf("-- deifne"); break;
         default: assert(false);
     }
     printf(" %d\n", instruction.operand);
@@ -4178,6 +4132,33 @@ static int compile_reverse(Closure* closure, Cell* list)
     return 1 + depth;
 }
 
+static void compile_function_call(Closure* closure, Cell* cell)
+{
+    int num_params = compile_reverse(closure, cell) - 1;
+    emit(closure, make_instruction(INST_CALL, num_params));
+}
+
+static void compile_define(Closure* closure, Cell* cell)
+{
+    // TODO: Handle dotted syntax.
+    // Maybe as macro?
+    // TODO: Handle function short syntax
+    Cell* define = car(cell);
+    Cell* symbol = car(cdr(cell));
+    Cell* expression = car(cdr(cdr(cell)));
+    
+
+    // Push the expression
+    compile(closure, expression);
+    
+    // Push the symbol
+    size_t c = closure_add_constant(closure, symbol);
+    emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
+    
+    // Define (2)
+    emit(closure, make_instruction(INST_DEFINE, 0));
+}
+
 static void compile(Closure* closure, Cell* cell)
 {
     switch(cell->type)
@@ -4185,22 +4166,36 @@ static void compile(Closure* closure, Cell* cell)
         case TYPE_PAIR:
         {
             Cell* head = car(cell);
-            
+
             // TODO: This is nonsense - evaluating the head could return a function
-            if (head->type != TYPE_SYMBOL)
-            {
-                fprintf(stderr, "Compile error: Expected symbol.\nGot:");
-                print(stderr, head, true);
+            switch (head->type) {
+                case TYPE_EMPTY_LIST:
+                {
+                    fprintf(stderr, "Syntax error: A function call must contain a list of at least 1 element.\nGot:");
+                    print(stderr, head, true);
+                    break;
+                }
+                    
+                case TYPE_SYMBOL:
+                {
+                    if (strcmp(head->data.symbol->name, "define") == 0)
+                    {
+                        compile_define(closure, cell);
+                    }
+                    else
+                    {
+                        compile_function_call(closure, cell);
+                    }
+                    break;
+                }
+                    
+                default:
+                {
+                    fprintf(stderr, "Compile error: Expected symbol.\nGot:");
+                    print(stderr, head, true);
+                    break;
+                }
             }
-            if (head->type == TYPE_EMPTY_LIST)
-            {
-                fprintf(stderr, "Syntax error: A function call must contain a list of at least 1 element.\nGot:");
-                print(stderr, head, true);
-            }
-            
-            int num_params = compile_reverse(closure, cell) - 1;
-            
-            emit(closure, make_instruction(INST_CALL, num_params));
             break;
         }
             
@@ -4234,7 +4229,7 @@ static void compile(Closure* closure, Cell* cell)
 
 void atom_api_load(Continuation* cont, const char* data, size_t length)
 {	
-    //printf("input> %s", data);
+    printf("input> %s\n", data);
 	Environment* env = cont->env;
     
 	JumpBuffer* prev = cont->escape;
@@ -4266,9 +4261,9 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
             compile(&closure, cell);
             printf("parsed> ");
             print(stdout, cell, false);
-            const Cell* result =
+            //const Cell* result =
             eval(cont, &closure);
-            print(stdout, result, false);
+            //print(stdout, result, false);
         }
         else break;
 	}
@@ -4305,7 +4300,7 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	free(buffer);
 }
 
-static Cell* eval(Continuation* cont, struct Closure* closure)
+static void eval(Continuation* cont, struct Closure* closure)
 {
 tailcall:
     
@@ -4316,12 +4311,21 @@ tailcall:
     Environment* env = cont->env;
     for (;;)
     {
-        if (pc == closure->instructions.num_elements) return stack_get(&cont->stack, 0);
+        // End of input
+        if (pc == closure->instructions.num_elements) return;
         
         const Instruction instruction = stack_get(&closure->instructions, pc);
         pc++;
         switch (instruction.op_code)
         {
+            case INST_DEFINE:
+            {
+                Cell* symbol = atom_pop_a(env, TYPE_SYMBOL);
+                Cell* value = atom_pop_cell(env);
+                environment_define(env, symbol->data.symbol, value);
+                break;
+            }
+                
             case INST_PUSH_CONSTANT:
             {
                 stack_push(&cont->stack, stack_get(&closure->constants, instruction.operand));
@@ -4444,7 +4448,6 @@ Continuation* atom_api_open()
         {"let",				atom_let},
         {"let*",			atom_let_s},
         {"begin",      		atom_begin},
-        {"define",			atom_define},
         {"quasiquote",      atom_quasiquote},
         {"eqv?",			atom_eqv_q},
         {"eq?",				atom_eq_q},

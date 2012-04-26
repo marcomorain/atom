@@ -76,7 +76,17 @@ static char* test_plus() {
     return 0;
 }
 
+static char* test_state() {
+    struct Continuation* atom = atom_api_open();
+    atom_api_loads(atom, "(define x 17)");
+    atom_api_clear(atom);
+    mu_assert_msg(do_numeric_operation(atom, "x") == 17);
+    atom_api_close(atom);    
+    return 0;
+}
+
 static char * all_tests() {
+    mu_run_test(test_state);
     mu_run_test(test_open_close);
     mu_run_test(test_comile);
     mu_run_test(test_plus);
