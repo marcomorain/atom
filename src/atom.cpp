@@ -2953,16 +2953,22 @@ static void atom_string(Environment* env, int params)
     character_buffer_destory(&buffer);
 }
 
-static int compare_strings(Environment* env, Cell* params)
+static int compare_strings(Environment* env, int params)
 {
-    return strcmp(nth_param_string(env, params, 1),
-                  nth_param_string(env, params, 2));
+    assert(params == 2);
+    Cell* a = atom_pop_a(env, TYPE_STRING);
+    Cell* b = atom_pop_a(env, TYPE_STRING); 
+    return strcmp(a->data.string.data,
+                  b->data.string.data);
 }
 
-static int compare_case_strings(Environment* env, Cell* params)
+static int compare_case_strings(Environment* env, int params)
 {
-    return strcasecmp(nth_param_string(env, params, 1),
-                      nth_param_string(env, params, 2));
+    assert(params == 2);
+    Cell* a = atom_pop_a(env, TYPE_STRING);
+    Cell* b = atom_pop_a(env, TYPE_STRING); 
+    return strcasecmp(a->data.string.data,
+                      b->data.string.data);
 }
 
 // (string=? string1 string2) library procedure
@@ -2971,14 +2977,14 @@ static int compare_case_strings(Environment* env, Cell* params)
 // characters in the same positions, otherwise returns #f. Stringci=? treats
 // upper and lower case letters as though they were the same character, but
 // string=? treats upper and lower case as distinct characters.
-static Cell* atom_string_equal_q(Environment* env, Cell* params)
+static void atom_string_equal_q(Environment* env, int params)
 {
-    return make_boolean(0 == compare_strings(env, params));
+    atom_push_boolean(env, 0 == compare_strings(env, params));
 }
 
-static Cell* atom_string_ci_equal_q(Environment* env, Cell* params)
+static void atom_string_ci_equal_q(Environment* env, int params)
 {
-    return make_boolean(0 == compare_case_strings(env, params));
+    atom_push_boolean(env, 0 == compare_case_strings(env, params));
 }
 
 // (string<?	string1	string2 ) library procedure
@@ -2999,44 +3005,44 @@ static Cell* atom_string_ci_equal_q(Environment* env, Cell* params)
 // Implementations may generalize these and the string=? and string-ci=? procedures
 // to take more than two arguments, as with the corresponding numerical predicates.
 
-static Cell* atom_string_less_than_q(Environment* env, Cell* params)
+static void atom_string_less_than_q(Environment* env, int params)
 {
-    return make_boolean(0 > compare_strings(env, params));
+    atom_push_boolean(env, 0 > compare_strings(env, params));
 }
 
-static Cell* atom_string_greater_than_q(Environment* env, Cell* params)
+static void atom_string_greater_than_q(Environment* env, int params)
 {
-    return make_boolean(0 < compare_strings(env, params));
+    atom_push_boolean(env, 0 < compare_strings(env, params));
 }
 
-static Cell* atom_string_less_than_equal_q(Environment* env, Cell* params)
+static void atom_string_less_than_equal_q(Environment* env, int params)
 {
-    return make_boolean(0 >= compare_strings(env, params));
+    atom_push_boolean(env, 0 >= compare_strings(env, params));
 }
 
-static Cell* atom_string_greater_than_equal_q(Environment* env, Cell* params)
+static void atom_string_greater_than_equal_q(Environment* env, int params)
 {
-    return make_boolean(0 <= compare_strings(env, params));
+    atom_push_boolean(env, 0 <= compare_strings(env, params));
 }
 
-static Cell* atom_string_ci_less_than_q(Environment* env, Cell* params)
+static void atom_string_ci_less_than_q(Environment* env, int params)
 {
-    return make_boolean(0 > compare_case_strings(env, params));
+    atom_push_boolean(env, 0 > compare_case_strings(env, params));
 }
 
-static Cell* atom_string_ci_greater_than_q(Environment* env, Cell* params)
+static void atom_string_ci_greater_than_q(Environment* env, int params)
 {
-    return make_boolean(0 < compare_case_strings(env, params));
+    atom_push_boolean(env, 0 < compare_case_strings(env, params));
 }
 
-static Cell* atom_string_ci_less_than_equal_q(Environment* env, Cell* params)
+static void atom_string_ci_less_than_equal_q(Environment* env, int params)
 {
-    return make_boolean(0 >= compare_case_strings(env, params));
+    atom_push_boolean(env, 0 >= compare_case_strings(env, params));
 }
 
-static Cell* atom_string_ci_greater_than_equal_q(Environment* env, Cell* params)
+static void atom_string_ci_greater_than_equal_q(Environment* env, int params)
 {
-    return make_boolean(0 <= compare_case_strings(env, params));
+    atom_push_boolean(env, 0 <= compare_case_strings(env, params));
 }
 
 // (substring string start end) library procedure
@@ -3045,16 +3051,18 @@ static Cell* atom_string_ci_greater_than_equal_q(Environment* env, Cell* params)
 // Substring returns a newly allocated string formed from the characters of
 // string beginning with index start (inclusive) and ending with index end
 // (exclusive).
-static Cell* atom_substring(Environment* env, Cell* params)
+static void atom_substring(Environment* env, int params)
 {
-    const Cell* cell = nth_param(env, params, 1, TYPE_STRING);
-    const int start  = nth_param_integer(env, params, 2);
-    const int end    = nth_param_integer(env, params, 3);
+    assert(params == 3);
+    
+    const Cell* cell = atom_pop_a(env, TYPE_STRING);
+    const int start  = atom_pop_integer(env);
+    const int end    = atom_pop_integer(env);
     
     const int length = end - start;
     
     if (start < 0 || start >= end || end > cell->data.string.length){
-        return signal_error(env->cont,
+        signal_error(env->cont,
                      "Invalid indices (%d, %d) passed to substring. String has length %d",
                      start, end, cell->data.string.length);
     }
@@ -3065,31 +3073,25 @@ static Cell* atom_substring(Environment* env, Cell* params)
             cell->data.string.data + start,
             length);
     
-    return substring;
+    atom_push_cell(env, substring);
 }
 
 // (string-append string ...) library procedure
 // Returns a newly allocated string whose characters form the concatenation of
 // the given strings.
-static Cell* atom_string_append(Environment* env, Cell* params)
+static void atom_string_append(Environment* env, int params)
 {
     character_buffer buffer;
     character_buffer_init(&buffer);
     
     
-    
-    for (Cell* param = params; is_pair(param); param = cdr(param))
+    for (int i=0; i<params; i++)
     {
-        Cell* str = 0; //eval(env, car(param));
-        assert(0);
-        type_check(env->cont, TYPE_STRING, str->type);
-        
-        for (int i=0; i<str->data.string.length; i++)
-        {
-            character_buffer_push(&buffer, str->data.string.data[i]);
-        }
+        Cell* s = atom_pop_a(env, TYPE_STRING);
+        for (int j=0; j<s->data.string.length; j++)
+            character_buffer_push(&buffer, s->data.string.data[j]);
     }
-    
+        
     int length = (int)character_buffer_length(&buffer);
     
     Cell* result = make_empty_string(env, length);
@@ -3099,7 +3101,7 @@ static Cell* atom_string_append(Environment* env, Cell* params)
         strncpy(result->data.string.data, character_buffer_data(&buffer), length);
     }
     
-    return result;
+    atom_push_cell(env, result);
 }
 
 // (string->list string) library procedure
@@ -4094,7 +4096,8 @@ static void emit(Closure* closure, Instruction instruction)
 static size_t closure_add_constant(struct Closure* closure, Cell* cell)
 {
     // TODO: Share constants
-    assert(cell->type == TYPE_NUMBER || cell->type == TYPE_STRING || cell->type == TYPE_SYMBOL);
+    int type = cell->type;
+    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN);
     printf("Pushing constant: ");
     print(stdout, cell, true);
     stack_push(&closure->constants, cell);
@@ -4115,6 +4118,25 @@ static void compile_function_call(Closure* closure, Cell* cell)
 {
     int num_params = compile_reverse(closure, cell) - 1;
     emit(closure, make_instruction(INST_CALL, num_params));
+}
+
+static void compile_if(Closure* closure, Cell* cell, int instruction)
+{
+    //<test> <consequent> <alternate>
+
+    Cell* symbol        = car(cell); cell = cdr(cell);
+    Cell* test          = car(cell); cell = cdr(cell);
+    Cell* consequent    = car(cell); cell = cdr(cell);
+    Cell* alternate     = car(cell);
+    
+    
+    
+    compile(closure, test);
+    
+    size_t pc = closure->instructions.num_elements;
+    
+    size_t 
+    
 }
 
 
@@ -4166,6 +4188,10 @@ static void compile(Closure* closure, Cell* cell)
                     else if (strcmp(head->data.symbol->name, "set!") == 0)
                     {
                         compile_mutation(closure, cell, INST_SET);
+                    }
+                    else if
+                    {
+                        compile_if(closure, cell);
                     }
                     else
                     {
@@ -4556,11 +4582,12 @@ Continuation* atom_api_open()
         {"string-ref",	   	atom_string_ref},
         {"string-set!",	   	atom_string_set},
         
-/*     
+
         {"string=?",        atom_string_equal_q},
         {"string-ci=?",     atom_string_ci_equal_q},
         {"string<?",        atom_string_less_than_q},
         {"string>?",        atom_string_greater_than_q},
+
         {"string<=?",       atom_string_less_than_equal_q},
         {"string>=?",       atom_string_greater_than_equal_q},
         {"string-ci<?",     atom_string_ci_less_than_q},
@@ -4569,6 +4596,7 @@ Continuation* atom_api_open()
         {"string-ci>=?",    atom_string_ci_greater_than_equal_q},
         {"substring",       atom_substring},
         {"string-append",   atom_string_append},
+/*     
         {"string-copy",     atom_string_copy},
         {"string-fill!",    atom_string_fill_b},
         {"string->list",    atom_string_to_list},
