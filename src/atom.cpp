@@ -1571,22 +1571,19 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 {
 	const size_t hash = symbol->hash;
     
-	do {
-		
+    for (Environment* e = env; env; env = env->parent)
+	{
 		unsigned index = hash & env->mask;
         
-		for (Environment::Node* node = env->data[index]; node; node = node->next)
+		for (Environment::Node* node = e->data[index]; node; node = node->next)
 		{
 			if (symbol == node->symbol)
 			{
 				node->value = value;
 				return;
 			}
-		}
-		
-		env = env->parent;
-        
-	} while (env);
+		}   
+	}
     
 	signal_error(env->cont, "No binding for %s in any scope.", symbol->name);
 }
@@ -1822,23 +1819,7 @@ static Cell* atom_if(Environment* env, Cell* params)
 
 // 4.1.6. Assignments
 
-// (set! <variable> <expression>)
-// <Expression> is evaluated, and the resulting value is stored in the
-// location to which <variable> is bound. <Variable> must be bound either
-// in some region enclosing the set! expression or at top level. The result
-// of the set! expression is unspecified.
 
-static Cell* atom_set_b(Environment* env, Cell* params)
-{
-	Cell* variable   = car(params);
-	type_check(env->cont, TYPE_SYMBOL, variable->type);
-	// Cell* expression = eval(env, car(cdr(params)));
-	// @todo: seperate env->set and env->define
-	//environment_set(env, variable->data.symbol, expression);
-	//return expression;
-    assert(0);
-    return 0;
-}
 
 // 4.2.1. Conditionals
 // (cond <clause1> <clause2> ...) library syntax
@@ -3706,30 +3687,28 @@ static Cell* atom_apply(Environment* env, Cell* params)
 // The effect of assigning (through the use of eval) a variable bound in a
 // scheme-report-environment (for example car) is unspecified.
 // Thus the environments specified by scheme-report-environment may be immutable.
-static Cell* atom_scheme_report_environment(Environment* env, Cell* params)
+static void atom_scheme_report_environment(Environment* env, int params)
 {
-    const int version = nth_param_integer(env, params, 1);
-    if (version != 5) return signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    assert(params == 1);
+    const int version = atom_pop_integer(env);
     
+    if (version != 5)
+    {
+        signal_error(env->cont, "Expected version 5, but %d was specified", version);
+    }
+    
+    // Get the root env
     while (env->parent) env = env->parent;
     
     Cell* environment = make_cell(env, TYPE_ENVIRONMENT);
     environment->data.env = env;
-    return environment;
+    atom_push_cell(env, environment);
 }
 
-
 // TODO: this is a copy and paste of scheme-report-environemnt
-static Cell* atom_null_environment(Environment* env, Cell* params)
+static void atom_null_environment(Environment* env, int params)
 {
-    const int version = nth_param_integer(env, params, 1);
-    if (version != 5) return signal_error(env->cont, "Expected version 5, but %d was specified", version);
-    
-    while (env->parent) env = env->parent;
-    
-    Cell* environment = make_cell(env, TYPE_ENVIRONMENT);
-    environment->data.env = env;
-    return environment;
+    atom_scheme_report_environment(env, params);
 }
 
 // (interaction-environment) optional procedure
@@ -3738,16 +3717,9 @@ static Cell* atom_null_environment(Environment* env, Cell* params)
 // report. The intent is that this procedure will return the environment in which
 // the implementation would evaluate expressions dynamically typed by the user.
 // TODO: this is a copy and paste of scheme-report-environemnt
-static Cell* atom_interaction_environment(Environment* env, Cell* params)
+static void atom_interaction_environment(Environment* env, int params)
 {
-    const int version = nth_param_integer(env, params, 1);
-    if (version != 5) return signal_error(env->cont, "Expected version 5, but %d was specified", version);
-    
-    while (env->parent) env = env->parent;
-    
-    Cell* environment = make_cell(env, TYPE_ENVIRONMENT);
-    environment->data.env = env;
-    return environment;
+    atom_scheme_report_environment(env, params);
 }
 
 // output functions helper
@@ -3818,17 +3790,17 @@ static void atom_output_port_q(Environment* env, int params)
 }
 
 // Grab a string from a given param, and open that file in the given mode.
-static Cell* file_open_helper(Environment* env, Cell* params, int n, bool read)
+static Cell* file_open_helper(Environment* env, int params, bool read)
 {
-    const char* filename = nth_param_string(env, params, n);
+    assert(params == 1);
+    const char* filename = atom_pop_a(env, TYPE_STRING)->data.string.data;
     
     FILE* file = fopen(filename, (read ? "r" : "w"));
     
     if (!file)
     {
-        return signal_error(env->cont, "Error opening file: %s", filename);
+        signal_error(env->cont, "Error opening file: %s", filename);
     }
-    
     
     if (read)
     {
@@ -3844,9 +3816,9 @@ static Cell* file_open_helper(Environment* env, Cell* params, int n, bool read)
 // Takes a string naming an existing file and returns an input port capable of
 // delivering characters from the file. If the file cannot be opened, an error
 // is signalled.
-static Cell* atom_open_input_file(Environment* env, Cell* params)
+static void atom_open_input_file(Environment* env, int params)
 {
-    return file_open_helper(env, params, 1, true);
+    atom_push_cell(env, file_open_helper(env, params, true));
 }
 
 // (open-output-file filename) procedure
@@ -3854,9 +3826,9 @@ static Cell* atom_open_input_file(Environment* env, Cell* params)
 // capable of writing characters to a new file by that name. If the file cannot
 // be opened, an error is signalled. If a file with the given name already exists,
 // the effect is unspecified.
-static Cell* atom_open_output_file(Environment* env, Cell* params)
+static void atom_open_output_file(Environment* env, int params)
 {
-    return file_open_helper(env, params, 1, false);
+    atom_push_cell(env, file_open_helper(env, params, false));
 }
 
 
@@ -3864,22 +3836,22 @@ static Cell* atom_open_output_file(Environment* env, Cell* params)
 // Closes the file associated with port, rendering the port incapable of delivering
 // or accepting characters.	These routines have no effect if the file has already
 // been closed. The value returned is unspecified.
-static Cell* atom_close_input_port(Environment* env, Cell* params)
+static void atom_close_input_port(Environment* env, int params)
 {
-    Cell* port = nth_param(env, params, 1, TYPE_INPUT_PORT);
-    fclose(port->data.input_port);
-    return make_boolean(false);
+    assert(params == 1);
+    fclose(atom_pop_a(env, TYPE_INPUT_PORT)->data.input_port);
+    atom_push_undefined(env);
 }
 
 // (close-output-port port) procedure
 // Closes the file associated with port, rendering the port incapable of delivering
 // or accepting characters.	These routines have no effect if the file has already
 // been closed. The value returned is unspecified.
-static Cell* atom_close_output_port(Environment* env, Cell* params)
+static void atom_close_output_port(Environment* env, int params)
 {
-    Cell* port = nth_param(env, params, 1, TYPE_OUTPUT_PORT);
-    fclose(port->data.input_port);
-    return make_boolean(false);
+    assert(params == 1);
+    fclose(atom_pop_a(env, TYPE_OUTPUT_PORT)->data.output_port);
+    atom_push_undefined(env);
 }
 
 // (current-input-port) procedure
@@ -4096,6 +4068,7 @@ enum {
     INST_LOAD,
     INST_CALL,
     INST_DEFINE,
+    INST_SET
 };
 
 static void emit(Closure* closure, Instruction instruction)
@@ -4106,7 +4079,8 @@ static void emit(Closure* closure, Instruction instruction)
         case INST_PUSH_CONSTANT: printf("-- push constant"); break;
         case INST_LOAD:          printf("-- load"); break;
         case INST_CALL:          printf("-- call"); break;
-        case INST_DEFINE:        printf("-- deifne"); break;
+        case INST_DEFINE:        printf("-- define"); break;
+        case INST_SET:           printf("-- set!"); break;
         default: assert(false);
     }
     printf(" %d\n", instruction.operand);
@@ -4138,7 +4112,7 @@ static void compile_function_call(Closure* closure, Cell* cell)
     emit(closure, make_instruction(INST_CALL, num_params));
 }
 
-static void compile_define(Closure* closure, Cell* cell)
+static void compile_mutation(Closure* closure, Cell* cell, int instruction)
 {
     // TODO: Handle dotted syntax.
     // Maybe as macro?
@@ -4156,7 +4130,7 @@ static void compile_define(Closure* closure, Cell* cell)
     emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
     
     // Define (2)
-    emit(closure, make_instruction(INST_DEFINE, 0));
+    emit(closure, make_instruction(instruction, 0));
 }
 
 static void compile(Closure* closure, Cell* cell)
@@ -4180,7 +4154,11 @@ static void compile(Closure* closure, Cell* cell)
                 {
                     if (strcmp(head->data.symbol->name, "define") == 0)
                     {
-                        compile_define(closure, cell);
+                        compile_mutation(closure, cell, INST_DEFINE);
+                    }
+                    else if (strcmp(head->data.symbol->name, "set!") == 0)
+                    {
+                        compile_mutation(closure, cell, INST_SET);
                     }
                     else
                     {
@@ -4318,11 +4296,26 @@ tailcall:
         pc++;
         switch (instruction.op_code)
         {
+            // (set! <variable> <expression>)
+            // <Expression> is evaluated, and the resulting value is stored in the
+            // location to which <variable> is bound. <Variable> must be bound either
+            // in some region enclosing the set! expression or at top level. The result
+            // of the set! expression is unspecified.
+            case INST_SET:
+            {
+                Cell* symbol = atom_pop_a(env, TYPE_SYMBOL);
+                Cell* value = atom_pop_cell(env);
+                environment_set(env, symbol->data.symbol, value);
+                atom_push_undefined(env);                
+                break;
+            }
+                
             case INST_DEFINE:
             {
                 Cell* symbol = atom_pop_a(env, TYPE_SYMBOL);
                 Cell* value = atom_pop_cell(env);
                 environment_define(env, symbol->data.symbol, value);
+                atom_push_undefined(env);
                 break;
             }
                 
@@ -4440,7 +4433,6 @@ Continuation* atom_api_open()
         {"quote",           atom_quote},
         {"lambda",          atom_lambda},
         {"if",				atom_if},
-        {"set!",			atom_set_b},
         {"cond",			atom_cond},
         {"case",			atom_case},
         {"and",				atom_and},
@@ -4597,7 +4589,8 @@ Continuation* atom_api_open()
         // control
         {"procedure?", 		atom_procedure_q},
         {"apply",	   		atom_apply},
-        
+
+         */
         {"scheme-report-environment",  atom_scheme_report_environment},
         {"null-environment",           atom_null_environment},
         {"interaction-environment",    atom_interaction_environment},
@@ -4610,7 +4603,7 @@ Continuation* atom_api_open()
         // io
         {"input-port?",             atom_input_port_q},
         {"output-port?",            atom_output_port_q},
-         */        
+
         // input
         {"peek-char",               atom_peek_char},
         {"eof-object?",             atom_eof_object_q},

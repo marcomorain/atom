@@ -2,27 +2,6 @@
 <Workspace
    version = "1.0">
    <FileRef
-      location = "group:../../test/bug.scm">
-   </FileRef>
-   <FileRef
-      location = "group:../../test/test.scm">
-   </FileRef>
-   <FileRef
-      location = "group:../../test/r5rs.scm">
-   </FileRef>
-   <FileRef
-      location = "group:../../test/sicp-results.scm">
-   </FileRef>
-   <FileRef
-      location = "group:../../test/print.scm">
-   </FileRef>
-   <FileRef
-      location = "group:../../test/input.txt">
-   </FileRef>
-   <FileRef
-      location = "group:../../test/r5rs_pitfall.scm">
-   </FileRef>
-   <FileRef
       location = "self:atom.xcodeproj">
    </FileRef>
 </Workspace>

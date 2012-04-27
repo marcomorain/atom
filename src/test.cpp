@@ -81,6 +81,11 @@ static char* test_state() {
     atom_api_loads(atom, "(define x 17)");
     atom_api_clear(atom);
     mu_assert_msg(do_numeric_operation(atom, "x") == 17);
+    
+    atom_api_loads(atom, "(set! x 9)");
+    atom_api_clear(atom);
+    mu_assert_msg(do_numeric_operation(atom, "x") == 9);
+    
     atom_api_close(atom);    
     return 0;
 }
