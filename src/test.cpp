@@ -90,7 +90,25 @@ static char* test_state() {
     return 0;
 }
 
+static bool do_boolean_operation(struct Continuation* atom, const char* op)
+{
+    atom_api_loads(atom, op);
+    bool result = atom_api_to_boolean(atom, 1);
+    atom_api_clear(atom);
+    return result;
+}
+
+static char* test_equality() {
+    struct Continuation* atom = atom_api_open();
+    mu_assert_msg( do_boolean_operation(atom, "(eq? 5 5)"));
+    mu_assert_msg(!do_boolean_operation(atom, "(eq? 1 2)"));
+    mu_assert_msg(!do_boolean_operation(atom, "(eq? \"foo\" \"bar\")"));
+    atom_api_close(atom);    
+    return 0;
+}
+
 static char * all_tests() {
+    mu_run_test(test_equality);
     mu_run_test(test_state);
     mu_run_test(test_open_close);
     mu_run_test(test_comile);

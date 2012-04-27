@@ -10,6 +10,7 @@ void atom_api_load(struct Continuation* cont, const char* data, size_t length);
 void atom_api_repl(struct Continuation* env);
 
 double atom_api_to_number(struct Continuation* cont, int n);
+bool atom_api_to_boolean(struct Continuation* cont, int n);
 const char* atom_api_to_string(struct Continuation* cont, int n);
 size_t atom_api_get_top(struct Continuation* cont);
 void atom_api_clear(struct Continuation* cont);

@@ -2720,12 +2720,15 @@ static void atom_boolean_q(Environment* env, int params)
 	type_q_helper(env, params, TYPE_BOOLEAN);	
 }
 
+static bool is_truthy(const Cell* cell)
+{
+    return cell->type != TYPE_BOOLEAN || cell->data.boolean;
+}
+
 static void atom_not(Environment* env, int params)
 {
     assert(params == 1);
-    Cell* obj = atom_pop_cell(env);
-	bool is_truthy = obj->type != TYPE_BOOLEAN || obj->data.boolean;
-	atom_push_boolean(env, !is_truthy);
+	atom_push_boolean(env, !is_truthy(atom_pop_cell(env)));
 }
 
 // 6.3.2 Pairs and lists
@@ -4114,6 +4117,9 @@ static void compile_function_call(Closure* closure, Cell* cell)
     emit(closure, make_instruction(INST_CALL, num_params));
 }
 
+
+// http://exo.willdonnelly.net/old-blog/scheme-syntax-rules/
+
 static void compile_mutation(Closure* closure, Cell* cell, int instruction)
 {
     // TODO: Handle dotted syntax.
@@ -4387,6 +4393,11 @@ double atom_api_to_number(struct Continuation* cont, int n)
     return 0;
 }
 
+bool atom_api_to_boolean(struct Continuation* cont, int n)
+{
+    return is_truthy(load_register(cont, n));
+}
+
 const char* atom_api_to_string(struct Continuation* cont, int n)
 {
     Cell* cell = load_register(cont, n);
@@ -4414,15 +4425,11 @@ struct Library
  
 Continuation* atom_api_open()
 {
-	Continuation* cont	= (Continuation*)malloc(sizeof(Continuation));
+	Continuation* cont	= (Continuation*)calloc(sizeof(Continuation), 1);
 	Environment* env    = create_environment(cont, NULL);
 	cont->env           = env;
-	cont->cells         = NULL;
-	cont->escape        = NULL;
-	cont->allocated		= 0;
 	cont->input     	= stdin;
     cont->output        = stdout;
-    cont->symbol_count  = 0;
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)calloc(1+cont->symbol_mask, sizeof(Symbol*));
     
@@ -4513,9 +4520,6 @@ Continuation* atom_api_open()
         {"append",     		atom_append},
 		{"list-tail",		atom_list_tail},
 		{"list-ref",		atom_list_ref},
-        
-        
-
          
         // char
         {"char?",			atom_char_q},
@@ -4635,7 +4639,6 @@ Continuation* atom_api_open()
  
 void atom_api_close(Continuation* cont)
 {
-    
     for (size_t i=0; i <= cont->symbol_mask; i++)
     {
         Symbol* next;
