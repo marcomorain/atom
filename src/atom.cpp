@@ -2448,10 +2448,11 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
 // (eqv? obj1 obj2) procedure
 // The eqv? procedure defines a useful equivalence relation on objects.
 // Briefly, it returns #t if obj1 and obj2 should normally be regarded as the same object.
-static Cell* atom_eqv_q(Environment* env, Cell* params)
+static void atom_eqv_q(Environment* env, int params)
 {
-	return make_boolean(eq_helper(nth_param_any(env, params, 1),
-                                  nth_param_any(env, params, 2), true, false));
+    Cell* obj1 = atom_pop_cell(env);
+    Cell* obj2 = atom_pop_cell(env);
+    atom_push_boolean(env, eq_helper(obj1, obj2, true, false));
 }
 
 // (eq? obj1 obj2)	procedure
@@ -2463,11 +2464,11 @@ static Cell* atom_eqv_q(Environment* env, Cell* params)
 // will always return either true or false, and will return true only when eqv?
 // would also return true. Eq? may also behave differently from eqv? on empty
 // vectors and empty strings.
-static Cell* atom_eq_q(Environment* env, Cell* params)
+static void atom_eq_q(Environment* env, int params)
 {
-	Cell* obj1 = nth_param_any(env, params, 1);
-	Cell* obj2 = nth_param_any(env, params, 2);
-	return make_boolean(eq_helper(obj1, obj2, false, false));
+	Cell* obj1 = atom_pop_cell(env);
+	Cell* obj2 = atom_pop_cell(env);
+	atom_push_boolean(env, eq_helper(obj1, obj2, false, false));
 }
 
 // (equal? obj1 obj2)	library procedure
@@ -2475,11 +2476,11 @@ static Cell* atom_eq_q(Environment* env, Cell* params)
 // applying eqv? on other objects such as numbers and symbols. A rule of thumb is
 // that objects are generally equal? if they print the same. Equal? may fail to
 // terminate if its arguments are circular data structures.
-static Cell* atom_equal_q(Environment* env, Cell* params)
+static void atom_equal_q(Environment* env, int params)
 {
-	Cell* obj1 = nth_param_any(env, params, 1);
-	Cell* obj2 = nth_param_any(env, params, 2);
-	return make_boolean(eq_helper(obj1, obj2, true, true));
+	Cell* obj1 = atom_pop_cell(env);
+	Cell* obj2 = atom_pop_cell(env);
+	atom_push_boolean(env, eq_helper(obj1, obj2, true, true));
 }
 
 static void atom_number_q(Environment* env, int params)
@@ -3625,11 +3626,12 @@ static Cell* atom_vector_fill_b(Environment* env, Cell* params)
 
 // (procedure? obj)
 // Returns #t if obj is a procedure, otherwise returns #f.
-static Cell* atom_procedure_q(Environment* env, Cell* params)
+static void atom_procedure_q(Environment* env, int params)
 {
-    Cell* obj = 0; //eval(env, car(params));
-    assert(0);
-	return make_boolean(obj->type == TYPE_CLOSURE || obj->type == TYPE_BUILT_IN);
+    assert(params == 1);
+    Cell* obj = atom_pop_cell(env);
+    // TODO: check these are the right types
+    atom_push_boolean(env, obj->type == TYPE_CLOSURE || obj->type == TYPE_BUILT_IN);
 }
 
 static Cell* apply_recursive(Environment* env, Cell* function, Cell* args)
@@ -4121,7 +4123,6 @@ static void compile_mutation(Closure* closure, Cell* cell, int instruction)
     Cell* symbol = car(cdr(cell));
     Cell* expression = car(cdr(cdr(cell)));
     
-
     // Push the expression
     compile(closure, expression);
     
@@ -4441,10 +4442,11 @@ Continuation* atom_api_open()
         {"let*",			atom_let_s},
         {"begin",      		atom_begin},
         {"quasiquote",      atom_quasiquote},
+    */        
         {"eqv?",			atom_eqv_q},
         {"eq?",				atom_eq_q},
         {"equal?",			atom_equal_q},
-    */        
+
         // numeric
         {"number?",    		atom_number_q},
         {"complex?",   		always_false},
@@ -4583,14 +4585,11 @@ Continuation* atom_api_open()
         {"symbol?",    		atom_symbol_q},
         {"symbol->string",	atom_symbol_to_string},
         {"string->symbol",	atom_string_to_symbol},
-        
-        /*
-        
+                
         // control
         {"procedure?", 		atom_procedure_q},
-        {"apply",	   		atom_apply},
+//        {"apply",	   		atom_apply},
 
-         */
         {"scheme-report-environment",  atom_scheme_report_environment},
         {"null-environment",           atom_null_environment},
         {"interaction-environment",    atom_interaction_environment},
