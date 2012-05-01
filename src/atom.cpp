@@ -103,6 +103,7 @@ struct Cell
 	bool    mark;
 };
 
+// TODO: The garbage collector marks this special objects.
 static Cell cell_empty_list = { TYPE_EMPTY_LIST, {NULL}, NULL, false };
 static Cell cell_true       = { TYPE_BOOLEAN,   {true }, NULL, false };
 static Cell cell_false      = { TYPE_BOOLEAN,   {false}, NULL, false };
@@ -506,18 +507,7 @@ static void mark(Cell* cell)
 	cell->mark = true;
 	
 	switch(cell->type)
-	{
-        case TYPE_EMPTY_LIST:
-		case TYPE_BOOLEAN:
-		case TYPE_CHARACTER:
-		case TYPE_NUMBER:
-		case TYPE_STRING:
-		case TYPE_SYMBOL:
-        case TYPE_BUILT_IN:
-        case TYPE_INPUT_PORT:
-        case TYPE_OUTPUT_PORT:
-			break;
-            
+	{            
 		case TYPE_PAIR:
 			mark(cell->data.pair.car);
 			mark(cell->data.pair.cdr);
@@ -525,22 +515,19 @@ static void mark(Cell* cell)
 			
 		case TYPE_VECTOR:
             for(int i=0; i<cell->data.vector.length; i++)
-            {
                 mark(cell->data.vector.data[i]);
-            }
 			break;
             
 		case TYPE_CLOSURE:
-		{
             mark_closure(cell->data.closure);
 			break;
-		}
             
         case TYPE_ENVIRONMENT:
-        {
             mark_environment(cell->data.env);
             break;
-        }
+            
+        default:
+			break;
 	}
 }
 
@@ -569,18 +556,7 @@ static void collect_garbage(Continuation* cont)
 		else
 		{
 		    switch(cell->type)
-		    {
-                case TYPE_CHARACTER:
-                case TYPE_BUILT_IN:
-                case TYPE_BOOLEAN:
-                case TYPE_NUMBER:
-                case TYPE_EMPTY_LIST:
-                case TYPE_PAIR:
-                case TYPE_CLOSURE:
-                case TYPE_ENVIRONMENT:
-                case TYPE_SYMBOL:
-                    break;
-                    
+		    {       
 		        case TYPE_INPUT_PORT:
                     if (cell->data.port != stdin)
                     {
@@ -601,6 +577,9 @@ static void collect_garbage(Continuation* cont)
                     
                 case TYPE_VECTOR:
                     free(cell->data.vector.data);
+                    break;
+                    
+                default:
                     break;
 		    }
 			cont->allocated--;
@@ -817,8 +796,6 @@ static void token_print(Token* token)
             PRINT_CASE(TOKEN_DOT);
 #undef PRINT_CASE
     }
-    
- 
 }
 
 static void token_init(Token* token, TokenType type)
@@ -1629,112 +1606,6 @@ static void type_q_helper(Environment* env, int params, int type)
     atom_push_boolean(env, atom_pop_cell(env)->type == type);
 }
 
-static Cell* nth_param_any_optional(Environment* env, Cell* params, int n)
-{
-	for (int i=1; i<n; i++)
-	{
-		if (!(params = cdr(params)))
-		{
-            return NULL;
-		}
-	}
-	
-	if (!params)
-	{
-        return NULL;
-	}
-	
-    assert(0);
-	//return eval(env, car(params));
-    return 0;
-}
-
-// return the nth parameter to a function.
-// n is indexed from 1 for the first parameter, 2 for the second.
-
-static Cell* nth_param_any(Environment* env, Cell* params, int n)
-{
-    Cell* result = nth_param_any_optional(env, params, n);
-    
-    if (!result)
-    {
-        return signal_error(env->cont, "Too few parameters passed (%d expected)", n);
-    }
-    
-    return result;
-}
-
-static Cell* nth_param_optional(Environment* env, Cell* params, int n, int type)
-{
-   	Cell* result = nth_param_any_optional(env, params, n);
-		// todo: this error message should include 'n'
-	
-	if (result)
-	{
-	    type_check(env->cont, type, result->type);    
-	}
-    
-	return result; 
-}
-
-// The same as nth_param_any, with an added type check.
-// If the type does not match, then an error is signaled.
-static Cell* nth_param(Environment* env, Cell* params, int n, int type)
-{
-	Cell* result = nth_param_any(env, params, n);
-	// todo: this error message should include 'n'
-	type_check(env->cont, type, result->type);
-	return result;
-}
-
-static char nth_param_character(Environment* env, Cell* params, int n)
-{
-    return nth_param(env, params, n, TYPE_CHARACTER)->data.character;
-}
-
-static char nth_param_character_lower(Environment* env, Cell* params, int n)
-{
-    return tolower(nth_param_character(env, params, n));
-}
-
-static const char* nth_param_string(Environment* env, Cell* params, int n)
-{
-    return nth_param(env, params, n, TYPE_STRING)->data.string.data;
-}
-
-static double nth_param_number(Environment* env, Cell* params, int n)
-{
-    return nth_param(env, params, n, TYPE_NUMBER)->data.number;
-}
-
-static int nth_param_integer(Environment* env, Cell* params, int n)
-{
-	double num = nth_param_number(env, params, n);
-	if (!is_integer(num))
-	{
-		// todo: better error message
-		signal_error(env->cont, "Parameter %d is not an integer", n);
-	}
-	return (int)num;
-}
-
-// Evaluate and return the second parameter, if one exists.
-// Return null otherwise.
-static Cell* optional_second_param(Environment* env, Cell* params)
-{	
-	Cell* rest = cdr(params);
-	
-	if (!rest)
-	{
-		return NULL;
-	}
-	
-	//Cell* result = eval(env, car(rest));
-	//return result;
-    assert(0);
-    return 0;
-}
-
 // 4.1.2
 // Literal Expressions
 
@@ -1744,43 +1615,6 @@ static Cell* optional_second_param(Environment* env, Cell* params)
 static Cell* atom_quote(Environment* env, Cell* params)
 {
 	return car(params);
-}
-
-// 4.1.5 Conditionals
-
-// (if <test> <consequent> <alternate>)  syntax
-// (if <test> <consequent>)              syntax
-// Syntax: <Test>, <consequent>, and <alternate> may be arbitrary
-// expressions.
-// Semantics: An if expression is evaluated as follows: first, <test> is
-// evaluated. If it yields a true value (see section 6.3.1), then
-// <consequent> is evaluated and its value(s) is(are) returned. Otherwise
-// <alternate> is evaluated and its value(s) is(are) returned.
-// If <test> yields a false value and no <alternate> is specified, then
-// the result of the expression is unspecified.
-static Cell* atom_if(Environment* env, Cell* params)
-{
-	Cell* test = nth_param_any(env, params, 1);
-	
-	if (test->type == TYPE_BOOLEAN &&
-		test->data.boolean == false)
-	{
-		Cell* alternate = cdr(cdr(params));
-		if (alternate && car(alternate))
-		{
-			//return eval(env, car(alternate));
-            assert(0);
-            return 0;
-		}
-        
-		// undefined, this is false though.
-		return test;
-	}
-	
-	// else eval consequent
-	// return eval(env, car(cdr(params)));
-    assert(0);
-    return 0;
 }
 
 // 4.1.6. Assignments
@@ -4056,6 +3890,18 @@ static void compile_with_unconditional_jump(Environment* env, Closure* closure, 
     fix_up_jump(closure, jump, num_instructions);
 }
 
+// 4.1.5 Conditionals
+
+// (if <test> <consequent> <alternate>)  syntax
+// (if <test> <consequent>)              syntax
+// Syntax: <Test>, <consequent>, and <alternate> may be arbitrary
+// expressions.
+// Semantics: An if expression is evaluated as follows: first, <test> is
+// evaluated. If it yields a true value (see section 6.3.1), then
+// <consequent> is evaluated and its value(s) is(are) returned. Otherwise
+// <alternate> is evaluated and its value(s) is(are) returned.
+// If <test> yields a false value and no <alternate> is specified, then
+// the result of the expression is unspecified.
 static void compile_if(Environment* env, Closure* closure, Cell* cell)
 {
     //<test> <consequent> <alternate>
