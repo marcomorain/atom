@@ -1,7 +1,6 @@
 #include "atom.h"
 
 #define _CRT_SECURE_NO_WARNINGS
-#include <iostream>
 #include <string>
 #include <stdlib.h>
 #include <stdio.h>
@@ -9,7 +8,6 @@
 #include <setjmp.h>
 #include <assert.h>
 #include <math.h>
-
 
 #define DEBUG_LEXER (0)
 
@@ -33,7 +31,6 @@ enum CellType
     TYPE_SYMBOL,
     TYPE_BUILT_IN,
     TYPE_CLOSURE,
-    TYPE_SYNTAX,
     TYPE_INPUT_PORT,
     TYPE_OUTPUT_PORT,
     TYPE_ENVIRONMENT
@@ -50,7 +47,6 @@ const static char* typenames [] = {
 	[TYPE_SYMBOL]      = "symbol",
 	[TYPE_BUILT_IN]    = "procedure",
     [TYPE_CLOSURE]     = "procedure",
-    [TYPE_SYNTAX]      = "syntax",
     [TYPE_INPUT_PORT]  = "input post",
     [TYPE_OUTPUT_PORT] = "output port",
     [TYPE_ENVIRONMENT] = "environment"
@@ -60,8 +56,6 @@ struct Environment;
 struct Continuation;
 struct Cell;
 struct Symbol;
-
-typedef Cell* (*atom_function) (Environment* env, Cell* params);
 
 // Calling convention:
 // Pop params off the stack
@@ -87,15 +81,6 @@ struct Cell
         char* data;
         int   length;
     };
-	
-	struct OldClosure
-	{
-		// If function is null, then the procedure
-		// was created in scheme, otherwise it is a built-in
-		Cell*    		formals;
-		Cell*    		body;
-		Environment*	env;
-	};
     
 	// todo: add a const string type? or a flag?
 	// todo: add a length to string type
@@ -110,10 +95,8 @@ struct Cell
 		const Symbol*   symbol;
 		Vector          vector;
         atom_builtin    built_in;
-        atom_function   syntax;
-        OldClosure      closure;
-		FILE*           input_port;
-        FILE*           output_port;
+        struct Closure* closure;
+		FILE*           port;
         Environment*    env;
 	};
 	
@@ -230,6 +213,24 @@ struct Symbol
     char*   name;
 };
 
+static void print_external_rep(FILE* file, char c)
+{
+    switch(c)
+    {
+        case ' ':
+            fprintf(file, "#\\space");
+            break;
+            
+        case '\n':
+            fprintf(file, "#\\newline");
+            break;
+            
+        default:
+            fprintf(file, "#\\%c", c);
+            break;
+    }
+}
+
 static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 {
     assert(cell);
@@ -251,28 +252,10 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
         case TYPE_CHARACTER:
 		{
 			char c = cell->data.character;
-			
 		    if (human)
-		    {
                 fputc(c, output);
-		    }
 		    else
-		    {
-		        switch(c)
-			    {
-				    case ' ':
-                        fprintf(output, "#\\space");
-                        break;
-                        
-    				case '\n':
-                        fprintf(output, "#\\newline");
-                        break;
-                        
-    				default:
-                        fprintf(output, "#\\%c", c);
-                        break;
-    			}
-			}
+                print_external_rep(output, c);
 			break;
 		}
             
@@ -301,30 +284,6 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
         }
         break;
             
-        case TYPE_SYNTAX:
-            fprintf(output, "#<syntax %p>", cell->data.syntax);
-            break;
-            
-        case TYPE_CLOSURE:
-            fprintf(output, "#<closure %p>", &cell->data.closure);
-            break;
-            
-        case TYPE_INPUT_PORT:
-            fprintf(output, "#<input port %p>", cell->data.input_port);
-            break;
-            
-        case TYPE_OUTPUT_PORT:
-            fprintf(output, "#<ouput port %p>", cell->data.input_port);
-            break;
-            
-        case TYPE_ENVIRONMENT:
-            fprintf(output, "#<environment %p>", cell->data.env);
-            break;
-        
-        case TYPE_BUILT_IN:
-            fprintf(output, "#<built-in %p>",  cell->data.built_in);
-            break;
-            
         case TYPE_VECTOR:
             fprintf(output, "#(");
             for (int i=0; i<cell->data.vector.length; i++)
@@ -334,7 +293,12 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             }
             fprintf(output, ")");
             break;
-	}
+            
+            
+        default:
+            fprintf(output, "#<%s %p>", typenames[cell->type], &cell->data.port);
+            break;
+    }
 }
 
 static void print(FILE* output, const Cell* cell, bool human)
@@ -408,6 +372,18 @@ struct Continuation
     // TODO:
     // 1. count every byte allocated
     // 2. free all memory on close
+};
+
+struct Instruction
+{
+    int op_code;
+    int operand;
+};
+
+struct Closure
+{
+    stack<Instruction> instructions;
+    stack<Cell*>       constants;
 };
 
 // Maybe insert a new symbol into the Cont's symbol table.
@@ -486,8 +462,15 @@ static Cell* make_symbol(Environment* env, const char* name)
 static Cell* make_io_port(Environment* env, int type, FILE* port)
 {
 	Cell* cell = make_cell(env, type);
-	cell->data.input_port = port;
+	cell->data.port = port;
 	return cell;
+}
+
+static Cell* make_closure(Environment* env, Closure* closure)
+{
+    Cell* cell = make_cell(env, TYPE_CLOSURE);
+    cell->data.closure = closure;
+    return cell;
 }
 
 
@@ -514,6 +497,12 @@ static void mark_environment(Environment* env)
 	}
 }
 
+static void mark_closure(Closure* closure)
+{
+    for (int i=0; i < closure->constants.num_elements; i++)
+        mark(stack_get(&closure->constants, i));
+}
+
 static void mark(Cell* cell)
 {
 	if (!cell || cell->mark) return;
@@ -529,7 +518,6 @@ static void mark(Cell* cell)
 		case TYPE_STRING:
 		case TYPE_SYMBOL:
         case TYPE_BUILT_IN:
-        case TYPE_SYNTAX:
         case TYPE_INPUT_PORT:
         case TYPE_OUTPUT_PORT:
 			break;
@@ -548,10 +536,7 @@ static void mark(Cell* cell)
             
 		case TYPE_CLOSURE:
 		{
-			Cell::OldClosure& closure = cell->data.closure;
-            mark(closure.formals);
-            mark(closure.body);
-            mark_environment(closure.env);
+            mark_closure(cell->data.closure);
 			break;
 		}
             
@@ -591,7 +576,6 @@ static void collect_garbage(Continuation* cont)
 		    {
                 case TYPE_CHARACTER:
                 case TYPE_BUILT_IN:
-                case TYPE_SYNTAX:
                 case TYPE_BOOLEAN:
                 case TYPE_NUMBER:
                 case TYPE_EMPTY_LIST:
@@ -602,16 +586,16 @@ static void collect_garbage(Continuation* cont)
                     break;
                     
 		        case TYPE_INPUT_PORT:
-                    if (cell->data.input_port != stdin)
+                    if (cell->data.port != stdin)
                     {
-                        fclose(cell->data.input_port);
+                        fclose(cell->data.port);
                     }
                     break;
                     
                 case TYPE_OUTPUT_PORT:
-                    if (cell->data.output_port != stdout)
+                    if (cell->data.port != stdout)
                     {
-                        fclose(cell->data.output_port);
+                        fclose(cell->data.port);
                     }
                     break;
                                         
@@ -658,18 +642,6 @@ static Cell* make_character(Environment* env, char c)
 	Cell* character = make_cell(env, TYPE_CHARACTER);
 	character->data.character = c;
 	return character;	
-}
-
-static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
-{
-	type_check(env->cont, TYPE_PAIR, formals->type);
-	type_check(env->cont, TYPE_PAIR, body->type);
-    
-	Cell* closure = make_cell(env, TYPE_CLOSURE);
-	closure->data.closure.formals = formals;
-	closure->data.closure.body    = body;
-	closure->data.closure.env	 = env;
-	return closure;	
 }
 
 static Cell* make_vector(Environment* env, int length, Cell* fill)
@@ -942,13 +914,11 @@ struct Input
 	unsigned	  column;
 	const char*   data;
     
-	void init(Continuation* c, const char* d)
+	void init(const char* d)
 	{
 		line	= 1;
 		column	= 1;
 		data	= d;
-//		cont    = c;
-		
 	}
 	
 	char get(void)  const
@@ -1981,45 +1951,6 @@ static Environment* create_environment(Continuation* cont, Environment* parent)
 	return env;
 }
 
-// This function imeplements let and let*
-// The only difference is the environment in which each init is evaluated in.
-static Cell* let_helper(Environment* env, Cell* params, bool star)
-{
-	Cell* bindings = car(params);
-	Cell* body     = cdr(params);
-	
-	if (!body)
-	{
-		return signal_error(env->cont, "No expression in body");
-	}
-	
-	Environment* child = create_environment(env->cont, env);
-	
-	Environment* target = star ? child : env;
-    
-	for (Cell* b = bindings; is_pair(b); b = cdr(b))
-	{
-		Cell* pair = car(b);
-		Cell* symbol = car(pair);
-		type_check(env->cont, TYPE_SYMBOL, symbol->type);
-		Cell* init   = 0; //eval(target, car(cdr(pair)));
-        assert(0);
-		environment_define(child, symbol->data.symbol, init);
-	}
-	
-	Cell* last = NULL;
-    
-	for (Cell* b = body; is_pair(b); b = cdr(b))
-	{
-		Cell* expr = car(b);
-        assert(0);
-		last = 0;//eval(child, expr);
-	}
-	
-	return last;
-}
-
-
 // (let <bindings> <body>) library syntax
 // Syntax: <Bindings> should have the form
 // ((<variable1> <init1>) ...), where each <init> is an expression, and <body>
@@ -2031,10 +1962,6 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 // results, the <body> is evaluated in the extended environment, and the value(s)
 // of the last expression of <body> is(are) returned. Each binding of a <variable>
 // has <body> as its region.
-static Cell* atom_let(Environment* env, Cell* params)
-{
-	return let_helper(env, params, false);
-}
 
 // (let* <bindings> <body>) Library syntax
 // Syntax: <Bindings> should have the form
@@ -2046,11 +1973,6 @@ static Cell* atom_let(Environment* env, Cell* params)
 // is that part of the let* expression to the right of the binding. Thus the
 // second binding is done in an environment in which the first binding is visible,
 // and so on.
-static Cell* atom_let_s(Environment* env, Cell* params)
-{
-	return let_helper(env, params, true);
-}
-
 
 static Cell* duplicate(Environment* env, Cell* list)
 {
@@ -2158,11 +2080,6 @@ static void atom_error(Environment* env, int params)
 		str = message->data.string.data;
 	}
 	atom_push_cell(env, signal_error(env->cont, "%s", str));
-}
-
-static Cell* atom_lambda(Environment* env, Cell* params)
-{
-	return make_procedure(env, car(params), cdr(params));
 }
 
 // 4.2.3 Sequencing
@@ -3741,7 +3658,7 @@ static FILE* get_outport_port_param(Environment* env, bool param_present)
     {
         Cell* port = atom_pop_cell(env);
         type_check(env->cont, TYPE_OUTPUT_PORT, port->type);
-        return port->data.output_port;
+        return port->data.port;
     }
     return env->cont->output;
 }
@@ -3752,7 +3669,7 @@ static FILE* get_input_port_param(Environment* env, bool param_present)
     {
         Cell* port = atom_pop_cell(env);
         type_check(env->cont, TYPE_INPUT_PORT, port->type);
-        return port->data.input_port;
+        return port->data.port;
     }
     return env->cont->input;
 }
@@ -3838,6 +3755,12 @@ static void atom_open_output_file(Environment* env, int params)
     atom_push_cell(env, file_open_helper(env, params, false));
 }
 
+static void close_port(Environment* env, int params, int type)
+{
+    assert(params == 1);
+    fclose(atom_pop_a(env, type)->data.port);
+    atom_push_undefined(env);
+}
 
 // (close-input-port port) procedure 
 // Closes the file associated with port, rendering the port incapable of delivering
@@ -3845,9 +3768,7 @@ static void atom_open_output_file(Environment* env, int params)
 // been closed. The value returned is unspecified.
 static void atom_close_input_port(Environment* env, int params)
 {
-    assert(params == 1);
-    fclose(atom_pop_a(env, TYPE_INPUT_PORT)->data.input_port);
-    atom_push_undefined(env);
+    close_port(env, params, TYPE_INPUT_PORT);
 }
 
 // (close-output-port port) procedure
@@ -3856,9 +3777,7 @@ static void atom_close_input_port(Environment* env, int params)
 // been closed. The value returned is unspecified.
 static void atom_close_output_port(Environment* env, int params)
 {
-    assert(params == 1);
-    fclose(atom_pop_a(env, TYPE_OUTPUT_PORT)->data.output_port);
-    atom_push_undefined(env);
+    close_port(env, params, TYPE_OUTPUT_PORT);
 }
 
 // (current-input-port) procedure
@@ -4044,12 +3963,6 @@ static void always_false(Environment* env, int params)
     atom_push_boolean(env, false);
 }
 
-struct Instruction
-{
-    int op_code;
-    int operand;
-};
-
 Instruction make_instruction(int op_code, int operand)
 {
     Instruction instruction;
@@ -4057,12 +3970,6 @@ Instruction make_instruction(int op_code, int operand)
     instruction.operand = operand;
     return instruction;
 }
-
-struct Closure
-{
-    stack<Instruction> instructions;
-    stack<Cell*>       constants;
-};
 
 static void closure_init(Closure* closure)
 {
@@ -4077,49 +3984,52 @@ enum {
     INST_DEFINE,
     INST_SET,
     INST_JUMP,
-    INST_BRANCH
+    INST_BRANCH,
+    INST_POP // used to work around undefined push after define
+};
+
+const static char* instruction_names [] = {
+    [INST_PUSH_CONSTANT]    = "push constant",
+    [INST_LOAD]             = "load",
+	[INST_CALL]             = "call",
+	[INST_DEFINE]           = "define",
+    [INST_SET]              = "set",
+    [INST_JUMP]             = "jump",
+    [INST_BRANCH]           = "branch",
+    [INST_POP]              = "pop",
 };
 
 static void emit(Closure* closure, Instruction instruction)
 {
     stack_push(&closure->instructions, instruction);
-    switch(instruction.op_code)
-    {
-        case INST_PUSH_CONSTANT: printf("-- push constant"); break;
-        case INST_LOAD:          printf("-- load"); break;
-        case INST_CALL:          printf("-- call"); break;
-        case INST_DEFINE:        printf("-- define"); break;
-        case INST_SET:           printf("-- set!"); break;
-        default: assert(false);
-    }
-    printf(" %d\n", instruction.operand);
 }
 
 static size_t closure_add_constant(struct Closure* closure, Cell* cell)
 {
     // TODO: Share constants
     int type = cell->type;
-    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN);
+    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN || type == TYPE_CLOSURE);
     printf("Pushing constant: ");
-    print(stdout, cell, true);
+    print(stdout, cell, false);
     stack_push(&closure->constants, cell);
     return closure->constants.num_elements - 1;
 }
 
-static void compile(Closure* closure, Cell* cell);
+static void compile(Environment* env, Closure* closure, Cell* cell);
 
-static int compile_reverse(Closure* closure, Cell* list)
+static int compile_reverse(Environment* env, Closure* closure, Cell* list)
 {
     if (list->type == TYPE_EMPTY_LIST) return 0;
-    int depth = compile_reverse(closure, cdr(list));
-    compile(closure, car(list));
+    int depth = compile_reverse(env, closure, cdr(list));
+    compile(env, closure, car(list));
     return 1 + depth;
 }
 
-static void compile_function_call(Closure* closure, Cell* cell)
+static void compile_function_call(Environment* env, Closure* closure, Cell* cell)
 {
-    int num_params = compile_reverse(closure, cell) - 1;
+    int num_params = compile_reverse(env, closure, cell) - 1;
     emit(closure, make_instruction(INST_CALL, num_params));
+    printf("Function call with %d params\n", num_params);
 }
 
 // Go back to the jump instruction at PC and make it jump over num_instruction
@@ -4127,13 +4037,13 @@ static void fix_up_jump(Closure* closure, int pc, int num_instructions)
 {
 }
 
-static void compile_with_unconditional_jump(Closure* closure, Cell* code)
+static void compile_with_unconditional_jump(Environment* env, Closure* closure, Cell* code)
 {
     size_t jump = closure->instructions.num_elements;
     
     emit(closure, make_instruction(INST_JUMP, 0));
     
-    compile(closure, code);
+    compile(env, closure, code);
     
     size_t pc = closure->instructions.num_elements;
     
@@ -4141,7 +4051,7 @@ static void compile_with_unconditional_jump(Closure* closure, Cell* code)
     fix_up_jump(closure, pc, num_instructions);
 }
 
-static void compile_if(Closure* closure, Cell* cell)
+static void compile_if(Environment* env, Closure* closure, Cell* cell)
 {
     //<test> <consequent> <alternate>
 
@@ -4150,16 +4060,51 @@ static void compile_if(Closure* closure, Cell* cell)
     Cell* consequent    = car(cell); cell = cdr(cell);
     Cell* alternate     = car(cell);
 
-    compile(closure, test);
+    compile(env, closure, test);
     emit(closure, make_instruction(INST_BRANCH, 0));
-    compile_with_unconditional_jump(closure, consequent);
-    compile_with_unconditional_jump(closure, alternate);
+    compile_with_unconditional_jump(env, closure, consequent);
+    compile_with_unconditional_jump(env, closure, alternate);
+}
+
+static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
+{
+    Cell* lambda    = car(cell); cell = cdr(cell);
+    Cell* formals   = car(cell); cell = cdr(cell);
+    Cell* body      = car(cell); cell = cdr(cell);
+
+    // Make a new closure
+    Closure* child = (Closure*)calloc(sizeof(Closure), 1);
+    closure_init(child);
+    
+    printf("Compiling a new function.\n");
+    
+    // When a function is called there are N params on the stack. The top most
+    // parameter is the first formal. The following loops emits a define instruction
+    // for each formal parameter to put them in the environment
+    for (Cell* formal = formals; is_pair(formal); formal = cdr(formals))
+    {
+        type_check(env->cont, TYPE_SYMBOL, car(formal)->type);
+        size_t constant = closure_add_constant(child, car(formal));
+        emit(child, make_instruction(INST_PUSH_CONSTANT, constant));
+        printf("Setting local variable\n");
+        emit(child, make_instruction(INST_DEFINE, 0));
+        emit(child, make_instruction(INST_POP, 0));
+    }
+    
+
+
+    compile(env, child, body);
+    
+    printf("Function compiled OK.\n");
+    
+    size_t c = closure_add_constant(closure, make_closure(env, child));
+    emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
 }
 
 
 // http://exo.willdonnelly.net/old-blog/scheme-syntax-rules/
 
-static void compile_mutation(Closure* closure, Cell* cell, int instruction)
+static void compile_mutation(Environment* env, Closure* closure, Cell* cell, int instruction)
 {
     // TODO: Handle dotted syntax.
     // Maybe as macro?
@@ -4169,7 +4114,7 @@ static void compile_mutation(Closure* closure, Cell* cell, int instruction)
     Cell* expression = car(cdr(cdr(cell)));
     
     // Push the expression
-    compile(closure, expression);
+    compile(env, closure, expression);
     
     // Push the symbol
     size_t c = closure_add_constant(closure, symbol);
@@ -4179,7 +4124,7 @@ static void compile_mutation(Closure* closure, Cell* cell, int instruction)
     emit(closure, make_instruction(instruction, 0));
 }
 
-static void compile(Closure* closure, Cell* cell)
+static void compile(Environment* env, Closure* closure, Cell* cell)
 {
     switch(cell->type)
     {
@@ -4196,27 +4141,37 @@ static void compile(Closure* closure, Cell* cell)
                     break;
                 }
                     
+#define EQ(symbol, string) (strcmp((symbol),(string))==0)
+                    
                 case TYPE_SYMBOL:
                 {
-                    if (strcmp(head->data.symbol->name, "define") == 0)
+                    const char* symbol = head->data.symbol->name;
+                    
+                    if (EQ(symbol, "define"))
                     {
-                        compile_mutation(closure, cell, INST_DEFINE);
+                        compile_mutation(env, closure, cell, INST_DEFINE);
+                        printf("define ^ 2\n");
                     }
-                    else if (strcmp(head->data.symbol->name, "set!") == 0)
+                    else if (EQ(symbol, "set!"))
                     {
-                        compile_mutation(closure, cell, INST_SET);
+                        compile_mutation(env, closure, cell, INST_SET);
+                        printf("set! ^ 2\n");
                     }
-                    else if (strcmp(head->data.symbol->name, "if") == 0)
+                    else if (EQ(symbol, "if"))
                     {
-                        compile_if(closure, cell);
+                        compile_if(env, closure, cell);
+                    }
+                    else if (EQ(symbol, "lambda"))
+                    {
+                        compile_lambda(env, closure, cell);
                     }
                     else
                     {
-                        compile_function_call(closure, cell);
+                        compile_function_call(env, closure, cell);
                     }
                     break;
                 }
-                    
+#undef EQ
                 default:
                 {
                     fprintf(stderr, "Compile error: Expected symbol.\nGot:");
@@ -4276,7 +4231,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
 	cont->escape = &jb;
 	
 	Input input;
-	input.init(cont, data);
+	input.init(data);
 
 	for(;;)
 	{
@@ -4284,14 +4239,13 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
         read_token(&input, &next);
 		if (Cell* cell = parse_datum(env, &input, &next))
 		{
+            printf("Compiling top level function\n");
             struct Closure closure;
             closure_init(&closure);
-            compile(&closure, cell);
+            compile(env, &closure, cell);
             printf("parsed> ");
             print(stdout, cell, false);
-            //const Cell* result =
             eval(cont, &closure);
-            //print(stdout, result, false);
         }
         else break;
 	}
@@ -4310,8 +4264,7 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	
 	if (!file)
 	{
-		//signal_error(cont, "Error opening file %s", filename);
-		fprintf(stderr, "Error opening file %s\n", filename);
+        fprintf(stderr, "Error opening file %s\n", filename);
 		return;
 	}
 	
@@ -4337,6 +4290,15 @@ tailcall:
     
     size_t pc = 0;
     Environment* env = cont->env;
+    
+    printf("Calling function %p\n", closure);
+    
+    for (int i=0; i<closure->constants.num_elements; i++)
+    {
+        printf("Constant %d: ", i);
+        print(stdout, stack_get(&closure->constants, i), true);
+    }
+
     for (;;)
     {
         // End of input
@@ -4344,8 +4306,17 @@ tailcall:
         
         const Instruction instruction = stack_get(&closure->instructions, pc);
         pc++;
+        
+        printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
+
         switch (instruction.op_code)
         {
+            case INST_POP:
+            {
+                atom_pop_cell(env);
+                break;
+            }
+
             // (set! <variable> <expression>)
             // <Expression> is evaluated, and the resulting value is stored in the
             // location to which <variable> is bound. <Variable> must be bound either
@@ -4392,15 +4363,28 @@ tailcall:
                 
                 stack_pop(&cont->stack, 1);
                 
-                if (function->type == TYPE_BUILT_IN)
+                switch (function->type)
                 {
-                    function->data.built_in(env, num_params);
+                    case TYPE_BUILT_IN:
+                    {
+                        function->data.built_in(env, num_params);
+                        break;
+                    }
+                    case TYPE_CLOSURE:
+                    {
+                        // TODO: Make environment better
+                        Environment* child = create_environment(cont, env);
+                        cont->env = child;
+                        eval(cont, function->data.closure);
+                        break;
+                    }
+                        
+                    default:
+                    {
+                        assert(0);
+                        break;
+                    }
                 }
-                else 
-                {
-                    assert(0);
-                }
-                
                 break;
             }
                 
