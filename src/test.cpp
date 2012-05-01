@@ -107,6 +107,16 @@ static char* test_equality() {
     return 0;
 }
 
+static char* test_quote()
+{
+    struct Continuation* atom = atom_api_open();
+    atom_api_loads(atom, "(quote a)");
+    atom_api_loads(atom, "'a");
+    atom_api_clear(atom);
+    atom_api_close(atom);    
+    return 0;    
+}
+
 static char* test_if()
 {
     struct Continuation* atom = atom_api_open();
@@ -128,14 +138,14 @@ static char* test_lambda()
 }
 
 static char * all_tests() {
+    mu_run_test(test_quote);
+    mu_run_test(test_comile);
     mu_run_test(test_lambda);
     mu_run_test(test_if);
     mu_run_test(test_equality);
     mu_run_test(test_state);
     mu_run_test(test_open_close);
-    mu_run_test(test_comile);
     mu_run_test(test_plus);
-    
     return 0;
 }
 

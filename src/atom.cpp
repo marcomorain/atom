@@ -19,8 +19,7 @@
 
 static unsigned int MurmurHash2 (const void * key, int len);
 
-enum CellType
-{
+enum {
     TYPE_BOOLEAN,
     TYPE_CHARACTER,
     TYPE_NUMBER,
@@ -75,15 +74,13 @@ struct Cell
 		Cell** data;
 		int    length;		
 	};
-    
+
+    // todo: add a const string type? or a flag?
     struct String
     {
         char* data;
         int   length;
     };
-    
-	// todo: add a const string type? or a flag?
-	// todo: add a length to string type
     
 	union Data
 	{
@@ -3977,6 +3974,7 @@ static void closure_init(Closure* closure)
 }
 
 enum {
+    
     INST_PUSH_CONSTANT,
     INST_LOAD,
     INST_CALL,
@@ -4003,7 +4001,7 @@ static void emit(Closure* closure, Instruction instruction)
     stack_push(&closure->instructions, instruction);
 }
 
-static size_t closure_add_constant(struct Closure* closure, Cell* cell)
+static int closure_add_constant(struct Closure* closure, Cell* cell)
 {
     // TODO: Share constants
     int type = cell->type;
@@ -4011,7 +4009,8 @@ static size_t closure_add_constant(struct Closure* closure, Cell* cell)
     printf("Pushing constant: ");
     print(stdout, cell, false);
     stack_push(&closure->constants, cell);
-    return closure->constants.num_elements - 1;
+    // TODO: Bad cast here.
+    return (int)closure->constants.num_elements - 1;
 }
 
 static void compile(Environment* env, Closure* closure, Cell* cell);
@@ -4045,13 +4044,13 @@ static void fix_up_jump(Closure* closure, int pc, int num_instructions)
 // instructions.
 static void compile_with_unconditional_jump(Environment* env, Closure* closure, Cell* code)
 {
-    size_t jump = closure->instructions.num_elements;
+    int jump = closure->instructions.num_elements;
     
     emit(closure, make_instruction(INST_JUMP, 0));
     
     compile(env, closure, code);
     
-    size_t pc = closure->instructions.num_elements;
+    int pc = closure->instructions.num_elements;
     
     int num_instructions = pc - jump;
     fix_up_jump(closure, jump, num_instructions);
@@ -4072,11 +4071,22 @@ static void compile_if(Environment* env, Closure* closure, Cell* cell)
     compile_with_unconditional_jump(env, closure, alternate);
 }
 
+static void compile_quote(Environment* env, Closure* closure, Cell* cell)
+{
+    Cell* lambda = car(cell); cell = cdr(cell);
+    Cell* datum  = car(cell); cell = cdr(cell);
+    assert(cell->type == TYPE_EMPTY_LIST);
+    
+    emit(closure, make_instruction(INST_PUSH_CONSTANT, closure_add_constant(closure, datum)));
+
+}
+
 static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
 {
     Cell* lambda    = car(cell); cell = cdr(cell);
     Cell* formals   = car(cell); cell = cdr(cell);
     Cell* body      = car(cell); cell = cdr(cell);
+    assert(cell->type == TYPE_EMPTY_LIST);
 
     // Make a new closure
     Closure* child = (Closure*)calloc(1, sizeof(Closure));
@@ -4174,6 +4184,10 @@ static void compile(Environment* env, Closure* closure, Cell* cell)
                     {
                         compile_lambda(env, closure, cell);
                     }
+                    else if (equal(symbol, "quote"))
+                    {
+                        compile_quote(env, closure, cell);
+                    }
                     else
                     {
                         compile_function_call(env, closure, cell);
@@ -4233,8 +4247,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
 		printf("Recovering from an error\n");
 		goto cleanup;
 	}
-	
-	
+
 	jb.prev = cont->escape;
 	cont->escape = &jb;
 	
@@ -4485,9 +4498,6 @@ Continuation* atom_api_open()
     const Library libs [] = {
         
         /*
-        {"quote",           atom_quote},
-        {"lambda",          atom_lambda},
-        {"if",				atom_if},
         {"cond",			atom_cond},
         {"case",			atom_case},
         {"and",				atom_and},
@@ -4496,7 +4506,8 @@ Continuation* atom_api_open()
         {"let*",			atom_let_s},
         {"begin",      		atom_begin},
         {"quasiquote",      atom_quasiquote},
-    */        
+         */
+
         {"eqv?",			atom_eqv_q},
         {"eq?",				atom_eq_q},
         {"equal?",			atom_equal_q},
