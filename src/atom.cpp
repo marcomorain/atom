@@ -4075,7 +4075,9 @@ enum {
     INST_LOAD,
     INST_CALL,
     INST_DEFINE,
-    INST_SET
+    INST_SET,
+    INST_JUMP,
+    INST_BRANCH
 };
 
 static void emit(Closure* closure, Instruction instruction)
@@ -4120,7 +4122,26 @@ static void compile_function_call(Closure* closure, Cell* cell)
     emit(closure, make_instruction(INST_CALL, num_params));
 }
 
-static void compile_if(Closure* closure, Cell* cell, int instruction)
+// Go back to the jump instruction at PC and make it jump over num_instruction
+static void fix_up_jump(Closure* closure, int pc, int num_instructions)
+{
+}
+
+static void compile_with_unconditional_jump(Closure* closure, Cell* code)
+{
+    size_t jump = closure->instructions.num_elements;
+    
+    emit(closure, make_instruction(INST_JUMP, 0));
+    
+    compile(closure, code);
+    
+    size_t pc = closure->instructions.num_elements;
+    
+    size_t num_instructions = pc - jump;
+    fix_up_jump(closure, pc, num_instructions);
+}
+
+static void compile_if(Closure* closure, Cell* cell)
 {
     //<test> <consequent> <alternate>
 
@@ -4128,15 +4149,11 @@ static void compile_if(Closure* closure, Cell* cell, int instruction)
     Cell* test          = car(cell); cell = cdr(cell);
     Cell* consequent    = car(cell); cell = cdr(cell);
     Cell* alternate     = car(cell);
-    
-    
-    
+
     compile(closure, test);
-    
-    size_t pc = closure->instructions.num_elements;
-    
-    size_t 
-    
+    emit(closure, make_instruction(INST_BRANCH, 0));
+    compile_with_unconditional_jump(closure, consequent);
+    compile_with_unconditional_jump(closure, alternate);
 }
 
 
@@ -4189,7 +4206,7 @@ static void compile(Closure* closure, Cell* cell)
                     {
                         compile_mutation(closure, cell, INST_SET);
                     }
-                    else if
+                    else if (strcmp(head->data.symbol->name, "if") == 0)
                     {
                         compile_if(closure, cell);
                     }
