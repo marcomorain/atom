@@ -1,7 +1,6 @@
 #include "atom.h"
 
 #define _CRT_SECURE_NO_WARNINGS
-#include <iostream>
 #include <string>
 #include <stdlib.h>
 #include <stdio.h>
@@ -9,7 +8,6 @@
 #include <setjmp.h>
 #include <assert.h>
 #include <math.h>
-
 
 #define DEBUG_LEXER (0)
 
@@ -33,7 +31,6 @@ enum CellType
     TYPE_SYMBOL,
     TYPE_BUILT_IN,
     TYPE_CLOSURE,
-    TYPE_SYNTAX,
     TYPE_INPUT_PORT,
     TYPE_OUTPUT_PORT,
     TYPE_ENVIRONMENT
@@ -50,7 +47,6 @@ const static char* typenames [] = {
 	[TYPE_SYMBOL]      = "symbol",
 	[TYPE_BUILT_IN]    = "procedure",
     [TYPE_CLOSURE]     = "procedure",
-    [TYPE_SYNTAX]      = "syntax",
     [TYPE_INPUT_PORT]  = "input post",
     [TYPE_OUTPUT_PORT] = "output port",
     [TYPE_ENVIRONMENT] = "environment"
@@ -60,8 +56,6 @@ struct Environment;
 struct Continuation;
 struct Cell;
 struct Symbol;
-
-typedef Cell* (*atom_function) (Environment* env, Cell* params);
 
 // Calling convention:
 // Pop params off the stack
@@ -101,10 +95,8 @@ struct Cell
 		const Symbol*   symbol;
 		Vector          vector;
         atom_builtin    built_in;
-        atom_function   syntax;
         struct Closure* closure;
-		FILE*           input_port;
-        FILE*           output_port;
+		FILE*           port;
         Environment*    env;
 	};
 	
@@ -221,6 +213,24 @@ struct Symbol
     char*   name;
 };
 
+static void print_external_rep(FILE* file, char c)
+{
+    switch(c)
+    {
+        case ' ':
+            fprintf(file, "#\\space");
+            break;
+            
+        case '\n':
+            fprintf(file, "#\\newline");
+            break;
+            
+        default:
+            fprintf(file, "#\\%c", c);
+            break;
+    }
+}
+
 static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 {
     assert(cell);
@@ -242,28 +252,10 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
         case TYPE_CHARACTER:
 		{
 			char c = cell->data.character;
-			
 		    if (human)
-		    {
                 fputc(c, output);
-		    }
 		    else
-		    {
-		        switch(c)
-			    {
-				    case ' ':
-                        fprintf(output, "#\\space");
-                        break;
-                        
-    				case '\n':
-                        fprintf(output, "#\\newline");
-                        break;
-                        
-    				default:
-                        fprintf(output, "#\\%c", c);
-                        break;
-    			}
-			}
+                print_external_rep(output, c);
 			break;
 		}
             
@@ -292,30 +284,6 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
         }
         break;
             
-        case TYPE_SYNTAX:
-            fprintf(output, "#<syntax %p>", cell->data.syntax);
-            break;
-            
-        case TYPE_CLOSURE:
-            fprintf(output, "#<closure %p>", &cell->data.closure);
-            break;
-            
-        case TYPE_INPUT_PORT:
-            fprintf(output, "#<input port %p>", cell->data.input_port);
-            break;
-            
-        case TYPE_OUTPUT_PORT:
-            fprintf(output, "#<ouput port %p>", cell->data.input_port);
-            break;
-            
-        case TYPE_ENVIRONMENT:
-            fprintf(output, "#<environment %p>", cell->data.env);
-            break;
-        
-        case TYPE_BUILT_IN:
-            fprintf(output, "#<built-in %p>",  cell->data.built_in);
-            break;
-            
         case TYPE_VECTOR:
             fprintf(output, "#(");
             for (int i=0; i<cell->data.vector.length; i++)
@@ -325,7 +293,12 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             }
             fprintf(output, ")");
             break;
-	}
+            
+            
+        default:
+            fprintf(output, "#<%s %p>", typenames[cell->type], &cell->data.port);
+            break;
+    }
 }
 
 static void print(FILE* output, const Cell* cell, bool human)
@@ -489,7 +462,7 @@ static Cell* make_symbol(Environment* env, const char* name)
 static Cell* make_io_port(Environment* env, int type, FILE* port)
 {
 	Cell* cell = make_cell(env, type);
-	cell->data.input_port = port;
+	cell->data.port = port;
 	return cell;
 }
 
@@ -545,7 +518,6 @@ static void mark(Cell* cell)
 		case TYPE_STRING:
 		case TYPE_SYMBOL:
         case TYPE_BUILT_IN:
-        case TYPE_SYNTAX:
         case TYPE_INPUT_PORT:
         case TYPE_OUTPUT_PORT:
 			break;
@@ -604,7 +576,6 @@ static void collect_garbage(Continuation* cont)
 		    {
                 case TYPE_CHARACTER:
                 case TYPE_BUILT_IN:
-                case TYPE_SYNTAX:
                 case TYPE_BOOLEAN:
                 case TYPE_NUMBER:
                 case TYPE_EMPTY_LIST:
@@ -615,16 +586,16 @@ static void collect_garbage(Continuation* cont)
                     break;
                     
 		        case TYPE_INPUT_PORT:
-                    if (cell->data.input_port != stdin)
+                    if (cell->data.port != stdin)
                     {
-                        fclose(cell->data.input_port);
+                        fclose(cell->data.port);
                     }
                     break;
                     
                 case TYPE_OUTPUT_PORT:
-                    if (cell->data.output_port != stdout)
+                    if (cell->data.port != stdout)
                     {
-                        fclose(cell->data.output_port);
+                        fclose(cell->data.port);
                     }
                     break;
                                         
@@ -3689,7 +3660,7 @@ static FILE* get_outport_port_param(Environment* env, bool param_present)
     {
         Cell* port = atom_pop_cell(env);
         type_check(env->cont, TYPE_OUTPUT_PORT, port->type);
-        return port->data.output_port;
+        return port->data.port;
     }
     return env->cont->output;
 }
@@ -3700,7 +3671,7 @@ static FILE* get_input_port_param(Environment* env, bool param_present)
     {
         Cell* port = atom_pop_cell(env);
         type_check(env->cont, TYPE_INPUT_PORT, port->type);
-        return port->data.input_port;
+        return port->data.port;
     }
     return env->cont->input;
 }
@@ -3786,6 +3757,12 @@ static void atom_open_output_file(Environment* env, int params)
     atom_push_cell(env, file_open_helper(env, params, false));
 }
 
+static void close_port(Environment* env, int params, int type)
+{
+    assert(params == 1);
+    fclose(atom_pop_a(env, type)->data.port);
+    atom_push_undefined(env);
+}
 
 // (close-input-port port) procedure 
 // Closes the file associated with port, rendering the port incapable of delivering
@@ -3793,9 +3770,7 @@ static void atom_open_output_file(Environment* env, int params)
 // been closed. The value returned is unspecified.
 static void atom_close_input_port(Environment* env, int params)
 {
-    assert(params == 1);
-    fclose(atom_pop_a(env, TYPE_INPUT_PORT)->data.input_port);
-    atom_push_undefined(env);
+    close_port(env, params, TYPE_INPUT_PORT);
 }
 
 // (close-output-port port) procedure
@@ -3804,9 +3779,7 @@ static void atom_close_input_port(Environment* env, int params)
 // been closed. The value returned is unspecified.
 static void atom_close_output_port(Environment* env, int params)
 {
-    assert(params == 1);
-    fclose(atom_pop_a(env, TYPE_OUTPUT_PORT)->data.output_port);
-    atom_push_undefined(env);
+    close_port(env, params, TYPE_OUTPUT_PORT);
 }
 
 // (current-input-port) procedure
