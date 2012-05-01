@@ -414,7 +414,7 @@ static Symbol* find_or_insert_symbol(Continuation* cont, const char* name)
     return new_symbol;
 }
 
-static Cell* signal_error(Continuation* cont, const char* message, ...)
+void signal_error(Continuation* cont, const char* message, ...)
 {
 	va_list args;
 	va_start(args, message);
@@ -423,7 +423,6 @@ static Cell* signal_error(Continuation* cont, const char* message, ...)
 	fprintf(stderr, "\n");
 	va_end(args);
 	longjmp(cont->escape->buffer, 1);
-    return &cell_empty_list;
 }
 
 static void type_check(Continuation* cont, int expected, int actual)
@@ -1289,7 +1288,7 @@ Cell* parse_list_tail(Environment* env, Input* input, Token* token)
             
             if (!cdr_cell)
             {
-                return signal_error(env->cont, "expecting a datum after a dot");
+                signal_error(env->cont, "expecting a datum after a dot");
             }
             
             Token end;
@@ -1297,7 +1296,7 @@ Cell* parse_list_tail(Environment* env, Input* input, Token* token)
             
             if (end.type != TOKEN_LIST_END)
             {
-                return signal_error(env->cont, "expecting )");
+                signal_error(env->cont, "expecting )");
             }
             
             return cdr_cell;
@@ -1485,9 +1484,8 @@ Cell* environment_get(Environment* env, const Cell* symbol)
 		return environment_get(env->parent, symbol);
 	}
     
-	return signal_error(env->cont, "reference to undefined identifier: %s",
-                        symbol->data.symbol->name);
-	
+    signal_error(env->cont, "reference to undefined identifier: %s", symbol->data.symbol->name);
+    return NULL;
 }
 
 void environment_define(Environment* env, const Symbol* symbol, Cell* value)
@@ -1606,174 +1604,6 @@ static void type_q_helper(Environment* env, int params, int type)
     atom_push_boolean(env, atom_pop_cell(env)->type == type);
 }
 
-// 4.1.2
-// Literal Expressions
-
-// (quote <datum>) evaluates to <datum>. <Datum> may be any external
-// representation of a Scheme object (see section 3.3). This notation is
-// used to include literal constants in Scheme code.
-static Cell* atom_quote(Environment* env, Cell* params)
-{
-	return car(params);
-}
-
-// 4.1.6. Assignments
-
-
-
-// 4.2.1. Conditionals
-// (cond <clause1> <clause2> ...) library syntax
-
-// Syntax: Each <clause> should be of the form
-// (<test> <expression1> ...)
-// where <test> is any expression.
-// Alternatively, a <clause> may be of the form
-// (<test> => <expression>)
-// The last <clause> may be an “else clause,” which has the form
-// (else <expression1> <expression2> ...)
-
-// Semantics: A cond expression is evaluated by evaluating the <test>
-// expressions of successive <clause>s in order until one of them evaluates
-// to a true value. When a <test> evaluates to a true value, then the
-// remaining <expression>s in its <clause> are evaluated in order, and the
-// result(s) of the last <expression> in the <clause> is(are) returned as
-// the result(s) of the entire cond expression. If the selected <clause>
-// contains only the <test> and no <expression>s, then the value of the
-// <test> is returned as the result.
-
-// If the selected <clause> uses the => alternate form, then the
-// <expression> is evaluated. Its value must be a procedure that accepts
-// one argument; this procedure is then called on the value of the <test>
-// and the value(s) returned by this procedure is(are) returned by the cond
-// expression. If all <test>s evaluate to false values, and there is no
-// else clause, then the result of the conditional expression is
-// unspecified; if there is an else clause, then its <expression>s are
-// evaluated, and the value(s) of the last one is(are) returned.
-
-static Cell* atom_cond(Environment* env, Cell* params)
-{
-	for(Cell* clause = params; is_pair(clause); clause = cdr(clause))
-	{
-		Cell* test = car(clause);
-        
-		// @todo: make sure all symbols are stored in lowercase
-		// @todo: assert that else is in the last place in the case
-		// statement.
-		Cell* t = car(test);
-		if (t->type != TYPE_SYMBOL ||
-			strcmp("else", t->data.string.data) != 0)
-		{
-			Cell* result = 0; // eval(env, t);
-            assert(0);
-			if (result->type == TYPE_BOOLEAN &&
-				result->data.boolean == false)
-			{
-				continue;
-			}
-		}
-		
-		Cell* last_result = NULL;
-		
-		// @todo: assert there is at least one expression.
-		for (Cell* expr = cdr(test); is_pair(expr); expr = cdr(expr))
-		{
-            assert(0);
-			last_result = 0; // eval(env, car(expr));
-		}
-		
-		return last_result;
-	}
-	
-	// undefined.
-	return make_boolean(false);
-}
-
-// (case <key> <clause1> <clause2> ...) library syntax
-// Syntax: <Key> may be any expression. Each <clause> should have the form
-//  ((<datum1> ...) <expression1> <expression2> ...),
-// where each <datum> is an external representation of some object. All the
-// <datum>s must be distinct. The last <clause> may be an “else clause,”
-// which has the form
-//  (else <expression1> <expression2> ...).
-// Semantics:
-// A case expression is evaluated as follows. <Key> is evaluated and its
-// result is compared against each <datum>. If the result of evaluating <key> 
-// is equivalent (in the sense of eqv?; see section 6.1) to a <datum>, then
-// the expressions in the corresponding <clause> are evaluated from left to
-// right and the result(s) of the last expression in
-// the <clause> is(are) returned as the result(s) of the case expression. If
-// the result of evaluating <key> is different from every <datum>, then if
-// there is an else clause its expressions are evaluated and the result(s) of
-// the last is(are) the result(s) of the case expression; otherwise the
-// result of the case expression is unspecified.
-static Cell* atom_case(Environment* env, Cell* params)
-{
-	//Cell* key = nth_param(env, params, 1, TYPE_NUMBER);
-	// todo
-	return NULL;
-	
-}
-
-// (and <test1> ...)  library syntax
-// The <test> expressions are evaluated from left to right, and the value of
-// the first expression that evaluates to a false value (see section 6.3.1)
-// is returned. Any remaining expressions are not evaluated. If all the
-// expressions evaluate to true values, the value of the last expression is
-// returned. If there are no expressions then #t is returned.
-static Cell* atom_and(Environment* env, Cell* params)
-{
-	if (!car(params))
-	{
-		return signal_error(env->cont,
-                        "syntax error. at least 1 test exptected in (and ...)");
-	}
-    
-	Cell* last_result;
-	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
-	{
-        assert(0);
-		last_result = 0; //eval(env, car(cell));
-		
-		if (is_false(last_result))
-		{
-			return last_result;
-		}
-	}
-	
-	return last_result;
-}
-
-// (or	<test1> ...) library syntax
-// The <test> expressions are evaluated from left to right, and the value of
-// the first expression that evaluates to a true value (see section 6.3.1) is
-// returned. Any remaining expressions are not evaluated. If all expressions
-// evaluate to false values, the value of the last expression is returned. If
-// there are no expressions then #f is returned.
-static Cell* atom_or(Environment* env, Cell* params)
-{
-	if (!car(params))
-	{
-		return signal_error(env->cont,
-                        "syntax error. at least 1 test exptected in (or ...)");
-	}
-    
-	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
-	{
-        assert(0);
-		Cell* test = 0; //eval(env, car(cell));
-		
-		if (is_false(test))
-		{
-			continue;
-		}
-		
-		return test;
-	}
-	
-	return make_boolean(false);
-}
-
-
 static Environment* create_environment(Continuation* cont, Environment* parent)
 {
 	Environment* env = (Environment*)malloc(sizeof(Environment));
@@ -1880,23 +1710,6 @@ static Cell* quasiquote_helper(Environment* env, Cell* list)
 }
 
 
-// (quasiquote <qq template>) syntax
-// `<qq template>             syntax
-// “Backquote” or “quasiquote” expressions are useful for constructing a list or
-// vector structure when most but not all of the desired structure is known in
-// advance. If no commas appear within the ⟨qq template⟩, the result of evaluating
-// `⟨qq template⟩ is equivalent to the result of evaluating ’⟨qq template⟩. If a
-// comma appears within the ⟨qq template⟩, however, the expression following the
-// comma is evaluated (“unquoted”) and its result is inserted into the structure
-// instead of the comma and the expression. If a comma appears followed immediately
-// by an atsign (@), then the following expression must evaluate to a list; the
-// opening and closing parentheses of the list are then “stripped away” and the
-// elements of the list are inserted in place of the comma at-sign expression
-// sequence. A comma at-sign should only appear within a list or vector <qq template>.
-static Cell* atom_quasiquote(Environment* env, Cell* params)
-{
-    return quasiquote_helper(env, car(params));
-}
 
 static void atom_error(Environment* env, int params)
 {
@@ -1909,27 +1722,9 @@ static void atom_error(Environment* env, int params)
 	{
 		str = message->data.string.data;
 	}
-	atom_push_cell(env, signal_error(env->cont, "%s", str));
+	signal_error(env->cont, "%s", str);
 }
 
-// 4.2.3 Sequencing
-
-// (begin <expression1> <expression> ...)	library syntax
-// The <expression>s are evaluated sequentially from left to right, and
-// the value(s) of the last <expression> is(are) returned. This expression
-// type is used to sequence side effects such as input and output.
-
-static Cell* atom_begin(Environment* env, Cell* params)
-{
-	Cell* last = NULL;
-	for (Cell* cell = params; is_pair(cell); cell = cdr(cell))
-	{
-		// todo: tail recursion.
-		last = 0; //eval(env, car(cell));
-        assert(0);
-	}
-	return last;
-}
 
 // 6.2.5 Numerical Operations
 
@@ -2632,8 +2427,7 @@ static Cell* list_tail_helper(Environment* env, int params)
 	for (int k = atom_pop_integer(env); k>0; k--)
 	{
 		list = cdr(list);
-		if (is_pair(list)) return signal_error(env->cont,
-                                "The given list must have at least K elements");
+		if (is_pair(list)) signal_error(env->cont, "The given list must have at least K elements");
 	}
 	return list;
 }
@@ -2857,9 +2651,10 @@ static void atom_string_append(Environment* env, int params)
 // the given string. List->string returns a newly allocated string formed from
 // the characters in the list list, which must be a list of characters.
 // String->list and list->string are inverses so far as equal? is concerned.
-static Cell* atom_string_to_list(Environment* env, Cell* params)
+static void atom_string_to_list(Environment* env, int params)
 {
-    Cell* string = nth_param(env, params, 1, TYPE_STRING);
+    assert(params == 1);
+    Cell* string = atom_pop_a(env, TYPE_STRING);
     
     const int length = string->data.string.length;
     
@@ -2869,12 +2664,14 @@ static Cell* atom_string_to_list(Environment* env, Cell* params)
         result = cons(env, make_character(env, string->data.string.data[i]), result);
     }
     
-    return result;
+    atom_push_cell(env, result);
 }
 
-static Cell* atom_list_to_string(Environment* env, Cell* params)
+static void atom_list_to_string(Environment* env, int params)
 {
-    Cell* list = nth_param(env, params, 1, TYPE_PAIR);
+    assert(params == 1);
+    
+    Cell* list = atom_pop_a(env, TYPE_PAIR);
     
     int length = 0;
     
@@ -2896,35 +2693,36 @@ static Cell* atom_list_to_string(Environment* env, Cell* params)
     
     assert((int)strlen(string->data.string.data) == length);
     
-    return string;
+    atom_push_cell(env, string);
 }
 
 
 // (string-copy string)	library procedure
 // Returns a newly allocated copy of the given string.
-static Cell* atom_string_copy(Environment* env, Cell* params)
+static void atom_string_copy(Environment* env, int params)
 {
-    Cell* string = nth_param(env, params, 1, TYPE_STRING);
+    assert(params == 1);
+    Cell* string = atom_pop_a(env, TYPE_STRING);
     const int length = string->data.string.length;
-    return fill_string(make_empty_string(env, length),
-                       length,
-                       string->data.string.data);
+    atom_push_cell(env, fill_string(make_empty_string(env, length),
+                                    length,
+                                    string->data.string.data));
 }
 
 // (string-fill! string char) library procedure
 // Stores char in every element of the given string and returns an unspecified
 // value.
-static Cell* atom_string_fill_b(Environment* env, Cell* params)
+static void atom_string_fill_b(Environment* env, int params)
 {
-    Cell* string = nth_param(env, params, 1, TYPE_STRING);
-    char c       = nth_param_character(env, params, 2);
+    Cell* string = atom_pop_a(env, TYPE_STRING);
+    char c       = atom_pop_character(env);
     
     for (int i=0; i<string->data.string.length; i++)
     {
         string->data.string.data[i] = c;
     }
-    
-    return string;
+
+    atom_push_cell(env, string);
 }
 
 // (string->symbol string) procedure
@@ -3228,45 +3026,41 @@ static void atom_vector_q(Environment* env, int params)
 // Returns a newly allocated vector of k elements. If a second argument is given,
 // then each element is initialized to fill. Otherwise the initial contents of
 // each element is unspecified.
-static Cell* atom_make_vector(Environment* env, Cell* params)
+static void atom_make_vector(Environment* env, int params)
 {
-	int k = nth_param_integer(env, params, 1);
-	// todo: assert k <= 0
-	Cell* fill = optional_second_param(env, params);
-	return make_vector(env, k, fill);
+    assert(params > 0);
+    assert(params <= 2);
+    int k = atom_pop_integer(env);
+    assert(k > 0);
+
+    Cell* fill = make_boolean(false);
+    if (params > 1) fill = atom_pop_cell(env);
+
+    atom_push_cell(env, make_vector(env, k, fill));
 }
 
 // (vector obj ...)	library procedure
 // Returns a newly allocated vector whose elements contain the given arguments.
 // Analogous to list.
-static Cell* atom_vector(Environment* env, Cell* params)
+static void atom_vector(Environment* env, int params)
 {
-    int length = 0;
-    for (Cell* p = params; is_pair(p); p = cdr(p))
+    assert(params > 0);
+    Cell* v = make_vector(env, params, NULL);
+    
+    for (int i=0; i<params; i++)
     {
-        length++;
+        v->data.vector.data[i] = atom_pop_cell(env);
     }
     
-    Cell* v = make_vector(env, length, NULL);
-    
-    int i = 0;
-    
-    for (Cell* p = params; is_pair(p); p = cdr(p))
-    {
-        v->data.vector.data[i] = 0; //eval(env, car(p));
-        assert(0);
-        i++;
-    }
-    
-    return v;
+    atom_push_cell(env, v);
 }
 
 // (vector-length vector)
 // Returns the number of elements in vector as an exact integer.
-static Cell* atom_vector_length(Environment* env, Cell* params)
+static void atom_vector_length(Environment* env, int params)
 {
-	Cell* v = nth_param(env, params, 1, TYPE_VECTOR);
-	return make_number(env, v->data.vector.length);
+    assert(params == 1);
+    atom_push_number(env, atom_pop_a(env, TYPE_VECTOR)->data.vector.length);
 }
 
 // Return true if k is a valid index into vector
@@ -3277,14 +3071,15 @@ static bool valid_vector_index(Cell* vector, int k)
 
 // (vector-ref vector k) procedure
 // k must be a valid index of vector. Vector-ref returns the contents of element k of vector.
-static Cell* atom_vector_ref(Environment* env, Cell* params)
+static void atom_vector_ref(Environment* env, int params)
 {
-	Cell* v = nth_param(env, params, 1, TYPE_VECTOR);
-	int k = nth_param_integer(env, params, 2);
+    assert(params == 2);
+    Cell* v = atom_pop_a(env, TYPE_VECTOR);
+	int k = atom_pop_integer(env);
 	
 	if (!valid_vector_index(v, k))
 	{
-		return signal_error(env->cont, "Invalid vector index");
+		signal_error(env->cont, "Invalid vector index");
 	}
 	
 	Cell* result = v->data.vector.data[k];
@@ -3293,19 +3088,21 @@ static Cell* atom_vector_ref(Environment* env, Cell* params)
 	if (!result)
 	{
 		// todo: format error message better
-		return signal_error(env->cont, "Cannot access unitialized vector");
+		 signal_error(env->cont, "Cannot access unitialized vector");
 	}
-	return result;
+    
+    atom_push_cell(env, result);
 }
 
 // (vector-set! vector k obj) procedure
-// k must be a valid index of vector. Vector-set! stores obj in element k of vector. The value
-// returned by vector-set! is unspecified.
-static Cell* atom_vector_set_b(Environment* env, Cell* params)
+// k must be a valid index of vector. Vector-set! stores obj in element k of
+// vector. The value returned by vector-set! is unspecified.
+static void atom_vector_set_b(Environment* env, int params)
 {
-	Cell* vector = nth_param(env, params, 1, TYPE_VECTOR);
-	int   k      = nth_param_integer(env, params, 2);
-	Cell* obj    = nth_param_any(env, params, 3);
+    assert(params == 3);
+	Cell* vector = atom_pop_a(env, TYPE_VECTOR);
+	int   k      = atom_pop_integer(env);
+	Cell* obj    = atom_pop_cell(env);
 	
 	if (!valid_vector_index(vector, k))
 	{	
@@ -3314,16 +3111,17 @@ static Cell* atom_vector_set_b(Environment* env, Cell* params)
 	}
 	
 	vector->data.vector.data[k] = obj;
-	return obj;
+    atom_push_undefined(env);
 }
 
 // (vector->list vector) library procedure
 // Vector->list returns a newly allocated list of the objects contained in the
 // elements of vector. List->vector returns a newly created vector initialized to
-// the elements of the list list .
-static Cell* atom_vector_to_list(Environment* env, Cell* params)
+// the elements of the list list.
+static void atom_vector_to_list(Environment* env, int params)
 {
-    Cell* vector = nth_param(env, params, 1, TYPE_VECTOR);
+    assert(params == 1);
+    Cell* vector = atom_pop_a(env, TYPE_VECTOR);
     
     Cell* list = NULL;
     
@@ -3332,16 +3130,18 @@ static Cell* atom_vector_to_list(Environment* env, Cell* params)
     {
         list = cons(env, vector->data.vector.data[i], list);
     }
-    return list;
+    
+    atom_push_cell(env, list);
 }
 
 // (list->vector list)   library procedure
 // Vector->list returns a newly allocated list of the objects contained in the
 // elements of vector. List->vector returns a newly created vector initialized to
 // the elements of the list list .
-static Cell* atom_list_to_vector(Environment* env, Cell* params)
+static void atom_list_to_vector(Environment* env, int params)
 {
-    Cell* list = nth_param(env, params, 1, TYPE_PAIR);
+    assert(params == 1);
+    Cell* list = atom_pop_a(env, TYPE_PAIR);
     
     int length = 0;
     for (Cell* cell = list; is_pair(cell); cell = cdr(cell)) length++;
@@ -3355,23 +3155,24 @@ static Cell* atom_list_to_vector(Environment* env, Cell* params)
         i++;
     }
     
-    return vector;
+    atom_push_cell(env, vector);
 }
 
 
 // (vector-fill! vector fill) library procedure
-// Stores fill in every element of vector. The value returned by vector-fill! is unspecified.
-// ATOM: Fill is returned.
-static Cell* atom_vector_fill_b(Environment* env, Cell* params)
+// Stores fill in every element of vector.
+// The value returned by vector-fill! is unspecified.
+static void atom_vector_fill_b(Environment* env, int params)
 {
-	Cell* vector = nth_param(env, params, 1, TYPE_VECTOR);
-	Cell* fill   = nth_param_any(env, params, 2);
+    assert(params == 2);
+	Cell* vector = atom_pop_a(env, TYPE_VECTOR);
+	Cell* fill   = atom_pop_cell(env);
 	
 	for (int i=0; i<vector->data.vector.length; i++)
 	{
 		vector->data.vector.data[i] = fill;
 	}
-	return fill;
+    atom_push_undefined(env);
 }
 
 // 6.4. Control features
@@ -3385,44 +3186,6 @@ static void atom_procedure_q(Environment* env, int params)
     // TODO: check these are the right types
     atom_push_boolean(env, obj->type == TYPE_CLOSURE || obj->type == TYPE_BUILT_IN);
 }
-
-static Cell* apply_recursive(Environment* env, Cell* function, Cell* args)
-{
-    if (args == NULL)
-    {
-        return NULL;
-    }
-    
-    assert(0);
-    return cons(env, 0, //eval(env, cons(env, function,
-                        //cons(env, car(args), &cell_empty_list))),
-                     apply_recursive(env, function, cdr(args)));
-}
-
-// (apply proc arg1 ... args) procedure
-// Proc must be a procedure and args must be a list. Calls proc with the
-// elements of the list (append (list arg1 ...) args) as the actual arguments.
-static Cell* atom_apply(Environment* env, Cell* params)
-{
-    Cell* func = nth_param_any(env, params, 1);
-    
-    int num_args = 0;
-    
-    for (Cell* param = params; is_pair(param); param = cdr(param)) num_args++;
-    
-    Cell* list = nth_param(env, params, num_args, TYPE_PAIR);
-    
-    Cell* args = list;
-    
-    for (int i=num_args-1; i>0; i--)
-    {
-        Cell* arg = nth_param_any(env, params, i);
-        args = cons(env, arg, args);
-    }
-    
-    return apply_recursive(env, func, args);
-}
-
 
 // (scheme-report-environment version)  procedure
 // (null-environment version)           procedure
@@ -3515,16 +3278,23 @@ static FILE* get_input_port_param(Environment* env, bool param_present)
 // and the value(s) yielded by the proc is(are) returned. If proc does not
 // return, then the port will not be closed automatically unless it is possible
 // to prove that the port will never again be used for a read or write operation.
-static Cell* atom_call_with_input_file(Environment* env, Cell* params)
+static void atom_call_with_input_file(Environment* env, int params)
 {
-    assert(0);
-    return NULL;
+    // TODO: test these semantics
+    assert(params == 2);
+    
+    Cell* string = atom_pop_a(env, TYPE_STRING);
+    Cell* proc   = atom_pop_cell(env);
+    
+    if (proc->type != TYPE_BUILT_IN ||
+        proc->type != TYPE_CLOSURE)
+    {
+        signal_error(env->cont, "Expected a procedure, got a %s", typenames[proc->type]);
+    }
 }
 
-static Cell* atom_call_with_output_file(Environment* env, Cell* params)
+static void atom_call_with_output_file(Environment* env, int params)
 {
-    assert(0);
-    return NULL;
 }
 
 // (input-port?  obj) procedure
@@ -3556,14 +3326,7 @@ static Cell* file_open_helper(Environment* env, int params, bool read)
         signal_error(env->cont, "Error opening file: %s", filename);
     }
     
-    if (read)
-    {
-        return make_input_port(env, file);
-    }
-    else
-    {
-        return make_output_port(env, file);
-    }
+    return make_io_port(env, read ? TYPE_INPUT_PORT : TYPE_OUTPUT_PORT, file);
 }
 
 // (open-input-file filename) procedure
@@ -3657,11 +3420,9 @@ static void atom_write(Environment* env, int params)
 // therefore not parsable, an error is signalled.
 // The port argument may be omitted, in which case it defaults to the value
 // returned by current-input-port. It is an error to read from a closed port.
-static Cell* atom_read(Environment* env, Cell* params)
+static void atom_read(Environment* env, int params)
 {
-    //FILE* port = get_input_port(env, params, 1);
-    // TODO: implement this
-    return NULL;
+    assert(0);
 }
 
 // (read-char)      procedure
@@ -3917,6 +3678,13 @@ static void compile_if(Environment* env, Closure* closure, Cell* cell)
     compile_with_unconditional_jump(env, closure, alternate);
 }
 
+
+// 4.1.2
+// Literal Expressions
+
+// (quote <datum>) evaluates to <datum>. <Datum> may be any external
+// representation of a Scheme object (see section 3.3). This notation is
+// used to include literal constants in Scheme code.
 static void compile_quote(Environment* env, Closure* closure, Cell* cell)
 {
     Cell* lambda = car(cell); cell = cdr(cell);
@@ -4343,16 +4111,101 @@ Continuation* atom_api_open()
     
     const Library libs [] = {
         
-        /*
-        {"cond",			atom_cond},
-        {"case",			atom_case},
-        {"and",				atom_and},
-        {"or",				atom_or},
-        {"let",				atom_let},
-        {"let*",			atom_let_s},
-        {"begin",      		atom_begin},
-        {"quasiquote",      atom_quasiquote},
-         */
+        // (and <test1> ...)  library syntax
+        // The <test> expressions are evaluated from left to right, and the value of
+        // the first expression that evaluates to a false value (see section 6.3.1)
+        // is returned. Any remaining expressions are not evaluated. If all the
+        // expressions evaluate to true values, the value of the last expression is
+        // returned. If there are no expressions then #t is returned.
+        
+        // (or	<test1> ...) library syntax
+        // The <test> expressions are evaluated from left to right, and the value of
+        // the first expression that evaluates to a true value (see section 6.3.1) is
+        // returned. Any remaining expressions are not evaluated. If all expressions
+        // evaluate to false values, the value of the last expression is returned. If
+        // there are no expressions then #f is returned.
+        
+        
+        // 4.2.1. Conditionals
+        // (cond <clause1> <clause2> ...) library syntax
+        
+        // Syntax: Each <clause> should be of the form
+        // (<test> <expression1> ...)
+        // where <test> is any expression.
+        // Alternatively, a <clause> may be of the form
+        // (<test> => <expression>)
+        // The last <clause> may be an “else clause,” which has the form
+        // (else <expression1> <expression2> ...)
+        
+        // Semantics: A cond expression is evaluated by evaluating the <test>
+        // expressions of successive <clause>s in order until one of them evaluates
+        // to a true value. When a <test> evaluates to a true value, then the
+        // remaining <expression>s in its <clause> are evaluated in order, and the
+        // result(s) of the last <expression> in the <clause> is(are) returned as
+        // the result(s) of the entire cond expression. If the selected <clause>
+        // contains only the <test> and no <expression>s, then the value of the
+        // <test> is returned as the result.
+        
+        // If the selected <clause> uses the => alternate form, then the
+        // <expression> is evaluated. Its value must be a procedure that accepts
+        // one argument; this procedure is then called on the value of the <test>
+        // and the value(s) returned by this procedure is(are) returned by the cond
+        // expression. If all <test>s evaluate to false values, and there is no
+        // else clause, then the result of the conditional expression is
+        // unspecified; if there is an else clause, then its <expression>s are
+        // evaluated, and the value(s) of the last one is(are) returned.
+        
+        
+        // (case <key> <clause1> <clause2> ...) library syntax
+        // Syntax: <Key> may be any expression. Each <clause> should have the form
+        //  ((<datum1> ...) <expression1> <expression2> ...),
+        // where each <datum> is an external representation of some object. All the
+        // <datum>s must be distinct. The last <clause> may be an “else clause,”
+        // which has the form
+        //  (else <expression1> <expression2> ...).
+        // Semantics:
+        // A case expression is evaluated as follows. <Key> is evaluated and its
+        // result is compared against each <datum>. If the result of evaluating <key> 
+        // is equivalent (in the sense of eqv?; see section 6.1) to a <datum>, then
+        // the expressions in the corresponding <clause> are evaluated from left to
+        // right and the result(s) of the last expression in
+        // the <clause> is(are) returned as the result(s) of the case expression. If
+        // the result of evaluating <key> is different from every <datum>, then if
+        // there is an else clause its expressions are evaluated and the result(s) of
+        // the last is(are) the result(s) of the case expression; otherwise the
+        // result of the case expression is unspecified.
+        //        {"let",				atom_let},
+        //        {"let*",			atom_let_s},
+
+        // 4.2.3 Sequencing
+        
+        // (begin <expression1> <expression> ...)	library syntax
+        // The <expression>s are evaluated sequentially from left to right, and
+        // the value(s) of the last <expression> is(are) returned. This expression
+        // type is used to sequence side effects such as input and output.
+        //  {"begin",      		atom_begin},
+        
+        
+        // (quasiquote <qq template>) syntax
+        // `<qq template>             syntax
+        // “Backquote” or “quasiquote” expressions are useful for constructing a list or
+        // vector structure when most but not all of the desired structure is known in
+        // advance. If no commas appear within the ⟨qq template⟩, the result of evaluating
+        // `⟨qq template⟩ is equivalent to the result of evaluating ’⟨qq template⟩. If a
+        // comma appears within the ⟨qq template⟩, however, the expression following the
+        // comma is evaluated (“unquoted”) and its result is inserted into the structure
+        // instead of the comma and the expression. If a comma appears followed immediately
+        // by an atsign (@), then the following expression must evaluate to a list; the
+        // opening and closing parentheses of the list are then “stripped away” and the
+        // elements of the list are inserted in place of the comma at-sign expression
+        // sequence. A comma at-sign should only appear within a list or vector <qq template>.
+        // {"quasiquote",      atom_quasiquote},
+
+        
+        // (apply proc arg1 ... args) procedure
+        // Proc must be a procedure and args must be a list. Calls proc with the
+        // elements of the list (append (list arg1 ...) args) as the actual arguments.
+        //{"apply",	   		atom_apply},
 
         {"eqv?",			atom_eqv_q},
         {"eq?",				atom_eq_q},
@@ -4433,7 +4286,6 @@ Continuation* atom_api_open()
         {"char<=?",         atom_char_less_than_or_equal_q},
         {"char>=?",         atom_char_greater_than_or_equal_q},
 
-
         {"char-ci=?",       atom_char_ci_equal_q},
         {"char-ci<?",       atom_char_ci_less_than_q},
         {"char-ci>?",       atom_char_ci_greater_than_q},
@@ -4474,12 +4326,12 @@ Continuation* atom_api_open()
         {"string-ci>=?",    atom_string_ci_greater_than_equal_q},
         {"substring",       atom_substring},
         {"string-append",   atom_string_append},
-/*     
+
         {"string-copy",     atom_string_copy},
         {"string-fill!",    atom_string_fill_b},
         {"string->list",    atom_string_to_list},
         {"list->string",    atom_list_to_string},
-        
+
         // Vector
         {"vector?",	   		atom_vector_q},
         {"make-vector",	  	atom_make_vector},
@@ -4490,7 +4342,7 @@ Continuation* atom_api_open()
         {"list->vector",    atom_list_to_vector},
         {"vector-set!",		atom_vector_set_b},
         {"vector-fill!",	atom_vector_fill_b},
-    */
+
         // symbols
         {"symbol?",    		atom_symbol_q},
         {"symbol->string",	atom_symbol_to_string},
@@ -4498,8 +4350,10 @@ Continuation* atom_api_open()
                 
         // control
         {"procedure?", 		atom_procedure_q},
-//        {"apply",	   		atom_apply},
 
+        {"call-with-input-file",    atom_call_with_input_file},
+        {"call-with-output-file",   atom_call_with_output_file},
+        
         {"scheme-report-environment",  atom_scheme_report_environment},
         {"null-environment",           atom_null_environment},
         {"interaction-environment",    atom_interaction_environment},
@@ -4527,9 +4381,9 @@ Continuation* atom_api_open()
         {"write-char",      atom_write_char},
 
         // output
-        {"load",	   		atom_load},
-        
-        {"error",	   		atom_error},
+        {"load",	atom_load},
+        {"read",    atom_read},
+        {"error",	atom_error},
          
 
         {NULL, NULL}
@@ -4557,5 +4411,4 @@ void atom_api_close(Continuation* cont)
     }
     free(cont->symbols);
     free(cont);
-    
 }
