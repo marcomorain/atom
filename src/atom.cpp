@@ -87,15 +87,6 @@ struct Cell
         char* data;
         int   length;
     };
-	
-	struct OldClosure
-	{
-		// If function is null, then the procedure
-		// was created in scheme, otherwise it is a built-in
-		Cell*    		formals;
-		Cell*    		body;
-		Environment*	env;
-	};
     
 	// todo: add a const string type? or a flag?
 	// todo: add a length to string type
@@ -111,7 +102,7 @@ struct Cell
 		Vector          vector;
         atom_builtin    built_in;
         atom_function   syntax;
-        OldClosure      closure;
+        struct Closure* closure;
 		FILE*           input_port;
         FILE*           output_port;
         Environment*    env;
@@ -410,6 +401,18 @@ struct Continuation
     // 2. free all memory on close
 };
 
+struct Instruction
+{
+    int op_code;
+    int operand;
+};
+
+struct Closure
+{
+    stack<Instruction> instructions;
+    stack<Cell*>       constants;
+};
+
 // Maybe insert a new symbol into the Cont's symbol table.
 // Or return an existing one if the name is already in the table
 static Symbol* find_or_insert_symbol(Continuation* cont, const char* name)
@@ -490,6 +493,13 @@ static Cell* make_io_port(Environment* env, int type, FILE* port)
 	return cell;
 }
 
+static Cell* make_closure(Environment* env, Closure* closure)
+{
+    Cell* cell = make_cell(env, TYPE_CLOSURE);
+    cell->data.closure = closure;
+    return cell;
+}
+
 
 static Cell* make_input_port(Environment* env, FILE* port)
 {
@@ -512,6 +522,12 @@ static void mark_environment(Environment* env)
 			mark(node->value);	
 		}
 	}
+}
+
+static void mark_closure(Closure* closure)
+{
+    for (int i=0; i < closure->constants.num_elements; i++)
+        mark(stack_get(&closure->constants, i));
 }
 
 static void mark(Cell* cell)
@@ -548,10 +564,7 @@ static void mark(Cell* cell)
             
 		case TYPE_CLOSURE:
 		{
-			Cell::OldClosure& closure = cell->data.closure;
-            mark(closure.formals);
-            mark(closure.body);
-            mark_environment(closure.env);
+            mark_closure(cell->data.closure);
 			break;
 		}
             
@@ -658,18 +671,6 @@ static Cell* make_character(Environment* env, char c)
 	Cell* character = make_cell(env, TYPE_CHARACTER);
 	character->data.character = c;
 	return character;	
-}
-
-static Cell* make_procedure(Environment* env, Cell* formals, Cell* body)
-{
-	type_check(env->cont, TYPE_PAIR, formals->type);
-	type_check(env->cont, TYPE_PAIR, body->type);
-    
-	Cell* closure = make_cell(env, TYPE_CLOSURE);
-	closure->data.closure.formals = formals;
-	closure->data.closure.body    = body;
-	closure->data.closure.env	 = env;
-	return closure;	
 }
 
 static Cell* make_vector(Environment* env, int length, Cell* fill)
@@ -1981,45 +1982,6 @@ static Environment* create_environment(Continuation* cont, Environment* parent)
 	return env;
 }
 
-// This function imeplements let and let*
-// The only difference is the environment in which each init is evaluated in.
-static Cell* let_helper(Environment* env, Cell* params, bool star)
-{
-	Cell* bindings = car(params);
-	Cell* body     = cdr(params);
-	
-	if (!body)
-	{
-		return signal_error(env->cont, "No expression in body");
-	}
-	
-	Environment* child = create_environment(env->cont, env);
-	
-	Environment* target = star ? child : env;
-    
-	for (Cell* b = bindings; is_pair(b); b = cdr(b))
-	{
-		Cell* pair = car(b);
-		Cell* symbol = car(pair);
-		type_check(env->cont, TYPE_SYMBOL, symbol->type);
-		Cell* init   = 0; //eval(target, car(cdr(pair)));
-        assert(0);
-		environment_define(child, symbol->data.symbol, init);
-	}
-	
-	Cell* last = NULL;
-    
-	for (Cell* b = body; is_pair(b); b = cdr(b))
-	{
-		Cell* expr = car(b);
-        assert(0);
-		last = 0;//eval(child, expr);
-	}
-	
-	return last;
-}
-
-
 // (let <bindings> <body>) library syntax
 // Syntax: <Bindings> should have the form
 // ((<variable1> <init1>) ...), where each <init> is an expression, and <body>
@@ -2031,10 +1993,6 @@ static Cell* let_helper(Environment* env, Cell* params, bool star)
 // results, the <body> is evaluated in the extended environment, and the value(s)
 // of the last expression of <body> is(are) returned. Each binding of a <variable>
 // has <body> as its region.
-static Cell* atom_let(Environment* env, Cell* params)
-{
-	return let_helper(env, params, false);
-}
 
 // (let* <bindings> <body>) Library syntax
 // Syntax: <Bindings> should have the form
@@ -2046,11 +2004,6 @@ static Cell* atom_let(Environment* env, Cell* params)
 // is that part of the let* expression to the right of the binding. Thus the
 // second binding is done in an environment in which the first binding is visible,
 // and so on.
-static Cell* atom_let_s(Environment* env, Cell* params)
-{
-	return let_helper(env, params, true);
-}
-
 
 static Cell* duplicate(Environment* env, Cell* list)
 {
@@ -2158,11 +2111,6 @@ static void atom_error(Environment* env, int params)
 		str = message->data.string.data;
 	}
 	atom_push_cell(env, signal_error(env->cont, "%s", str));
-}
-
-static Cell* atom_lambda(Environment* env, Cell* params)
-{
-	return make_procedure(env, car(params), cdr(params));
 }
 
 // 4.2.3 Sequencing
@@ -4044,12 +3992,6 @@ static void always_false(Environment* env, int params)
     atom_push_boolean(env, false);
 }
 
-struct Instruction
-{
-    int op_code;
-    int operand;
-};
-
 Instruction make_instruction(int op_code, int operand)
 {
     Instruction instruction;
@@ -4057,12 +3999,6 @@ Instruction make_instruction(int op_code, int operand)
     instruction.operand = operand;
     return instruction;
 }
-
-struct Closure
-{
-    stack<Instruction> instructions;
-    stack<Cell*>       constants;
-};
 
 static void closure_init(Closure* closure)
 {
@@ -4078,49 +4014,48 @@ enum {
     INST_SET
 };
 
+const static char* instruction_names [] = {
+    [INST_PUSH_CONSTANT]    = "push constant",
+    [INST_LOAD]             = "load",
+	[INST_CALL]             = "call",
+	[INST_DEFINE]           = "define",
+    [INST_SET]              = "set",
+};
+
 static void emit(Closure* closure, Instruction instruction)
 {
     stack_push(&closure->instructions, instruction);
-    switch(instruction.op_code)
-    {
-        case INST_PUSH_CONSTANT: printf("-- push constant"); break;
-        case INST_LOAD:          printf("-- load"); break;
-        case INST_CALL:          printf("-- call"); break;
-        case INST_DEFINE:        printf("-- define"); break;
-        case INST_SET:           printf("-- set!"); break;
-        default: assert(false);
-    }
-    printf(" %d\n", instruction.operand);
 }
 
 static size_t closure_add_constant(struct Closure* closure, Cell* cell)
 {
     // TODO: Share constants
     int type = cell->type;
-    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN);
+    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN || type == TYPE_CLOSURE);
     printf("Pushing constant: ");
-    print(stdout, cell, true);
+    print(stdout, cell, false);
     stack_push(&closure->constants, cell);
     return closure->constants.num_elements - 1;
 }
 
-static void compile(Closure* closure, Cell* cell);
+static void compile(Environment* env, Closure* closure, Cell* cell);
 
-static int compile_reverse(Closure* closure, Cell* list)
+static int compile_reverse(Environment* env, Closure* closure, Cell* list)
 {
     if (list->type == TYPE_EMPTY_LIST) return 0;
-    int depth = compile_reverse(closure, cdr(list));
-    compile(closure, car(list));
+    int depth = compile_reverse(env, closure, cdr(list));
+    compile(env, closure, car(list));
     return 1 + depth;
 }
 
-static void compile_function_call(Closure* closure, Cell* cell)
+static void compile_function_call(Environment* env, Closure* closure, Cell* cell)
 {
-    int num_params = compile_reverse(closure, cell) - 1;
+    int num_params = compile_reverse(env, closure, cell) - 1;
     emit(closure, make_instruction(INST_CALL, num_params));
+    printf("Function call with %d params\n", num_params);
 }
 
-static void compile_if(Closure* closure, Cell* cell, int instruction)
+static void compile_if(Environment* env, Closure* closure, Cell* cell)
 {
     //<test> <consequent> <alternate>
 
@@ -4128,21 +4063,44 @@ static void compile_if(Closure* closure, Cell* cell, int instruction)
     Cell* test          = car(cell); cell = cdr(cell);
     Cell* consequent    = car(cell); cell = cdr(cell);
     Cell* alternate     = car(cell);
+}
+
+static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
+{
+    Cell* lambda    = car(cell); cell = cdr(cell);
+    Cell* formals   = car(cell); cell = cdr(cell);
+    Cell* body      = car(cell); cell = cdr(cell);
+
+    // Make a new closure
+    Closure* child = (Closure*)calloc(sizeof(Closure), 1);
+    closure_init(child);
     
+    printf("Compiling a new function.\n");
     
+    // When a function is called there are N params on the stack. The top most
+    // parameter is the first formal. The following loops emits a define instruction
+    // for each formal parameter to put them in the environment
+    for (Cell* formal = formals; is_pair(formal); formal = cdr(formals))
+    {
+        type_check(env->cont, TYPE_SYMBOL, car(formal)->type);
+        size_t constant = closure_add_constant(child, car(formal));
+        emit(child, make_instruction(INST_PUSH_CONSTANT, constant));
+        printf("Setting local variable\n");
+        emit(child, make_instruction(INST_DEFINE, 0));
+    }
+
+    compile(env, child, body);
     
-    compile(closure, test);
+    printf("Function compiled OK.\n");
     
-    size_t pc = closure->instructions.num_elements;
-    
-    size_t 
-    
+    size_t c = closure_add_constant(closure, make_closure(env, child));
+    emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
 }
 
 
 // http://exo.willdonnelly.net/old-blog/scheme-syntax-rules/
 
-static void compile_mutation(Closure* closure, Cell* cell, int instruction)
+static void compile_mutation(Environment* env, Closure* closure, Cell* cell, int instruction)
 {
     // TODO: Handle dotted syntax.
     // Maybe as macro?
@@ -4152,7 +4110,7 @@ static void compile_mutation(Closure* closure, Cell* cell, int instruction)
     Cell* expression = car(cdr(cdr(cell)));
     
     // Push the expression
-    compile(closure, expression);
+    compile(env, closure, expression);
     
     // Push the symbol
     size_t c = closure_add_constant(closure, symbol);
@@ -4162,7 +4120,7 @@ static void compile_mutation(Closure* closure, Cell* cell, int instruction)
     emit(closure, make_instruction(instruction, 0));
 }
 
-static void compile(Closure* closure, Cell* cell)
+static void compile(Environment* env, Closure* closure, Cell* cell)
 {
     switch(cell->type)
     {
@@ -4179,27 +4137,37 @@ static void compile(Closure* closure, Cell* cell)
                     break;
                 }
                     
+#define EQ(symbol, string) (strcmp((symbol),(string))==0)
+                    
                 case TYPE_SYMBOL:
                 {
-                    if (strcmp(head->data.symbol->name, "define") == 0)
+                    const char* symbol = head->data.symbol->name;
+                    
+                    if (EQ(symbol, "define"))
                     {
-                        compile_mutation(closure, cell, INST_DEFINE);
+                        compile_mutation(env, closure, cell, INST_DEFINE);
+                        printf("define ^ 2\n");
                     }
-                    else if (strcmp(head->data.symbol->name, "set!") == 0)
+                    else if (EQ(symbol, "set!"))
                     {
-                        compile_mutation(closure, cell, INST_SET);
+                        compile_mutation(env, closure, cell, INST_SET);
+                        printf("set! ^ 2\n");
                     }
-                    else if
+                    else if (EQ(symbol, "if"))
                     {
-                        compile_if(closure, cell);
+                        compile_if(env, closure, cell);
+                    }
+                    else if (EQ(symbol, "lambda"))
+                    {
+                        compile_lambda(env, closure, cell);
                     }
                     else
                     {
-                        compile_function_call(closure, cell);
+                        compile_function_call(env, closure, cell);
                     }
                     break;
                 }
-                    
+#undef EQ
                 default:
                 {
                     fprintf(stderr, "Compile error: Expected symbol.\nGot:");
@@ -4267,9 +4235,10 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
         read_token(&input, &next);
 		if (Cell* cell = parse_datum(env, &input, &next))
 		{
+            printf("Compiling top level function\n");
             struct Closure closure;
             closure_init(&closure);
-            compile(&closure, cell);
+            compile(env, &closure, cell);
             printf("parsed> ");
             print(stdout, cell, false);
             //const Cell* result =
@@ -4327,6 +4296,9 @@ tailcall:
         
         const Instruction instruction = stack_get(&closure->instructions, pc);
         pc++;
+        
+        printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
+
         switch (instruction.op_code)
         {
             // (set! <variable> <expression>)

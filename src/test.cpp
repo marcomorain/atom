@@ -110,20 +110,33 @@ static char* test_equality() {
 static char* test_if()
 {
     struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom, "(if #t 1 2)");
+    atom_api_loads(atom, "(lambda (x) (+ 1 x))");
     mu_assert_msg(atom_api_to_number(atom, 1) == 1);
     atom_api_close(atom);    
-    return 0;
+    return 0;    
+}
 
+
+static char* test_lambda()
+{
+    struct Continuation* atom = atom_api_open();
+    atom_api_loads(atom, "(define plus (lambda (x) (+ x 1)))");
+    atom_api_clear(atom);
+    atom_api_loads(atom, "(plus 4)");
+    mu_assert_msg(atom_api_to_number(atom, 1) == 5);
+    atom_api_close(atom);    
+    return 0;
 }
 
 static char * all_tests() {
+    mu_run_test(test_lambda);
     mu_run_test(test_if);
     mu_run_test(test_equality);
     mu_run_test(test_state);
     mu_run_test(test_open_close);
     mu_run_test(test_comile);
     mu_run_test(test_plus);
+    
     return 0;
 }
 
