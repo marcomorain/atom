@@ -4289,6 +4289,15 @@ tailcall:
     
     size_t pc = 0;
     Environment* env = cont->env;
+    
+    printf("Calling function %p\n", closure);
+    
+    for (int i=0; i<closure->constants.num_elements; i++)
+    {
+        printf("Constant %d: ", i);
+        print(stdout, stack_get(&closure->constants, i), true);
+    }
+
     for (;;)
     {
         // End of input
@@ -4347,15 +4356,28 @@ tailcall:
                 
                 stack_pop(&cont->stack, 1);
                 
-                if (function->type == TYPE_BUILT_IN)
+                switch (function->type)
                 {
-                    function->data.built_in(env, num_params);
+                    case TYPE_BUILT_IN:
+                    {
+                        function->data.built_in(env, num_params);
+                        break;
+                    }
+                    case TYPE_CLOSURE:
+                    {
+                        // TODO: Make environment better
+                        Environment* child = create_environment(cont, env);
+                        cont->env = child;
+                        eval(cont, function->data.closure);
+                        break;
+                    }
+                        
+                    default:
+                    {
+                        assert(0);
+                        break;
+                    }
                 }
-                else 
-                {
-                    assert(0);
-                }
-                
                 break;
             }
                 
