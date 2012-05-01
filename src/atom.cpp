@@ -2548,42 +2548,42 @@ static void atom_string_ci_equal_q(Environment* env, int params)
 
 static void atom_string_less_than_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 > compare_strings(env, params));
+    atom_push_boolean(env, compare_strings(env, params) < 0);
 }
 
 static void atom_string_greater_than_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 < compare_strings(env, params));
+    atom_push_boolean(env, compare_strings(env, params) > 0);
 }
 
 static void atom_string_less_than_equal_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 >= compare_strings(env, params));
+    atom_push_boolean(env, compare_strings(env, params) <= 0);
 }
 
 static void atom_string_greater_than_equal_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 <= compare_strings(env, params));
+    atom_push_boolean(env, compare_strings(env, params) >= 0);
 }
 
 static void atom_string_ci_less_than_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 > compare_case_strings(env, params));
+    atom_push_boolean(env, compare_case_strings(env, params) < 0);
 }
 
 static void atom_string_ci_greater_than_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 < compare_case_strings(env, params));
+    atom_push_boolean(env, compare_case_strings(env, params) > 0);
 }
 
 static void atom_string_ci_less_than_equal_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 >= compare_case_strings(env, params));
+    atom_push_boolean(env, compare_case_strings(env, params) <= 0);
 }
 
 static void atom_string_ci_greater_than_equal_q(Environment* env, int params)
 {
-    atom_push_boolean(env, 0 <= compare_case_strings(env, params));
+    atom_push_boolean(env, compare_case_strings(env, params) >= 0);
 }
 
 // (substring string start end) library procedure
