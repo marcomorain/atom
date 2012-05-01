@@ -914,13 +914,11 @@ struct Input
 	unsigned	  column;
 	const char*   data;
     
-	void init(Continuation* c, const char* d)
+	void init(const char* d)
 	{
 		line	= 1;
 		column	= 1;
 		data	= d;
-//		cont    = c;
-		
 	}
 	
 	char get(void)  const
@@ -4205,7 +4203,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
 	cont->escape = &jb;
 	
 	Input input;
-	input.init(cont, data);
+	input.init(data);
 
 	for(;;)
 	{
@@ -4219,9 +4217,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
             compile(env, &closure, cell);
             printf("parsed> ");
             print(stdout, cell, false);
-            //const Cell* result =
             eval(cont, &closure);
-            //print(stdout, result, false);
         }
         else break;
 	}
@@ -4240,8 +4236,7 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	
 	if (!file)
 	{
-		//signal_error(cont, "Error opening file %s", filename);
-		fprintf(stderr, "Error opening file %s\n", filename);
+        fprintf(stderr, "Error opening file %s\n", filename);
 		return;
 	}
 	
