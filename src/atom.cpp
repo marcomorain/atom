@@ -4011,7 +4011,8 @@ enum {
     INST_LOAD,
     INST_CALL,
     INST_DEFINE,
-    INST_SET
+    INST_SET,
+    INST_POP // used to work around undefined push after define
 };
 
 const static char* instruction_names [] = {
@@ -4020,6 +4021,7 @@ const static char* instruction_names [] = {
 	[INST_CALL]             = "call",
 	[INST_DEFINE]           = "define",
     [INST_SET]              = "set",
+    [INST_POP]              = "pop",
 };
 
 static void emit(Closure* closure, Instruction instruction)
@@ -4087,7 +4089,10 @@ static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
         emit(child, make_instruction(INST_PUSH_CONSTANT, constant));
         printf("Setting local variable\n");
         emit(child, make_instruction(INST_DEFINE, 0));
+        emit(child, make_instruction(INST_POP, 0));
     }
+    
+
 
     compile(env, child, body);
     
@@ -4310,6 +4315,12 @@ tailcall:
 
         switch (instruction.op_code)
         {
+            case INST_POP:
+            {
+                atom_pop_cell(env);
+                break;
+            }
+
             // (set! <variable> <expression>)
             // <Expression> is evaluated, and the resulting value is stored in the
             // location to which <variable> is bound. <Variable> must be bound either

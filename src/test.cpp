@@ -110,8 +110,6 @@ static char* test_equality() {
 static char* test_if()
 {
     struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom, "(lambda (x) (+ 1 x))");
-    mu_assert_msg(atom_api_to_number(atom, 1) == 1);
     atom_api_close(atom);    
     return 0;    
 }
