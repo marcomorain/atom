@@ -3984,7 +3984,7 @@ enum {
     INST_DEFINE,
     INST_SET,
     INST_JUMP,
-    INST_BRANCH,
+    INST_BRANCH_FALSE,
     INST_POP // used to work around undefined push after define
 };
 
@@ -3995,7 +3995,7 @@ const static char* instruction_names [] = {
 	[INST_DEFINE]           = "define",
     [INST_SET]              = "set",
     [INST_JUMP]             = "jump",
-    [INST_BRANCH]           = "branch",
+    [INST_BRANCH_FALSE]     = "branch",
     [INST_POP]              = "pop",
 };
 
@@ -4035,8 +4035,15 @@ static void compile_function_call(Environment* env, Closure* closure, Cell* cell
 // Go back to the jump instruction at PC and make it jump over num_instruction
 static void fix_up_jump(Closure* closure, int pc, int num_instructions)
 {
+    Instruction* instruction = closure->instructions.elements + pc;
+    assert(instruction->op_code == INST_JUMP);
+    instruction->operand = num_instructions;
 }
 
+// Emit a jump instruction at position 'jump'.
+// Then compile the code, and count the number of instructions.
+// Finally, go back to the jump instuction and fix it up to skip that number of
+// instructions.
 static void compile_with_unconditional_jump(Environment* env, Closure* closure, Cell* code)
 {
     size_t jump = closure->instructions.num_elements;
@@ -4047,8 +4054,8 @@ static void compile_with_unconditional_jump(Environment* env, Closure* closure, 
     
     size_t pc = closure->instructions.num_elements;
     
-    size_t num_instructions = pc - jump;
-    fix_up_jump(closure, pc, num_instructions);
+    int num_instructions = pc - jump;
+    fix_up_jump(closure, jump, num_instructions);
 }
 
 static void compile_if(Environment* env, Closure* closure, Cell* cell)
@@ -4061,7 +4068,7 @@ static void compile_if(Environment* env, Closure* closure, Cell* cell)
     Cell* alternate     = car(cell);
 
     compile(env, closure, test);
-    emit(closure, make_instruction(INST_BRANCH, 0));
+    emit(closure, make_instruction(INST_BRANCH_FALSE, 0));
     compile_with_unconditional_jump(env, closure, consequent);
     compile_with_unconditional_jump(env, closure, alternate);
 }
@@ -4124,6 +4131,11 @@ static void compile_mutation(Environment* env, Closure* closure, Cell* cell, int
     emit(closure, make_instruction(instruction, 0));
 }
 
+static int equal(const char* a, const char* b)
+{
+    return strcmp(a, b) == 0;
+}
+
 static void compile(Environment* env, Closure* closure, Cell* cell)
 {
     switch(cell->type)
@@ -4141,27 +4153,25 @@ static void compile(Environment* env, Closure* closure, Cell* cell)
                     break;
                 }
                     
-#define EQ(symbol, string) (strcmp((symbol),(string))==0)
-                    
                 case TYPE_SYMBOL:
                 {
                     const char* symbol = head->data.symbol->name;
                     
-                    if (EQ(symbol, "define"))
+                    if (equal(symbol, "define"))
                     {
                         compile_mutation(env, closure, cell, INST_DEFINE);
                         printf("define ^ 2\n");
                     }
-                    else if (EQ(symbol, "set!"))
+                    else if (equal(symbol, "set!"))
                     {
                         compile_mutation(env, closure, cell, INST_SET);
                         printf("set! ^ 2\n");
                     }
-                    else if (EQ(symbol, "if"))
+                    else if (equal(symbol, "if"))
                     {
                         compile_if(env, closure, cell);
                     }
-                    else if (EQ(symbol, "lambda"))
+                    else if (equal(symbol, "lambda"))
                     {
                         compile_lambda(env, closure, cell);
                     }
@@ -4171,7 +4181,6 @@ static void compile(Environment* env, Closure* closure, Cell* cell)
                     }
                     break;
                 }
-#undef EQ
                 default:
                 {
                     fprintf(stderr, "Compile error: Expected symbol.\nGot:");
@@ -4314,6 +4323,18 @@ tailcall:
             case INST_POP:
             {
                 atom_pop_cell(env);
+                break;
+            }
+                
+            case INST_BRANCH_FALSE:
+            {
+                if (!is_truthy(atom_pop_cell(env))) pc++;
+                break;
+            }
+                
+            case INST_JUMP:
+            {
+                pc += instruction.operand;
                 break;
             }
 

@@ -110,6 +110,7 @@ static char* test_equality() {
 static char* test_if()
 {
     struct Continuation* atom = atom_api_open();
+    mu_assert_msg( do_boolean_operation(atom, "(if 1 2 3)"));
     atom_api_close(atom);    
     return 0;    
 }
