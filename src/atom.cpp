@@ -100,10 +100,10 @@ struct Cell
         Environment*    env;
 	};
 	
-	CellType type;
-	Data	 data;
-	Cell*    next;
-	bool	 mark;
+	int     type;
+	Data	data;
+	Cell*   next;
+	bool    mark;
 };
 
 static Cell cell_empty_list = { TYPE_EMPTY_LIST, {NULL}, NULL, false };
@@ -440,9 +440,8 @@ static void type_check(Continuation* cont, int expected, int actual)
 
 static Cell* make_cell(Environment* env, int type)
 {
-	Cell* result = (Cell*)malloc(sizeof(Cell));
-	memset(result, 0, sizeof(Cell));
-	result->type = (CellType)type;
+	Cell* result = (Cell*)calloc(1, sizeof(Cell));
+	result->type = type;
     
 	// stick on the first item in the linked list
 	result->next = env->cont->cells;
@@ -4080,7 +4079,7 @@ static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
     Cell* body      = car(cell); cell = cdr(cell);
 
     // Make a new closure
-    Closure* child = (Closure*)calloc(sizeof(Closure), 1);
+    Closure* child = (Closure*)calloc(1, sizeof(Closure));
     closure_init(child);
     
     printf("Compiling a new function.\n");
@@ -4473,7 +4472,7 @@ struct Library
  
 Continuation* atom_api_open()
 {
-	Continuation* cont	= (Continuation*)calloc(sizeof(Continuation), 1);
+	Continuation* cont	= (Continuation*)calloc(1, sizeof(Continuation));
 	Environment* env    = create_environment(cont, NULL);
 	cont->env           = env;
 	cont->input     	= stdin;
