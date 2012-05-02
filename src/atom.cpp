@@ -3577,7 +3577,6 @@ enum {
     INST_SET,
     INST_JUMP,
     INST_BRANCH_FALSE,
-    INST_POP // used to work around undefined push after define
 };
 
 const static char* instruction_names [] = {
@@ -3588,7 +3587,6 @@ const static char* instruction_names [] = {
     [INST_SET]              = "set",
     [INST_JUMP]             = "jump",
     [INST_BRANCH_FALSE]     = "branch",
-    [INST_POP]              = "pop",
 };
 
 static void emit(Closure* closure, Instruction instruction)
@@ -3687,7 +3685,6 @@ static void compile_closure(Environment* env, Closure* parent, Cell* formals, Ce
         emit(child, make_instruction(INST_PUSH_CONSTANT, constant));
         printf("Setting local variable\n");
         emit(child, make_instruction(INST_DEFINE, 0));
-        emit(child, make_instruction(INST_POP, 0));
     }
     
     compile(env, child, body);
@@ -3720,9 +3717,11 @@ static void compile_if(Environment* env, Closure* closure, Cell* cell)
     Cell* consequent    = car(cell); cell = cdr(cell);
     Cell* alternate     = car(cell);
     
+    // TODO: no else case.
     compile(env, closure, test);
     compile_closure(env, closure, &cell_empty_list, consequent);
     compile_closure(env, closure, &cell_empty_list, alternate);
+    emit(closure, make_instruction(INST_CALL, 2));
 }
 
 static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
@@ -3948,13 +3947,7 @@ tailcall:
         printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
 
         switch (instruction.op_code)
-        {
-            case INST_POP:
-            {
-                atom_pop_cell(env);
-                break;
-            }
-                
+        {                
             case INST_BRANCH_FALSE:
             {
                 if (!is_truthy(atom_pop_cell(env))) pc++;
@@ -3986,7 +3979,6 @@ tailcall:
                 Cell* symbol = atom_pop_a(env, TYPE_SYMBOL);
                 Cell* value = atom_pop_cell(env);
                 environment_define(env, symbol->data.symbol, value);
-                atom_push_undefined(env);
                 break;
             }
                 
