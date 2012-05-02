@@ -3834,7 +3834,7 @@ static void compile(Environment* env, Closure* closure, Cell* cell)
 
 void atom_api_load(Continuation* cont, const char* data, size_t length)
 {	
-    printf("input> %s\n", data);
+    printf("Input String: %s\n", data);
 	Environment* env = cont->env;
     
 	JumpBuffer* prev = cont->escape;
@@ -3860,12 +3860,12 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
         read_token(&input, &next);
 		if (Cell* cell = parse_datum(env, &input, &next))
 		{
+            printf("Input was parsed as: ");
+            print(stdout, cell, false);
             printf("Compiling top level function\n");
             struct Closure closure;
             closure_init(&closure);
             compile(env, &closure, cell);
-            printf("parsed> ");
-            print(stdout, cell, false);
             eval(cont, &closure);
         }
         else break;
@@ -3912,7 +3912,7 @@ tailcall:
     size_t pc = 0;
     Environment* env = cont->env;
     
-    printf("Calling function %p\n", closure);
+    printf("eval: function %p\n", closure);
     
     for (int i=0; i<closure->constants.num_elements; i++)
     {
