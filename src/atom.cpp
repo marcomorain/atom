@@ -32,7 +32,8 @@ enum {
     TYPE_CLOSURE,
     TYPE_INPUT_PORT,
     TYPE_OUTPUT_PORT,
-    TYPE_ENVIRONMENT
+    TYPE_ENVIRONMENT,
+    MAX_TYPES
 };
 
 const static char* typenames [] = {
@@ -480,49 +481,51 @@ static Cell* make_output_port(Environment* env, FILE* port)
     return make_io_port(env, TYPE_OUTPUT_PORT, port);
 }
 
-static void mark(Cell* cell);
+static void mark(Cell* cell, size_t marked[]);
 
-static void mark_environment(Environment* env)
+static void mark_environment(Environment* env, size_t marked[])
 {
 	for (unsigned i = 0; i <= env->mask; i++)
 	{
 		for (Environment::Node* node = env->data[i]; node; node = node->next)
 		{
-			mark(node->value);	
+			mark(node->value, marked);
 		}
 	}
 }
 
-static void mark_closure(Closure* closure)
+static void mark_closure(Closure* closure, size_t marked[])
 {
     for (int i=0; i < closure->constants.num_elements; i++)
-        mark(stack_get(&closure->constants, i));
+        mark(stack_get(&closure->constants, i), marked);
 }
 
-static void mark(Cell* cell)
+static void mark(Cell* cell, size_t marked[])
 {
 	if (!cell || cell->mark) return;
 	
 	cell->mark = true;
+    
+    marked[cell->type]++;
 	
 	switch(cell->type)
 	{            
 		case TYPE_PAIR:
-			mark(cell->data.pair.car);
-			mark(cell->data.pair.cdr);
+			mark(cell->data.pair.car, marked);
+			mark(cell->data.pair.cdr, marked);
 			break;
 			
 		case TYPE_VECTOR:
             for(int i=0; i<cell->data.vector.length; i++)
-                mark(cell->data.vector.data[i]);
+                mark(cell->data.vector.data[i], marked);
 			break;
             
 		case TYPE_CLOSURE:
-            mark_closure(cell->data.closure);
+            mark_closure(cell->data.closure, marked);
 			break;
             
         case TYPE_ENVIRONMENT:
-            mark_environment(cell->data.env);
+            mark_environment(cell->data.env, marked);
             break;
             
         default:
@@ -530,15 +533,33 @@ static void mark(Cell* cell)
 	}
 }
 
-static void collect_garbage(Continuation* cont)
+static void print_type_table(size_t marked[], size_t kept[], size_t freed[])
 {
-    const int cells_before = cont->allocated;
-	
-	mark_environment(cont->env);
-    
+    size_t total_marked = 0;
+    size_t total_kept   = 0;
+    size_t total_freed  = 0;
+    puts("|=================================|");
+    printf("|%-12s|%-6s|%-6s|%-6s|\n", "TYPE", "MARKED", "KEPT", "FREED");
+    for (int i=0; i<MAX_TYPES; i++)
+    {
+        printf("|%-12s|%6ld|%6ld|%6ld|\n", typenames[i], marked[i], kept[i], freed[i]);
+        total_marked += marked[i];
+        total_kept   += kept[i];
+        total_freed  += freed[i];
+    }
+    printf("|%-12s|%6ld|%6ld|%6ld|\n", "Total", total_marked, total_kept, total_freed);
+    puts("|=================================|\n");
+}
+
+static void mark(Continuation* cont, size_t marked[])
+{
+	mark_environment(cont->env, marked);
     for (int i=0; i<cont->stack.num_elements; i++)
-        mark(stack_get(&cont->stack, i));
-	
+        mark(stack_get(&cont->stack, i), marked);
+}
+
+static void sweep(Continuation* cont, size_t kept[], size_t freed[])
+{
 	Cell* remaining = NULL;
 	Cell* next = NULL;
 	
@@ -548,12 +569,14 @@ static void collect_garbage(Continuation* cont)
 		
 		if (cell->mark)
 		{
+            kept[cell->type]++;
 			cell->mark = false;
 			cell->next = remaining;
 			remaining = cell;
 		}
 		else
 		{
+            freed[cell->type]++;
 		    switch(cell->type)
 		    {       
 		        case TYPE_INPUT_PORT:
@@ -569,7 +592,7 @@ static void collect_garbage(Continuation* cont)
                         fclose(cell->data.port);
                     }
                     break;
-                                        
+                    
                 case TYPE_STRING:
                     free(cell->data.string.data);
                     break;
@@ -587,16 +610,16 @@ static void collect_garbage(Continuation* cont)
 	}
 	
 	cont->cells = remaining;
-    
-    // Print GC stats
-    {
-        const int freed = cells_before - cont->allocated;
-        const float percent_freed = 100.0f * (float)freed / (float)cells_before;
-    
-        printf("GC: %d cells collected (%.1f%%). %d remain allocated\n",
-           freed, percent_freed, cont->allocated);
-    }
-	
+}
+
+static void collect_garbage(Continuation* cont)
+{
+    size_t marked[MAX_TYPES] = {};
+    size_t kept  [MAX_TYPES] = {};
+    size_t freed [MAX_TYPES] = {};
+    mark(cont, marked);
+    sweep(cont, kept, freed);
+    print_type_table(marked, kept, freed);
 }
 
 static Cell* make_boolean(bool value)
@@ -3569,24 +3592,21 @@ static void closure_init(Closure* closure)
 }
 
 enum {
-    
-    INST_PUSH_CONSTANT,
+    INST_PUSH,
     INST_LOAD,
     INST_CALL,
     INST_DEFINE,
     INST_SET,
-    INST_JUMP,
-    INST_BRANCH_FALSE,
+    INST_IF,
 };
 
 const static char* instruction_names [] = {
-    [INST_PUSH_CONSTANT]    = "push constant",
+    [INST_PUSH]    = "push constant",
     [INST_LOAD]             = "load",
 	[INST_CALL]             = "call",
 	[INST_DEFINE]           = "define",
     [INST_SET]              = "set",
-    [INST_JUMP]             = "jump",
-    [INST_BRANCH_FALSE]     = "branch",
+    [INST_IF]               = "if",
 };
 
 static void emit(Closure* closure, Instruction instruction)
@@ -3623,34 +3643,6 @@ static void compile_function_call(Environment* env, Closure* closure, Cell* cell
     printf("Function call with %d params\n", num_params);
 }
 
-// Go back to the jump instruction at PC and make it jump over num_instruction
-static void fix_up_jump(Closure* closure, int pc, int num_instructions)
-{
-    Instruction* instruction = closure->instructions.elements + pc;
-    assert(instruction->op_code == INST_JUMP);
-    instruction->operand = num_instructions;
-}
-
-// Emit a jump instruction at position 'jump'.
-// Then compile the code, and count the number of instructions.
-// Finally, go back to the jump instuction and fix it up to skip that number of
-// instructions.
-static void compile_with_unconditional_jump(Environment* env, Closure* closure, Cell* code)
-{
-    int jump = closure->instructions.num_elements;
-    
-    emit(closure, make_instruction(INST_JUMP, 0));
-    
-    compile(env, closure, code);
-    
-    int pc = closure->instructions.num_elements;
-    
-    int num_instructions = pc - jump;
-    fix_up_jump(closure, jump, num_instructions);
-}
-
-
-
 // 4.1.2
 // Literal Expressions
 
@@ -3662,9 +3654,7 @@ static void compile_quote(Environment* env, Closure* closure, Cell* cell)
     Cell* lambda = car(cell); cell = cdr(cell);
     Cell* datum  = car(cell); cell = cdr(cell);
     assert(cell->type == TYPE_EMPTY_LIST);
-    
-    emit(closure, make_instruction(INST_PUSH_CONSTANT, closure_add_constant(closure, datum)));
-
+    emit(closure, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
 }
 
 static void compile_closure(Environment* env, Closure* parent, Cell* formals, Cell* body)
@@ -3682,7 +3672,7 @@ static void compile_closure(Environment* env, Closure* parent, Cell* formals, Ce
     {
         type_check(env->cont, TYPE_SYMBOL, car(formal)->type);
         size_t constant = closure_add_constant(child, car(formal));
-        emit(child, make_instruction(INST_PUSH_CONSTANT, constant));
+        emit(child, make_instruction(INST_PUSH, constant));
         printf("Setting local variable\n");
         emit(child, make_instruction(INST_DEFINE, 0));
     }
@@ -3692,7 +3682,7 @@ static void compile_closure(Environment* env, Closure* parent, Cell* formals, Ce
     printf("Function compiled OK.\n");
     
     size_t c = closure_add_constant(parent, make_closure(env, child));
-    emit(parent, make_instruction(INST_PUSH_CONSTANT, c));
+    emit(parent, make_instruction(INST_PUSH, c));
 }
 
 
@@ -3711,17 +3701,22 @@ static void compile_closure(Environment* env, Closure* parent, Cell* formals, Ce
 static void compile_if(Environment* env, Closure* closure, Cell* cell)
 {
     //<test> <consequent> <alternate>
-    
     Cell* symbol        = car(cell); cell = cdr(cell);
     Cell* test          = car(cell); cell = cdr(cell);
     Cell* consequent    = car(cell); cell = cdr(cell);
     Cell* alternate     = car(cell);
-    
-    // TODO: no else case.
+
+    // Put the test code on the stack. This will compile down to a value
+    // that will be true or false.
     compile(env, closure, test);
+
+    // Push things in reserse order
     compile_closure(env, closure, &cell_empty_list, consequent);
     compile_closure(env, closure, &cell_empty_list, alternate);
-    emit(closure, make_instruction(INST_CALL, 2));
+    
+    // TODO: use this operand to test for the presense of the else clause
+    emit(closure, make_instruction(INST_IF, 2));
+    emit(closure, make_instruction(INST_CALL, 0));
 }
 
 static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
@@ -3750,7 +3745,7 @@ static void compile_mutation(Environment* env, Closure* closure, Cell* cell, int
     
     // Push the symbol
     size_t c = closure_add_constant(closure, symbol);
-    emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
+    emit(closure, make_instruction(INST_PUSH, c));
     
     // Define (2)
     emit(closure, make_instruction(instruction, 0));
@@ -3819,32 +3814,21 @@ static void compile(Environment* env, Closure* closure, Cell* cell)
             }
             break;
         }
-            
+
         case TYPE_SYMBOL:
         {
             // Load the symbol
             size_t c = closure_add_constant(closure, cell);
-            emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
+            emit(closure, make_instruction(INST_PUSH, c));
             emit(closure, make_instruction(INST_LOAD, 0));
             break;
         }
-            
-		case TYPE_BOOLEAN:
-		case TYPE_NUMBER:
-		case TYPE_STRING:
-		case TYPE_CHARACTER:
-        case TYPE_VECTOR:
-        case TYPE_ENVIRONMENT:
+
+		default:
         {
-            size_t c = closure_add_constant(closure, cell);
-            emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
+            emit(closure, make_instruction(INST_PUSH, closure_add_constant(closure, cell)));
             break;
         }
-            
-        default:
-            printf("syntax error - don't know how to deal with: ");
-            print(stdout, cell, true);
-            break;
     }
 }
 
@@ -3947,16 +3931,18 @@ tailcall:
         printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
 
         switch (instruction.op_code)
-        {                
-            case INST_BRANCH_FALSE:
+        {
+            // Pop 3 values – the test and the 2 blocks of code to call.
+            // If the test is true,  push consequent
+            // If the test is false, push consequent
+            // The next operations is call(0).
+            case INST_IF:
             {
-                if (!is_truthy(atom_pop_cell(env))) pc++;
-                break;
-            }
+                Cell* consequent    = atom_pop_a(env, TYPE_CLOSURE);
+                Cell* alternate     = atom_pop_a(env, TYPE_CLOSURE);
                 
-            case INST_JUMP:
-            {
-                pc += instruction.operand;
+                Cell* result = is_truthy(atom_pop_cell(env)) ? consequent : alternate;
+                atom_push_cell(env, result);
                 break;
             }
 
@@ -3982,7 +3968,7 @@ tailcall:
                 break;
             }
                 
-            case INST_PUSH_CONSTANT:
+            case INST_PUSH:
             {
                 stack_push(&cont->stack, stack_get(&closure->constants, instruction.operand));
                 break;
