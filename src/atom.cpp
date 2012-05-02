@@ -3651,32 +3651,6 @@ static void compile_with_unconditional_jump(Environment* env, Closure* closure, 
     fix_up_jump(closure, jump, num_instructions);
 }
 
-// 4.1.5 Conditionals
-
-// (if <test> <consequent> <alternate>)  syntax
-// (if <test> <consequent>)              syntax
-// Syntax: <Test>, <consequent>, and <alternate> may be arbitrary
-// expressions.
-// Semantics: An if expression is evaluated as follows: first, <test> is
-// evaluated. If it yields a true value (see section 6.3.1), then
-// <consequent> is evaluated and its value(s) is(are) returned. Otherwise
-// <alternate> is evaluated and its value(s) is(are) returned.
-// If <test> yields a false value and no <alternate> is specified, then
-// the result of the expression is unspecified.
-static void compile_if(Environment* env, Closure* closure, Cell* cell)
-{
-    //<test> <consequent> <alternate>
-
-    Cell* symbol        = car(cell); cell = cdr(cell);
-    Cell* test          = car(cell); cell = cdr(cell);
-    Cell* consequent    = car(cell); cell = cdr(cell);
-    Cell* alternate     = car(cell);
-
-    compile(env, closure, test);
-    emit(closure, make_instruction(INST_BRANCH_FALSE, 0));
-    compile_with_unconditional_jump(env, closure, consequent);
-    compile_with_unconditional_jump(env, closure, alternate);
-}
 
 
 // 4.1.2
@@ -3695,13 +3669,8 @@ static void compile_quote(Environment* env, Closure* closure, Cell* cell)
 
 }
 
-static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
-{
-    Cell* lambda    = car(cell); cell = cdr(cell);
-    Cell* formals   = car(cell); cell = cdr(cell);
-    Cell* body      = car(cell); cell = cdr(cell);
-    assert(cell->type == TYPE_EMPTY_LIST);
-
+static void compile_closure(Environment* env, Closure* parent, Cell* formals, Cell* body)
+{    
     // Make a new closure
     Closure* child = (Closure*)calloc(1, sizeof(Closure));
     closure_init(child);
@@ -3721,14 +3690,48 @@ static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
         emit(child, make_instruction(INST_POP, 0));
     }
     
-
-
     compile(env, child, body);
     
     printf("Function compiled OK.\n");
     
-    size_t c = closure_add_constant(closure, make_closure(env, child));
-    emit(closure, make_instruction(INST_PUSH_CONSTANT, c));
+    size_t c = closure_add_constant(parent, make_closure(env, child));
+    emit(parent, make_instruction(INST_PUSH_CONSTANT, c));
+}
+
+
+// 4.1.5 Conditionals
+
+// (if <test> <consequent> <alternate>)  syntax
+// (if <test> <consequent>)              syntax
+// Syntax: <Test>, <consequent>, and <alternate> may be arbitrary
+// expressions.
+// Semantics: An if expression is evaluated as follows: first, <test> is
+// evaluated. If it yields a true value (see section 6.3.1), then
+// <consequent> is evaluated and its value(s) is(are) returned. Otherwise
+// <alternate> is evaluated and its value(s) is(are) returned.
+// If <test> yields a false value and no <alternate> is specified, then
+// the result of the expression is unspecified.
+static void compile_if(Environment* env, Closure* closure, Cell* cell)
+{
+    //<test> <consequent> <alternate>
+    
+    Cell* symbol        = car(cell); cell = cdr(cell);
+    Cell* test          = car(cell); cell = cdr(cell);
+    Cell* consequent    = car(cell); cell = cdr(cell);
+    Cell* alternate     = car(cell);
+    
+    compile(env, closure, test);
+    compile_closure(env, closure, &cell_empty_list, consequent);
+    compile_closure(env, closure, &cell_empty_list, alternate);
+}
+
+static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
+{
+    Cell* lambda    = car(cell); cell = cdr(cell);
+    Cell* formals   = car(cell); cell = cdr(cell);
+    Cell* body      = car(cell); cell = cdr(cell);
+    assert(cell->type == TYPE_EMPTY_LIST);
+    compile_closure(env, closure, formals, body);
 }
 
 
