@@ -48,7 +48,7 @@ int main (int argc, char** argv)
         return EXIT_FAILURE;
     } else
     {
-        return EXIT_SUCCESS;
+//        return EXIT_SUCCESS;
     }
     
     Continuation* atom = atom_api_open();
@@ -94,7 +94,7 @@ int main (int argc, char** argv)
     }
     else
     {
-        printf("File done, no REPL.\n");
+        printf("No REPL.\n");
     }
     
     atom_api_close(atom);

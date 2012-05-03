@@ -617,8 +617,10 @@ static void collect_garbage(Continuation* cont)
     size_t marked[MAX_TYPES] = {};
     size_t kept  [MAX_TYPES] = {};
     size_t freed [MAX_TYPES] = {};
+    
     mark(cont, marked);
     sweep(cont, kept, freed);
+    
     print_type_table(marked, kept, freed);
 }
 
