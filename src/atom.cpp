@@ -57,6 +57,57 @@ struct Continuation;
 struct Cell;
 struct Symbol;
 
+
+struct Vector
+{
+    Cell**  cell_data;
+    int     length;
+    int     capacity;
+};
+
+static Cell* vector_get(const Vector* vector, int n)
+{
+    assert(n > 0);
+    assert(n < vector->length);
+    return vector->cell_data[n];
+}
+
+static void vector_set(Vector* vector, int n, Cell* cell)
+{
+    assert(n > 0);
+    assert(n < vector->length);
+    vector->cell_data[n] = cell;
+}
+
+static void vector_delete(Vector* vector)
+{
+    vector->length   = -1;
+    vector->capacity = -1;
+    free(vector->cell_data);
+    vector->cell_data = 0;
+}
+
+static void vector_fill(Vector* vector, Cell* fill)
+{
+	for (int i=0; i<vector->length; i++)
+	{
+        vector_set(vector, i, fill);
+	}
+}
+
+static void vector_init(Vector* vector, int length, Cell* fill)
+{
+    vector->capacity  = length;
+	vector->length    = length;
+	vector->cell_data = (Cell**)malloc(length * sizeof(Cell*));
+    vector_fill(vector, fill);
+}
+
+static int vector_length(Vector* vector)
+{
+    return vector->length;
+}
+
 // Calling convention:
 // Pop params off the stack
 // Push (1) the result.
@@ -68,12 +119,6 @@ struct Cell
 	{
 		Cell* car;
 		Cell* cdr;
-	};
-	
-	struct Vector
-	{
-		Cell** data;
-		int    length;		
 	};
 
     // todo: add a const string type? or a flag?
@@ -91,7 +136,7 @@ struct Cell
 		String          string;
 		Pair            pair;
 		const Symbol*   symbol;
-		Vector          vector;
+		struct Vector   vector;
         atom_builtin    built_in;
         struct Closure* closure;
 		FILE*           port;
@@ -126,6 +171,7 @@ static bool is_pair(const Cell* cell)
     assert(cell);
     return cell->type == TYPE_PAIR;
 }
+
 
 template<typename Type> struct stack
 {
@@ -288,7 +334,7 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             for (int i=0; i<cell->data.vector.length; i++)
             {
                 if (i>0) fprintf(output, " ");
-                print_rec(output, cell->data.vector.data[i], human, 0);
+                print_rec(output, vector_get(&cell->data.vector, i), human, 0);
             }
             fprintf(output, ")");
             break;
@@ -356,7 +402,7 @@ struct Continuation
 	int                 allocated;
 	FILE*               input;
     FILE*               output;
-    struct stack<Cell*> stack;
+    Vector              stack;
     
     // The symbol table
     Symbol**        symbols;
@@ -517,7 +563,7 @@ static void mark(Cell* cell, size_t marked[])
 			
 		case TYPE_VECTOR:
             for(int i=0; i<cell->data.vector.length; i++)
-                mark(cell->data.vector.data[i], marked);
+                mark(vector_get(&cell->data.vector, i), marked);
 			break;
             
 		case TYPE_CLOSURE:
@@ -554,8 +600,8 @@ static void print_type_table(size_t marked[], size_t kept[], size_t freed[])
 static void mark(Continuation* cont, size_t marked[])
 {
 	mark_environment(cont->env, marked);
-    for (int i=0; i<cont->stack.num_elements; i++)
-        mark(stack_get(&cont->stack, i), marked);
+    for (int i=0; i<vector_length(&cont->stack); i++)
+        mark(vector_get(&cont->stack, i), marked);
 }
 
 static void sweep(Continuation* cont, size_t kept[], size_t freed[])
@@ -598,7 +644,7 @@ static void sweep(Continuation* cont, size_t kept[], size_t freed[])
                     break;
                     
                 case TYPE_VECTOR:
-                    free(cell->data.vector.data);
+                    vector_delete(&cell->data.vector);
                     break;
                     
                 default:
@@ -646,12 +692,7 @@ static Cell* make_character(Environment* env, char c)
 static Cell* make_vector(Environment* env, int length, Cell* fill)
 {
 	Cell* vec = make_cell(env, TYPE_VECTOR);
-	vec->data.vector.length = length;
-	vec->data.vector.data   = (Cell**)malloc(length * sizeof(Cell*));
-	for (int i=0; i<length; i++)
-	{
-		vec->data.vector.data[i] = fill;
-	}
+    vector_init(&vec->data.vector, length, fill);
 	return vec;
 }
 
@@ -1376,7 +1417,7 @@ Cell* parse_vector(Environment* env, Input* input, Token* token)
     unsigned i = 0;
     for (Cell* c = list; is_pair(c); c = cdr(c))
     {
-        vector->data.vector.data[i++] = car(c);
+        vector_set(&vector->data.vector, i++, car(c));
         //printf("Vector [%d] = ", i);
         //print(stdout, car(c), true);
     }
@@ -1568,6 +1609,11 @@ static Cell* atom_pop_a(Environment* env, int type)
     Cell* cell = atom_pop_cell(env);
     type_check(env->cont, type, cell->type);
     return cell;
+}
+
+static Vector* atom_pop_vector(Environment* env)
+{
+    return &atom_pop_a(env, TYPE_VECTOR)->data.vector;
 }
 
 Cell* atom_pop_list(Environment* env)
@@ -1958,12 +2004,12 @@ static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
 	// if different lengths, return false
 	if (obj2->data.vector.length != length) return false;
     
-	Cell* const* const a = obj1->data.vector.data;
-	Cell* const* const b = obj2->data.vector.data;
+    const Vector* a = &obj1->data.vector;
+    const Vector* b = &obj2->data.vector;
     
 	for (int i=0; i<length; i++)
 	{
-		if (!eq_helper(a[i], b[i], true, true))
+		if (!eq_helper(vector_get(a, i), vector_get(b, i), true, true))
 		{
 			return false;
 		}
@@ -3074,7 +3120,7 @@ static void atom_vector(Environment* env, int params)
     
     for (int i=0; i<params; i++)
     {
-        v->data.vector.data[i] = atom_pop_cell(env);
+        vector_set(&v->data.vector, i, atom_pop_cell(env));
     }
     
     atom_push_cell(env, v);
@@ -3107,7 +3153,7 @@ static void atom_vector_ref(Environment* env, int params)
 		signal_error(env->cont, "Invalid vector index");
 	}
 	
-	Cell* result = v->data.vector.data[k];
+	Cell* result = vector_get(&v->data.vector, k);
 	
 	// check if unitialized.
 	if (!result)
@@ -3134,8 +3180,7 @@ static void atom_vector_set_b(Environment* env, int params)
 		// todo: better error message.	
 		signal_error(env->cont, "Invalid vector index k");
 	}
-	
-	vector->data.vector.data[k] = obj;
+    vector_set(&vector->data.vector, k, obj);
     atom_push_undefined(env);
 }
 
@@ -3153,7 +3198,7 @@ static void atom_vector_to_list(Environment* env, int params)
     // Build up the list backwards
     for(int i=vector->data.vector.length-1; i > -1; i--)
     {
-        list = cons(env, vector->data.vector.data[i], list);
+        list = cons(env, vector_get(&vector->data.vector, i), list);
     }
     
     atom_push_cell(env, list);
@@ -3176,7 +3221,7 @@ static void atom_list_to_vector(Environment* env, int params)
     int i = 0;
     for (Cell* cell = list; is_pair(cell); cell = cdr(cell))
     {
-        vector->data.vector.data[i] = car(cell);
+        vector_set(&vector->data.vector, i, car(cell));
         i++;
     }
     
@@ -3190,13 +3235,8 @@ static void atom_list_to_vector(Environment* env, int params)
 static void atom_vector_fill_b(Environment* env, int params)
 {
     assert(params == 2);
-	Cell* vector = atom_pop_a(env, TYPE_VECTOR);
-	Cell* fill   = atom_pop_cell(env);
-	
-	for (int i=0; i<vector->data.vector.length; i++)
-	{
-		vector->data.vector.data[i] = fill;
-	}
+	Vector* vector = atom_pop_vector(env);
+    vector_fill(vector, atom_pop_cell(env));
     atom_push_undefined(env);
 }
 
