@@ -67,7 +67,7 @@ struct Vector
 
 static Cell* vector_get(const Vector* vector, int n)
 {
-    assert(n > 0);
+    assert(n >= 0);
     assert(n < vector->length);
     return vector->cell_data[n];
 }
@@ -99,13 +99,14 @@ static void vector_init(Vector* vector, int length, Cell* fill)
 {
     vector->capacity  = length;
 	vector->length    = length;
-	vector->cell_data = (Cell**)malloc(length * sizeof(Cell*));
+	vector->cell_data = (Cell**)calloc(length, sizeof(Cell*));
     vector_fill(vector, fill);
 }
 
 static void vector_init_empty(Vector* vector)
 {
     vector_init(vector, 4, 0);
+    vector->length = 0;
 }
 
 
@@ -116,7 +117,7 @@ static int vector_length(Vector* vector)
 
 static Cell* vector_pop(Vector* vector)
 {
-    assert(vector->length > 0);
+    assert(vector_length(vector) > 0);
     vector->length--;
     return vector->cell_data[vector->length];
 }
@@ -126,7 +127,7 @@ static void vector_push(Vector* vector, Cell* cell)
     if (vector->length == vector->capacity)
     {
         vector->capacity   = 2 * vector->capacity;
-        vector->cell_data  = (Cell**)realloc(vector->cell_data, vector->capacity);
+        vector->cell_data  = (Cell**)realloc(vector->cell_data, vector->capacity * sizeof(Cell*));
     }
     vector->cell_data[vector->length] = cell;
     vector->length++;
@@ -452,7 +453,7 @@ struct Instruction
 struct Closure
 {
     stack<Instruction> instructions;
-    stack<Cell*>       constants;
+    Vector constants;
 };
 
 // Maybe insert a new symbol into the Cont's symbol table.
@@ -566,8 +567,8 @@ static void mark_environment(Environment* env, size_t marked[])
 
 static void mark_closure(Closure* closure, size_t marked[])
 {
-    for (int i=0; i < closure->constants.num_elements; i++)
-        mark(stack_get(&closure->constants, i), marked);
+    for (int i=0; i < vector_length(&closure->constants); i++)
+        mark(vector_get(&closure->constants, i), marked);
 }
 
 static void mark(Cell* cell, size_t marked[])
@@ -3641,7 +3642,7 @@ Instruction make_instruction(int op_code, int operand)
 static void closure_init(Closure* closure)
 {
     stack_init(&closure->instructions);
-    stack_init(&closure->constants);
+    vector_init_empty(&closure->constants);
 }
 
 enum {
@@ -3674,9 +3675,8 @@ static int closure_add_constant(struct Closure* closure, Cell* cell)
     assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN || type == TYPE_CLOSURE);
     printf("Pushing constant: ");
     print(stdout, cell, false);
-    stack_push(&closure->constants, cell);
-    // TODO: Bad cast here.
-    return (int)closure->constants.num_elements - 1;
+    vector_push(&closure->constants, cell);
+    return vector_length(&closure->constants) - 1;
 }
 
 static void compile(Environment* env, Closure* closure, Cell* cell);
@@ -3967,10 +3967,10 @@ tailcall:
     
     printf("eval: function %p\n", closure);
     
-    for (int i=0; i<closure->constants.num_elements; i++)
+    for (int i=0; i<vector_length(&closure->constants); i++)
     {
         printf("Constant %d: ", i);
-        print(stdout, stack_get(&closure->constants, i), true);
+        print(stdout, vector_get(&closure->constants, i), true);
     }
 
     for (;;)
@@ -4023,7 +4023,7 @@ tailcall:
                 
             case INST_PUSH:
             {
-                vector_push(&cont->stack, stack_get(&closure->constants, instruction.operand));
+                vector_push(&cont->stack, vector_get(&closure->constants, instruction.operand));
                 break;
             }
                 
@@ -4430,6 +4430,8 @@ Continuation* atom_api_open()
  
 void atom_api_close(Continuation* cont)
 {
+    vector_delete(&cont->stack);
+
     for (size_t i=0; i <= cont->symbol_mask; i++)
     {
         Symbol* next;
@@ -4442,4 +4444,5 @@ void atom_api_close(Continuation* cont)
     }
     free(cont->symbols);
     free(cont);
+
 }
