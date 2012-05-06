@@ -74,7 +74,7 @@ static Cell* vector_get(const Vector* vector, int n)
 
 static void vector_set(Vector* vector, int n, Cell* cell)
 {
-    assert(n > 0);
+    assert(n >= 0);
     assert(n < vector->length);
     vector->cell_data[n] = cell;
 }
@@ -103,9 +103,33 @@ static void vector_init(Vector* vector, int length, Cell* fill)
     vector_fill(vector, fill);
 }
 
+static void vector_init_empty(Vector* vector)
+{
+    vector_init(vector, 4, 0);
+}
+
+
 static int vector_length(Vector* vector)
 {
     return vector->length;
+}
+
+static Cell* vector_pop(Vector* vector)
+{
+    assert(vector->length > 0);
+    vector->length--;
+    return vector->cell_data[vector->length];
+}
+
+static void vector_push(Vector* vector, Cell* cell)
+{
+    if (vector->length == vector->capacity)
+    {
+        vector->capacity   = 2 * vector->capacity;
+        vector->cell_data  = (Cell**)realloc(vector->cell_data, vector->capacity);
+    }
+    vector->cell_data[vector->length] = cell;
+    vector->length++;
 }
 
 // Calling convention:
@@ -1599,9 +1623,7 @@ static void eval(Continuation* env, struct Closure* closure);
 
 static Cell* atom_pop_cell(Environment* env)
 {
-    Cell* top = stack_get_top(&env->cont->stack);
-    stack_pop(&env->cont->stack, 1);
-    return top;
+    return vector_pop(&env->cont->stack);
 }
 
 static Cell* atom_pop_a(Environment* env, int type)
@@ -1647,7 +1669,7 @@ static char atom_pop_character_lower(Environment* env)
 
 void atom_push_cell(Environment* env, Cell* cell)
 {
-    stack_push(&env->cont->stack, cell);
+    vector_push(&env->cont->stack, cell);
 }
 
 void atom_push_boolean(Environment* env, bool boolean)
@@ -1808,22 +1830,19 @@ static void plus_mul_helper(Environment* env, int params, bool is_add)
         
     for (int i=0; i<params; i++)
     {
-        Cell* top = stack_get_top(&env->cont->stack);
-        type_check(env->cont, TYPE_NUMBER, top->type);
+        double n = atom_pop_number(env);
         
         if (is_add)
 		{
-			result += top->data.number;
+			result += n;
 		}
 		else
 		{
-			result *= top->data.number;
+			result *= n;
 		}
-        
-        stack_pop(&env->cont->stack, 1);
     }
     
-    stack_push(&env->cont->stack, make_number(env, result));
+    atom_push_number(env, result);
 }
 
 // (+ z1 ...)
@@ -1843,9 +1862,7 @@ static void atom_mul(Environment* env, int params)
 
 static void sub_div_helper(Environment* env, int params, bool is_sub)
 {
-	Cell* z = stack_get_top(&env->cont->stack);
-	double result = z->data.number;
-    stack_pop(&env->cont->stack, 1);
+	double result = atom_pop_number(env);
     
     params = params - 1;
     
@@ -1853,17 +1870,15 @@ static void sub_div_helper(Environment* env, int params, bool is_sub)
 	{
         for (int i=0; i<params; i++)
         {
-			Cell* num = stack_get_top(&env->cont->stack);
-			type_check(env->cont, TYPE_NUMBER, num->type);
-            stack_pop(&env->cont->stack, 1);
+            double num = atom_pop_number(env);
 
 			if (is_sub)
 			{
-				result = result - num->data.number;
+				result = result - num;
 			}
 			else
 			{
-				result = result / num->data.number;
+				result = result / num;
 			}
                         
 		}
@@ -1880,7 +1895,7 @@ static void sub_div_helper(Environment* env, int params, bool is_sub)
 		}
 	}
     
-    stack_push(&env->cont->stack, make_number(env, result));
+    atom_push_number(env, result);
 }
 
 static void atom_sub(Environment* env, int params)
@@ -2103,12 +2118,8 @@ static void atom_number_q(Environment* env, int params)
 
 static void atom_integer_q(Environment* env, int params)
 {
-	Cell* obj = stack_get_top(&env->cont->stack);
-    stack_pop(&env->cont->stack, 1);
-
-	bool integer =	obj->type == TYPE_NUMBER && is_integer(obj->data.number);
-
-    atom_push_boolean(env, integer);
+    assert(params == 1);
+    atom_push_boolean(env, is_integer(atom_pop_number(env)));
 }
 
 // (sin z)
@@ -4012,15 +4023,13 @@ tailcall:
                 
             case INST_PUSH:
             {
-                stack_push(&cont->stack, stack_get(&closure->constants, instruction.operand));
+                vector_push(&cont->stack, stack_get(&closure->constants, instruction.operand));
                 break;
             }
                 
             case INST_LOAD:
             {
-                Cell* data = environment_get(env, stack_get_top(&cont->stack));
-                stack_pop (&cont->stack, 1);
-                stack_push(&cont->stack, data);
+                atom_push_cell(env, environment_get(env, atom_pop_cell(env)));
                 break;
             }
                 
@@ -4029,9 +4038,7 @@ tailcall:
                 int num_params = instruction.operand;
                 assert(num_params >= 0);
                 
-                Cell* function = stack_get_top(&cont->stack);
-                
-                stack_pop(&cont->stack, 1);
+                Cell* function = atom_pop_cell(env);
                 
                 switch (function->type)
                 {
@@ -4069,17 +4076,18 @@ tailcall:
 static Cell* load_register(struct Continuation* cont, int n)
 {
     assert(n > 0);
-    return stack_get(&cont->stack, n-1);
+    return vector_get(&cont->stack, n-1);
 }
 
 size_t atom_api_get_top(struct Continuation* cont)
 {
-    return cont->stack.num_elements;
+    return vector_length(&cont->stack);
 }
 
 void atom_api_clear(struct Continuation* cont)
 {
-    cont->stack.num_elements = 0;
+    // todo: encapsulate
+    cont->stack.length = 0;
 }
 
 double atom_api_to_number(struct Continuation* cont, int n)
@@ -4130,7 +4138,7 @@ Continuation* atom_api_open()
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)calloc(1+cont->symbol_mask, sizeof(Symbol*));
     
-    stack_init(&cont->stack);
+    vector_init_empty(&cont->stack);
     
     const Library libs [] = {
         
