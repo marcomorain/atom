@@ -1,5 +1,6 @@
 #pragma once
 #include <string.h>
+#include <stdbool.h>
 
 struct Continuation;
 

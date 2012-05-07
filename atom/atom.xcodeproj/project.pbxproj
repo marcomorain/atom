@@ -9,7 +9,7 @@
 /* Begin PBXBuildFile section */
 		493DC93514096291009876BE /* linenoise.c in Sources */ = {isa = PBXBuildFile; fileRef = 493DC93314096291009876BE /* linenoise.c */; };
 		4942A8131511C1080099D148 /* test.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4942A8121511C1080099D148 /* test.cpp */; };
-		4989F1DA144DFE0300EA571B /* atom.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 4989F1D9144DFE0300EA571B /* atom.cpp */; };
+		4989F1DA144DFE0300EA571B /* atom.c in Sources */ = {isa = PBXBuildFile; fileRef = 4989F1D9144DFE0300EA571B /* atom.c */; };
 		49B0173E1511BA12009B5DAC /* main.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 49B0173D1511BA12009B5DAC /* main.cpp */; };
 /* End PBXBuildFile section */
 
@@ -29,7 +29,7 @@
 		493DC93314096291009876BE /* linenoise.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linenoise.c; path = ../../linenoise/linenoise.c; sourceTree = "<group>"; };
 		493DC93414096291009876BE /* linenoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linenoise.h; path = ../../linenoise/linenoise.h; sourceTree = "<group>"; };
 		4942A8121511C1080099D148 /* test.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = test.cpp; path = ../../src/test.cpp; sourceTree = "<group>"; };
-		4989F1D9144DFE0300EA571B /* atom.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = atom.cpp; path = ../../src/atom.cpp; sourceTree = "<group>"; };
+		4989F1D9144DFE0300EA571B /* atom.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = atom.c; path = ../../src/atom.c; sourceTree = "<group>"; };
 		49B017381511B9CC009B5DAC /* minunit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = minunit.h; path = ../test/minunit.h; sourceTree = "<group>"; };
 		49B0173D1511BA12009B5DAC /* main.cpp */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.cpp.cpp; name = main.cpp; path = ../../src/main.cpp; sourceTree = "<group>"; };
 		49C7F29D155025AA00F19780 /* r5rs.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = r5rs.txt; path = ../../doc/r5rs.txt; sourceTree = "<group>"; };
@@ -87,7 +87,7 @@
 		8FB6669B135BCB15000DE583 /* atom */ = {
 			isa = PBXGroup;
 			children = (
-				4989F1D9144DFE0300EA571B /* atom.cpp */,
+				4989F1D9144DFE0300EA571B /* atom.c */,
 				49B0173D1511BA12009B5DAC /* main.cpp */,
 				4942A8121511C1080099D148 /* test.cpp */,
 				8FB666A5135BCBD4000DE583 /* atom.h */,
@@ -149,7 +149,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				493DC93514096291009876BE /* linenoise.c in Sources */,
-				4989F1DA144DFE0300EA571B /* atom.cpp in Sources */,
+				4989F1DA144DFE0300EA571B /* atom.c in Sources */,
 				49B0173E1511BA12009B5DAC /* main.cpp in Sources */,
 				4942A8131511C1080099D148 /* test.cpp in Sources */,
 			);

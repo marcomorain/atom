@@ -1,13 +1,15 @@
 #include "atom.h"
 
 #define _CRT_SECURE_NO_WARNINGS
-#include <string>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdarg.h>
 #include <setjmp.h>
 #include <assert.h>
 #include <math.h>
+#include <ctype.h>
+
 
 #define DEBUG_LEXER (0)
 
@@ -19,7 +21,7 @@
 
 static unsigned int MurmurHash2 (const void * key, int len);
 
-enum {
+enum cell_type {
     TYPE_BOOLEAN,
     TYPE_CHARACTER,
     TYPE_NUMBER,
@@ -57,15 +59,24 @@ struct Continuation;
 struct Cell;
 struct Symbol;
 
-
 struct Vector
 {
-    Cell**  cell_data;
+    struct Cell**  cell_data;
     int     length;
     int     capacity;
 };
 
-static Cell* vector_get(const Vector* vector, int n)
+typedef struct Vector Vector;
+typedef struct Cell Cell;
+typedef struct Environment Environment;
+typedef struct Continuation Continuation;
+typedef struct String String;
+typedef struct Pair Pair;
+typedef struct Symbol Symbol;
+typedef struct Procedure Procedure;
+typedef struct Token Token;
+
+static struct Cell* vector_get(const Vector* vector, int n)
 {
     assert(n >= 0);
     assert(n < vector->length);
@@ -153,7 +164,7 @@ struct Cell
         int   length;
     };
     
-	union Data
+	union cell_data
 	{
 		bool            boolean;
 		char            character;
@@ -168,10 +179,10 @@ struct Cell
         Environment*    env;
 	};
 	
-	int     type;
-	Data	data;
-	Cell*   next;
-	bool    mark;
+	enum  cell_type type;
+	union cell_data	data;
+	Cell*           next;
+	bool            mark;
 };
 
 // TODO: The garbage collector marks this special objects.
@@ -328,43 +339,45 @@ static bool is_integer(double d)
 	return d == (int)d;
 }
 
+struct symbol_node
+{
+    const Symbol*       symbol;
+    Cell*               value;
+    struct symbol_node* next;
+};
+
+typedef struct symbol_node symbol_node;
 
 struct Environment
 {
-	struct Node
-	{
-		const Symbol* symbol;
-		Cell*         value;
-		Node*		  next;
-	};
-    
-	Continuation* cont;
-	Environment* parent;
-	Node**		 data;
-	unsigned	 mask;
-    
-	void init(Continuation* c, int size, Environment* parent_env)
-	{
-		assert(power_of_two(size));
-		mask = size-1;
-		data = (Node**)calloc(size, sizeof(Node*));
-		parent = parent_env;
-		cont = c;
-	}
+	Continuation*   cont;
+	Environment*    parent;
+	symbol_node**	data;
+	unsigned        mask;
 };
 
-
-struct JumpBuffer
+void environment_init(Environment* env, Continuation* c, int size, Environment* parent_env)
 {
-	jmp_buf     buffer;
-	JumpBuffer* prev;
+    assert(power_of_two(size));
+    env->mask = size-1;
+    env->data = (symbol_node**)calloc(size, sizeof(symbol_node*));
+    env->parent = parent_env;
+    env->cont = c;
+}
+
+
+struct jump_buffer
+{
+	jmp_buf             buffer;
+	struct jump_buffer* prev;
 };
+typedef struct jump_buffer jump_buffer;
 
 struct Continuation
 {
 	Environment*        env;
 	Cell*               cells;
-	JumpBuffer*         escape;
+	struct jump_buffer* escape;
 	int                 allocated;
 	FILE*               input;
     FILE*               output;
@@ -390,6 +403,8 @@ struct Instruction
     int op_code;
     int operand;
 };
+
+typedef struct Instruction Instruction;
 
 struct Procedure
 {
@@ -502,7 +517,7 @@ static void mark_environment(Environment* env, size_t marked[])
 {
 	for (unsigned i = 0; i <= env->mask; i++)
 	{
-		for (Environment::Node* node = env->data[i]; node; node = node->next)
+		for (symbol_node* node = env->data[i]; node; node = node->next)
 		{
 			mark(node->value, marked);
 		}
@@ -566,7 +581,7 @@ static void print_type_table(size_t marked[], size_t kept[], size_t freed[])
     puts("|=================================|\n");
 }
 
-static void mark(Continuation* cont, size_t marked[])
+static void mark_continuation(Continuation* cont, size_t marked[])
 {
 	mark_environment(cont->env, marked);
     for (int i=0; i<vector_length(&cont->stack); i++)
@@ -633,7 +648,7 @@ static void collect_garbage(Continuation* cont)
     size_t kept  [MAX_TYPES] = {};
     size_t freed [MAX_TYPES] = {};
     
-    mark(cont, marked);
+    mark_continuation(cont, marked);
     sweep(cont, kept, freed);
     
     print_type_table(marked, kept, freed);
@@ -737,20 +752,21 @@ struct _name ## _buffer \
     size_t used; \
     size_t size; \
 }; \
-void _name ## _buffer_init(struct _name ## _buffer* buffer) \
+typedef struct _name ## _buffer _name ## _buffer; \
+void _name ## _buffer_init(_name ## _buffer* buffer) \
 { \
     buffer->used = 0; \
     buffer->size = 32; \
     buffer->data = (_type*)malloc(buffer->size); \
 } \
-void _name ## _buffer_destory(struct _name ## _buffer* buffer) \
+void _name ## _buffer_destory(_name ## _buffer* buffer) \
 { \
     free(buffer->data); \
     buffer->used = 0; \
     buffer->size = 0; \
     buffer->data = NULL; \
 } \
-void _name ## _buffer_push(struct _name ## _buffer* buffer, _type value) \
+void _name ## _buffer_push(_name ## _buffer* buffer, _type value) \
 { \
     if (buffer->used == buffer->size) \
     { \
@@ -759,11 +775,11 @@ void _name ## _buffer_push(struct _name ## _buffer* buffer, _type value) \
     } \
     buffer->data[buffer->used++] = value; \
 } \
-void _name ## _buffer_reset(struct _name ## _buffer* buffer) \
+void _name ## _buffer_reset(_name ## _buffer* buffer) \
 { \
     buffer->used = 0; \
 } \
-char*_name ## _buffer_copy(const struct _name ## _buffer* buffer) \
+char*_name ## _buffer_copy(const _name ## _buffer* buffer) \
 { \
     size_t size = buffer->used + 1; \
     char* dup = (char*)malloc(size); \
@@ -771,11 +787,11 @@ char*_name ## _buffer_copy(const struct _name ## _buffer* buffer) \
     dup[buffer->used] = 0; \
     return dup; \
 } \
-size_t _name ## _buffer_length(const struct _name ## _buffer* buffer) \
+size_t _name ## _buffer_length(const _name ## _buffer* buffer) \
 { \
     return buffer->used; \
 } \
-const _type* _name ## _buffer_data(const struct _name ## _buffer* buffer) \
+const _type* _name ## _buffer_data(const _name ## _buffer* buffer) \
 { \
     return buffer->data; \
 }
@@ -793,7 +809,7 @@ struct Token
 		const char*	identifier;
 		char		character;
 	} data;
-	TokenType type;
+	enum TokenType type;
 };
 
 static void token_print(Token* token)
@@ -828,7 +844,7 @@ static void token_print(Token* token)
     }
 }
 
-static void token_init(Token* token, TokenType type)
+static void token_init(Token* token, enum TokenType type)
 {
     token->type = type;
     token_print(token);
@@ -916,35 +932,38 @@ struct Input
 	unsigned	  line;
 	unsigned	  column;
 	const char*   data;
-    
-	void init(const char* d)
-	{
-		line	= 1;
-		column	= 1;
-		data	= d;
-	}
-	
-	char get(void)  const
-	{
-		return *data;
-	};
-	
-	char next(void)
-	{
-		assert(*data);
-        
-		column++;
-        
-		if (*data == '\n')
-		{
-			column = 1;
-			line++;
-		}
-		
-		data++;
-		return get();
-	};
 };
+
+typedef struct Input Input;
+
+static char input_get(const Input* input)
+{
+    return *input->data;
+}
+
+static void input_init(Input* input, const char* d)
+{
+    input->line     = 1;
+    input->column	= 1;
+    input->data     = d;
+}
+
+static char input_next(Input* input)
+{
+    assert(*input->data);
+    
+    input->column++;
+    
+    if (*input->data == '\n')
+    {
+        input->column = 1;
+        input->line++;
+    }
+    
+    input->data++;
+    return input_get(input);
+};
+
 
 void syntax_error(Input* input, const char* message)
 {
@@ -957,7 +976,7 @@ void syntax_error(Input* input, const char* message)
 
 void skip_whitespace(Input* input)
 {
-	for(char c = input->get(); c; c = input->next())
+	for(char c = input_get(input); c; c = input_next(input))
 	{
 		switch(c)
 		{
@@ -967,7 +986,7 @@ void skip_whitespace(Input* input)
                 continue;
                 
 			case ';':
-                for (char d = input->next(); d != '\n'; d = input->next())
+                for (char d = input_next(input); d != '\n'; d = input_next(input))
                 {
                     if (!d) return;
                 }
@@ -1051,28 +1070,28 @@ static bool is_subsequent(char c)
 
 static void read_character(Input* input, Token* token)
 {
-	char c = input->get();
+	char c = input_get(input);
 	switch(c)
 	{
 		case 's':
-            if (input->next() == 'p'){
-                if (input->next() != 'a') syntax_error(input, "space expected");
-                if (input->next() != 'c') syntax_error(input, "space expected");
-                if (input->next() != 'e') syntax_error(input, "space expected");
-                if (!is_delimeter(input->next())) syntax_error(input, "space expected");
+            if (input_next(input) == 'p'){
+                if (input_next(input) != 'a') syntax_error(input, "space expected");
+                if (input_next(input) != 'c') syntax_error(input, "space expected");
+                if (input_next(input) != 'e') syntax_error(input, "space expected");
+                if (!is_delimeter(input_next(input))) syntax_error(input, "space expected");
                 token_character(token, ' ');
                 return;
             }
             else goto success;
             
 		case 'n':
-			if (input->next() == 'e'){
-				if (input->next() != 'w') syntax_error(input, "newline expected");
-				if (input->next() != 'l') syntax_error(input, "newline expected");
-				if (input->next() != 'i') syntax_error(input, "newline expected");
-				if (input->next() != 'n') syntax_error(input, "newline expected");
-				if (input->next() != 'e') syntax_error(input, "newline expected");
-				if (!is_delimeter(input->next())) syntax_error(input, "newline expected");
+			if (input_next(input) == 'e'){
+				if (input_next(input) != 'w') syntax_error(input, "newline expected");
+				if (input_next(input) != 'l') syntax_error(input, "newline expected");
+				if (input_next(input) != 'i') syntax_error(input, "newline expected");
+				if (input_next(input) != 'n') syntax_error(input, "newline expected");
+				if (input_next(input) != 'e') syntax_error(input, "newline expected");
+				if (!is_delimeter(input_next(input))) syntax_error(input, "newline expected");
                 token_character(token, '\n');
                 return;
 			}
@@ -1083,7 +1102,7 @@ static void read_character(Input* input, Token* token)
     
 success:
     
-	if (is_delimeter(input->next()))
+	if (is_delimeter(input_next(input)))
 	{
         token_character(token, c);
 		return;
@@ -1102,13 +1121,13 @@ static double char_to_double(char c)
 
 void read_number(Input* input, Token* token)
 {
-	char c = input->get();
+	char c = input_get(input);
     
 	double accum = char_to_double(c);
     
 	for (;;)
 	{
-		c = input->next();
+		c = input_next(input);
         
 		if (!isdigit(c))
 		{
@@ -1126,21 +1145,21 @@ void read_string(Input* input, Token* token)
     struct character_buffer buffer;
     character_buffer_init(&buffer);
     
-	assert(input->get() == '"');
+	assert(input_get(input) == '"');
     
 	for (;;)
 	{
-		char c = input->next();
+		char c = input_next(input);
         
 		if (c == '"'){
-			input->next();
+			input_next(input);
             token_string(token, &buffer);
             character_buffer_destory(&buffer);
 			return;
 		}
         
 		if (c == '\\'){
-			c = input->next();
+			c = input_next(input);
 			if (c == '"' || c == '\\')
 			{
                 character_buffer_push(&buffer, c);
@@ -1170,14 +1189,14 @@ void read_identifier(Input* input, Token* token)
     struct character_buffer buffer;
     character_buffer_init(&buffer);
     
-	char c = input->get();
+	char c = input_get(input);
 	if (is_initial(c))
 	{
         character_buffer_push(&buffer, c);
         
 		for (;;)
 		{
-			c = input->next();
+			c = input_next(input);
 			if (is_delimeter(c)) break;
 			if (!is_subsequent(c))
 			{
@@ -1189,7 +1208,7 @@ void read_identifier(Input* input, Token* token)
 	else if (is_peculiar_identifier(c))
 	{
         character_buffer_push(&buffer, c);
-		input->next();
+		input_next(input);
 	}
 	else
 	{
@@ -1205,22 +1224,22 @@ void read_token(Input* input, Token* token)
 	skip_whitespace(input);
     token->type = TOKEN_NONE;
 	
-	char c = input->get();
+	char c = input_get(input);
 	
 	switch(c)
 	{
-		case '(':  input->next(); token_list_start(token); return;
-		case ')':  input->next(); token_list_end(token);   return;
-		case '\'': input->next(); token_quote(token);      return;
-		case '`':  input->next(); token_backtick(token);   return;
-		case '.':  input->next(); token_dot(token);        return;
+		case '(':  input_next(input); token_list_start(token); return;
+		case ')':  input_next(input); token_list_end(token);   return;
+		case '\'': input_next(input); token_quote(token);      return;
+		case '`':  input_next(input); token_backtick(token);   return;
+		case '.':  input_next(input); token_dot(token);        return;
             
         case ',':
         {
-            input->next();
-            if(input->get() == '@')
+            input_next(input);
+            if(input_get(input) == '@')
             {
-                input->next();
+                input_next(input);
                 token_comma_at(token);
             }
             else
@@ -1233,14 +1252,14 @@ void read_token(Input* input, Token* token)
             
 		case '#':
 		{
-			c = input->next();
+			c = input_next(input);
 			switch(c)
 			{
                     // @todo: check for next character here (should be a delimiter)
-				case 't':  input->next(); token_boolean(token, true);   return;
-				case 'f':  input->next(); token_boolean(token, false);  return;
-				case '\\': input->next(); read_character(input, token); return;
-                case '(':  input->next(); token_vector_start(token);    return;
+				case 't':  input_next(input); token_boolean(token, true);   return;
+				case 'f':  input_next(input); token_boolean(token, false);  return;
+				case '\\': input_next(input); read_character(input, token); return;
+                case '(':  input_next(input); token_vector_start(token);    return;
                 default:   syntax_error(input, "malformed identifier after #");
 			}
             
@@ -1502,7 +1521,7 @@ Cell* environment_get(Environment* env, const Cell* symbol)
     
 	unsigned hash = env->mask & symbol->data.symbol->hash;
     
-	for (Environment::Node* node = env->data[hash]; node; node = node->next)
+	for (symbol_node* node = env->data[hash]; node; node = node->next)
 	{
 		if (symbol->data.symbol == node->symbol)
 		{
@@ -1523,7 +1542,7 @@ void environment_define(Environment* env, const Symbol* symbol, Cell* value)
 {
 	unsigned index = env->mask & symbol->hash;
     
-	for (Environment::Node* node = env->data[index]; node; node = node->next)
+	for (symbol_node* node = env->data[index]; node; node = node->next)
 	{
 		if (symbol == node->symbol)
 		{
@@ -1532,7 +1551,7 @@ void environment_define(Environment* env, const Symbol* symbol, Cell* value)
 		}
 	}
 	
-	Environment::Node* node = new Environment::Node;
+	symbol_node* node   = malloc(sizeof(symbol_node));
 	node->symbol		= symbol;
 	node->value			= value;
 	node->next			= env->data[index];
@@ -1547,7 +1566,8 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 	{
 		unsigned index = hash & env->mask;
         
-		for (Environment::Node* node = e->data[index]; node; node = node->next)
+        symbol_node* node;
+		for (node = e->data[index]; node; node = node->next)
 		{
 			if (symbol == node->symbol)
 			{
@@ -1641,7 +1661,7 @@ static void type_q_helper(Environment* env, int params, int type)
 static Environment* create_environment(Continuation* cont, Environment* parent)
 {
 	Environment* env = (Environment*)malloc(sizeof(Environment));
-	env->init(cont, 1, parent);
+    environment_init(env, cont, 1, parent);
 	return env;
 }
 
@@ -2139,8 +2159,9 @@ static void atom_atan(Environment* env, int params)
 }
 
 
-template <typename Compare>
-static void comparison_helper(Environment* env, int params)
+typedef bool(*number_comparison)(double, double);
+
+static void comparison_helper(Environment* env, int params, number_comparison compare)
 {
 	int n = 2;
     
@@ -2152,7 +2173,7 @@ static void comparison_helper(Environment* env, int params)
         double b = atom_pop_number(env);
         params--;
         
-		if (!Compare::compare(a, b))
+		if (!compare(a, b))
 		{
             atom_push_boolean(env, false);
             return;
@@ -2167,35 +2188,35 @@ static void comparison_helper(Environment* env, int params)
 	atom_push_boolean(env, true);
 };
 
-struct Equal		{ static bool compare(double a, double b) { return a == b; } };
-struct Less			{ static bool compare(double a, double b) { return a <  b; } };
-struct Greater		{ static bool compare(double a, double b) { return a >  b; } };
-struct LessEq		{ static bool compare(double a, double b) { return a <= b; } };
-struct GreaterEq	{ static bool compare(double a, double b) { return a >= b; } };
+static bool number_equal     (double a, double b) { return a == b; }
+static bool number_less      (double a, double b) { return a <  b; }
+static bool number_greater   (double a, double b) { return a >  b; }
+static bool number_less_eq   (double a, double b) { return a <= b; }
+static bool number_greater_eq(double a, double b) { return a >= b; }
 
 static void atom_comapre_equal(Environment* env, int params)
 {
-	comparison_helper<Equal>(env, params);
+	comparison_helper(env, params, number_equal);
 }
 
 static void atom_compare_less(Environment* env, int params)
 {
-	comparison_helper<Less>(env, params);
+	comparison_helper(env, params, number_less);
 }
 
 static void atom_compare_greater(Environment* env, int params)
 {
-    comparison_helper<Greater>(env, params);
+    comparison_helper(env, params, number_greater);
 }
 
 static void atom_compare_less_equal(Environment* env, int params)
 {
-	comparison_helper<LessEq>(env, params);
+	comparison_helper(env, params, number_less_eq);
 }
 
 static void atom_compare_greater_equal(Environment* env, int params)
 {
-    comparison_helper<GreaterEq>(env, params);
+    comparison_helper(env, params, number_greater_eq);
 }
 
 // (zero? z)
@@ -2246,38 +2267,41 @@ static void atom_even_q(Environment* env, int params)
 // (min x1 x2 ...) library procedure
 // These procedures return the maximum or minimum of their arguments.
 
-static void min_max_helper(Environment* env, int params, bool is_min)
+typedef double (*number_select)(double a, double b);
+
+static void min_max_helper(Environment* env, int params, number_select select)
 {
     assert(params > 1);
 	double result = atom_pop_number(env);
     
     for (int i=1; i<params; i++)
 	{
-        double n = atom_pop_number(env);
-		
-		if (is_min)
-		{
-			result = std::min(result, n);
-		}
-		else
-		{
-			result = std::max(result, n);
-		}
+        result = select(result, atom_pop_number(env));
 	}
 	atom_push_number(env, result);
 }
 
+static double number_min(double a, double b)
+{
+    return a < b ? a : b;
+}
+
+static double number_max(double a, double b)
+{
+    return a > b ? a : b;
+}
+
 static void atom_min(Environment* env, int params)
 {
-    min_max_helper(env, params, true);
+    min_max_helper(env, params, number_min);
 }
 
 static void atom_max(Environment* env, int params)
 {
-	min_max_helper(env, params, false);
+	min_max_helper(env, params, number_max);
 }
-// 6.3
 
+// 6.3
 // 6.3.1: Booleans
 
 static void atom_boolean_q(Environment* env, int params)
@@ -3840,8 +3864,8 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
     printf("Input String: %s\n", data);
 	Environment* env = cont->env;
     
-	JumpBuffer* prev = cont->escape;
-	JumpBuffer  jb;
+	jump_buffer* prev = cont->escape;
+	jump_buffer  jb;
 	
 	int error = setjmp(jb.buffer);
 	
@@ -3855,13 +3879,14 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
 	cont->escape = &jb;
 	
 	Input input;
-	input.init(data);
+    input_init(&input, data);
 
 	for(;;)
 	{
         Token next;
         read_token(&input, &next);
-		if (Cell* cell = parse_datum(env, &input, &next))
+        Cell* cell;
+		if (cell = parse_datum(env, &input, &next))
 		{
             printf("Input was parsed as: ");
             print(stdout, cell, false);
@@ -4031,24 +4056,24 @@ tailcall:
 }
 
 
-static Cell* load_register(struct Continuation* cont, int n)
+static Cell* load_register(Continuation* cont, int n)
 {
     assert(n > 0);
     return vector_get(&cont->stack, n-1);
 }
 
-size_t atom_api_get_top(struct Continuation* cont)
+size_t atom_api_get_top(Continuation* cont)
 {
     return vector_length(&cont->stack);
 }
 
-void atom_api_clear(struct Continuation* cont)
+void atom_api_clear(Continuation* cont)
 {
     // todo: encapsulate
     cont->stack.length = 0;
 }
 
-double atom_api_to_number(struct Continuation* cont, int n)
+double atom_api_to_number(Continuation* cont, int n)
 {
     Cell* cell = load_register(cont, n);
     if (cell->type == TYPE_NUMBER)
@@ -4056,12 +4081,12 @@ double atom_api_to_number(struct Continuation* cont, int n)
     return 0;
 }
 
-bool atom_api_to_boolean(struct Continuation* cont, int n)
+bool atom_api_to_boolean(Continuation* cont, int n)
 {
     return is_truthy(load_register(cont, n));
 }
 
-const char* atom_api_to_string(struct Continuation* cont, int n)
+const char* atom_api_to_string(Continuation* cont, int n)
 {
     Cell* cell = load_register(cont, n);
     if (cell->type == TYPE_STRING)
@@ -4098,7 +4123,7 @@ Continuation* atom_api_open()
     
     vector_init_empty(&cont->stack);
     
-    const Library libs [] = {
+    const struct Library libs [] = {
         
         // (and <test1> ...)  library syntax
         // The <test> expressions are evaluated from left to right, and the value of
@@ -4378,7 +4403,7 @@ Continuation* atom_api_open()
         {NULL, NULL}
     };
     
-    for (const Library* library = &libs[0]; library->name; library++)
+    for (const struct Library* library = &libs[0]; library->name; library++)
     {
         add_builtin(env, library->name, library->func);
     }
