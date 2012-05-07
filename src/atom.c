@@ -1,3 +1,4 @@
+// gcc -std=c99 -Wall -Werror atom.c 
 #include "atom.h"
 
 #define _CRT_SECURE_NO_WARNINGS
@@ -149,36 +150,36 @@ static void vector_push(Vector* vector, Cell* cell)
 // Push (1) the result.
 typedef void (*atom_builtin) (Environment* env, int params);
 
+struct Pair
+{
+    Cell* car;
+    Cell* cdr;
+};
+
+// todo: add a const string type? or a flag?
+struct String
+{
+    char* data;
+    int   length;
+};
+
+union cell_data
+{
+    bool            boolean;
+    char            character;
+    double          number;
+    String          string;
+    Pair            pair;
+    const Symbol*   symbol;
+    struct Vector   vector;
+    atom_builtin    built_in;
+    struct Procedure* closure;
+    FILE*           port;
+    Environment*    env;
+};
+
 struct Cell
 {
-	struct Pair
-	{
-		Cell* car;
-		Cell* cdr;
-	};
-
-    // todo: add a const string type? or a flag?
-    struct String
-    {
-        char* data;
-        int   length;
-    };
-    
-	union cell_data
-	{
-		bool            boolean;
-		char            character;
-		double          number;
-		String          string;
-		Pair            pair;
-		const Symbol*   symbol;
-		struct Vector   vector;
-        atom_builtin    built_in;
-        struct Procedure* closure;
-		FILE*           port;
-        Environment*    env;
-	};
-	
 	enum  cell_type type;
 	union cell_data	data;
 	Cell*           next;
@@ -737,12 +738,6 @@ static Cell* cons(Environment* env, Cell* car, Cell* cdr)
 	set_car(cell, car);
 	set_cdr(cell, cdr);
 	return cell;
-}
-
-static bool is_false(const Cell* cell)
-{
-	return	cell->type == TYPE_BOOLEAN &&
-    cell->data.boolean == false;
 }
 
 #define DECLARE_STACK_BUFFER(_name, _type) \
@@ -3286,7 +3281,7 @@ static void atom_interaction_environment(Environment* env, int params)
 // This function encapsulates that logic.
 // Given an env, params and a param number, it returns the specified output port, or the current output port
 // It will throw an error if the param is present, but not the correct type.
-static FILE* get_outport_port_param(Environment* env, bool param_present)
+static FILE* get_output_port_param(Environment* env, bool param_present)
 {
     if (param_present)
     {
@@ -3324,7 +3319,7 @@ static void atom_call_with_input_file(Environment* env, int params)
     // TODO: test these semantics
     assert(params == 2);
     
-    Cell* string = atom_pop_a(env, TYPE_STRING);
+    //Cell* string = atom_pop_a(env, TYPE_STRING);
     Cell* proc   = atom_pop_cell(env);
     
     if (proc->type != TYPE_BUILT_IN ||
@@ -3442,7 +3437,7 @@ static void atom_write(Environment* env, int params)
 {
     assert(params < 3);
     Cell* cell = atom_pop_cell(env);
-    FILE* port = get_outport_port_param(env, params == 2);
+    FILE* port = get_output_port_param(env, params == 2);
 	print(port, cell, false);
     atom_push_boolean(env, false);
 }
@@ -3475,7 +3470,7 @@ static void atom_read(Environment* env, int params)
 static void atom_read_char(Environment* env, int params)
 {
     assert(params < 2);
-    int c = fgetc(get_outport_port_param(env, params == 1));
+    int c = fgetc(get_input_port_param(env, params == 1));
     // TODO: test this cast. fgetc returns an unsigned char cast to int,
     // which is sure to be error prone.
     // TODO: test if c == EOF. Is EOF a different type to the EOF value?
@@ -3493,7 +3488,7 @@ static void atom_read_char(Environment* env, int params)
 static void atom_peek_char(Environment* env, int params)
 {
     assert(params < 2);
-    FILE* file = get_outport_port_param(env, params == 1);
+    FILE* file = get_input_port_param(env, params == 1);
     atom_push_cell(env, make_character(env, ungetc(fgetc(file), file)));
 }
 
@@ -3520,7 +3515,7 @@ static void atom_eof_object_q(Environment* env, int params)
 static void atom_display(Environment* env, int params)
 {
     Cell* obj = atom_pop_cell(env);
-    FILE* port = get_outport_port_param(env, params == 2);
+    FILE* port = get_output_port_param(env, params == 2);
 	print(port, obj, true);
     atom_push_cell(env, make_boolean(false));
 }
@@ -3537,7 +3532,7 @@ static void atom_display(Environment* env, int params)
 static void atom_newline(Environment* env, int params)
 {
     assert(params < 2); // todo: fix  this.
-    FILE* port = get_outport_port_param(env, params == 1);
+    FILE* port = get_output_port_param(env, params == 1);
 	fputc('\n', port);
 	atom_push_boolean(env, false);
 }
@@ -3572,7 +3567,7 @@ static void atom_write_char(Environment* env, int params)
     assert(params < 3);
     Cell* c = atom_pop_cell(env);
     type_check(env->cont, TYPE_CHARACTER, c->type);
-    fputc(c->data.character, get_outport_port_param(env, params == 2));
+    fputc(c->data.character, get_output_port_param(env, params == 2));
     atom_push_cell(env, make_boolean(false));
 }
 
@@ -3665,7 +3660,6 @@ static void compile_function_call(Environment* env, Procedure* closure, struct i
 // used to include literal constants in Scheme code.
 static void compile_quote(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
-    Cell* lambda = car(cell); cell = cdr(cell);
     Cell* datum  = car(cell); cell = cdr(cell);
     assert(cell->type == TYPE_EMPTY_LIST);
     
@@ -3723,7 +3717,6 @@ static void compile_closure(Environment* env, Procedure* parent, struct instruct
 static void compile_if(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
     //<test> <consequent> <alternate>
-    Cell* symbol        = car(cell); cell = cdr(cell);
     Cell* test          = car(cell); cell = cdr(cell);
     Cell* consequent    = car(cell); cell = cdr(cell);
     Cell* alternate     = car(cell);
@@ -3743,7 +3736,6 @@ static void compile_if(Environment* env, Procedure* closure, struct instruction_
 
 static void compile_lambda(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
-    Cell* lambda    = car(cell); cell = cdr(cell);
     Cell* formals   = car(cell); cell = cdr(cell);
     Cell* body      = car(cell); cell = cdr(cell);
     assert(cell->type == TYPE_EMPTY_LIST);
@@ -3758,9 +3750,8 @@ static void compile_mutation(Environment* env, Procedure* closure, struct instru
     // TODO: Handle dotted syntax.
     // Maybe as macro?
     // TODO: Handle function short syntax
-    Cell* define = car(cell);
-    Cell* symbol = car(cdr(cell));
-    Cell* expression = car(cdr(cdr(cell)));
+    Cell* symbol = car(cell); cell = cdr(cell);
+    Cell* expression = car(cell);
     
     // Push the expression
     compile(env, closure, instructions, expression);
@@ -3801,25 +3792,25 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
                     
                     if (equal(symbol, "define"))
                     {
-                        compile_mutation(env, closure, instructions, cell, INST_DEFINE);
+                        compile_mutation(env, closure, instructions, cdr(cell), INST_DEFINE);
                         printf("define ^ 2\n");
                     }
                     else if (equal(symbol, "set!"))
                     {
-                        compile_mutation(env, closure, instructions, cell, INST_SET);
+                        compile_mutation(env, closure, instructions, cdr(cell), INST_SET);
                         printf("set! ^ 2\n");
                     }
                     else if (equal(symbol, "if"))
                     {
-                        compile_if(env, closure, instructions, cell);
+                        compile_if(env, closure, instructions, cdr(cell));
                     }
                     else if (equal(symbol, "lambda"))
                     {
-                        compile_lambda(env, closure, instructions, cell);
+                        compile_lambda(env, closure, instructions, cdr(cell));
                     }
                     else if (equal(symbol, "quote"))
                     {
-                        compile_quote(env, closure, instructions, cell);
+                        compile_quote(env, closure, instructions, cdr(cell));
                     }
                     else
                     {
@@ -3886,7 +3877,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
         Token next;
         read_token(&input, &next);
         Cell* cell;
-		if (cell = parse_datum(env, &input, &next))
+		if ((cell = parse_datum(env, &input, &next)))
 		{
             printf("Input was parsed as: ");
             print(stdout, cell, false);
@@ -3937,8 +3928,6 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 
 static void eval(Continuation* cont, struct Procedure* closure)
 {
-tailcall:
-    
 	assert(cont);
     assert(closure);
     
