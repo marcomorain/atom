@@ -1,5 +1,7 @@
 #include <stdio.h>
+extern "C" {
 #include "../src/atom.h"
+}
 
 /* file: minunit.h */
 static int tests_run = 0;

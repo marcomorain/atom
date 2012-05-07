@@ -1,11 +1,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include "atom.h"
+
 
 // For REPL
 extern "C" {
 #include "linenoise.h"
+#include "atom.h"
 }
 
 int test(int argc, char** argv);
