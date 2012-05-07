@@ -197,65 +197,6 @@ static bool is_pair(const Cell* cell)
     return cell->type == TYPE_PAIR;
 }
 
-
-template<typename Type> struct stack
-{
-    Type*  elements;
-    size_t num_elements;
-    size_t capacity;
-};
-
-template<typename Type> static void stack_free(struct stack<Type>* stack)
-{
-    // Free all of the data, and set all the values to 0 to
-    // flush out use-after-free bugs.
-    free(stack->elements);
-    stack->capacity = 0;
-    stack->num_elements = 0;
-    stack->elements = 0;
-}
-
-template<typename Type> static void stack_grow(struct stack<Type>* stack)
-{
-    stack->capacity = 2 * stack->capacity;
-    stack->elements = (Type*)realloc(stack->elements, stack->capacity * sizeof(Type));
-}
-
-template <typename Type> void stack_init(struct stack<Type>* stack)
-{
-    stack->num_elements = 0;
-    stack->capacity = 1;
-    stack->elements = NULL;
-    stack_grow(stack);
-}
-
-template <typename Type> void stack_push(struct stack<Type>* stack, const Type element)
-{
-    if (stack->capacity == stack->num_elements)
-        stack_grow(stack);
-    
-    stack->elements[stack->num_elements] = element;
-    stack->num_elements++;
-}
-
-template <typename Type> void stack_pop(struct stack<Type>* stack, int num)
-{
-    assert(stack->num_elements >= num);
-    stack->num_elements -= num;
-}
-
-template <typename Type> Type stack_get(struct stack<Type>* stack, size_t element)
-{
-    assert(element < stack->num_elements);
-    return stack->elements[element];
-}
-
-template <typename Type> Type stack_get_top(struct stack<Type>* stack)
-{
-    assert(stack->num_elements > 0);
-    return stack->elements[stack->num_elements - 1];
-}
-
 enum TokenType
 {
     TOKEN_NONE,
@@ -454,7 +395,8 @@ struct Procedure
 {
     // The number of parameters that this function expects.
     int nparams;
-    stack<Instruction> instructions;
+    Instruction* instructions;
+    int num_instructions;
     Vector constants;
 };
 
@@ -788,62 +730,58 @@ static bool is_false(const Cell* cell)
     cell->data.boolean == false;
 }
 
-struct character_buffer
-{
-    char* data;
-    size_t used;
-    size_t size;
-};
-
-void character_buffer_init(struct character_buffer* buffer)
-{
-    buffer->used = 0;
-    buffer->size = 32;
-    buffer->data = (char*)malloc(buffer->size);
+#define DECLARE_STACK_BUFFER(_name, _type) \
+struct _name ## _buffer \
+{ \
+    _type* data; \
+    size_t used; \
+    size_t size; \
+}; \
+void _name ## _buffer_init(struct _name ## _buffer* buffer) \
+{ \
+    buffer->used = 0; \
+    buffer->size = 32; \
+    buffer->data = (_type*)malloc(buffer->size); \
+} \
+void _name ## _buffer_destory(struct _name ## _buffer* buffer) \
+{ \
+    free(buffer->data); \
+    buffer->used = 0; \
+    buffer->size = 0; \
+    buffer->data = NULL; \
+} \
+void _name ## _buffer_push(struct _name ## _buffer* buffer, _type value) \
+{ \
+    if (buffer->used == buffer->size) \
+    { \
+        buffer->size = buffer->size * 2; \
+        buffer->data = (_type*)realloc(buffer->data, buffer->size); \
+    } \
+    buffer->data[buffer->used++] = value; \
+} \
+void _name ## _buffer_reset(struct _name ## _buffer* buffer) \
+{ \
+    buffer->used = 0; \
+} \
+char*_name ## _buffer_copy(const struct _name ## _buffer* buffer) \
+{ \
+    size_t size = buffer->used + 1; \
+    char* dup = (char*)malloc(size); \
+    memcpy(dup, buffer->data, buffer->used); \
+    dup[buffer->used] = 0; \
+    return dup; \
+} \
+size_t _name ## _buffer_length(const struct _name ## _buffer* buffer) \
+{ \
+    return buffer->used; \
+} \
+const _type* _name ## _buffer_data(const struct _name ## _buffer* buffer) \
+{ \
+    return buffer->data; \
 }
 
-void character_buffer_destory(struct character_buffer* buffer)
-{
-    free(buffer->data);
-    buffer->used = 0;
-    buffer->size = 0;
-    buffer->data = NULL;
-}
-
-void character_buffer_push(struct character_buffer* buffer, char value)
-{
-    if (buffer->used == buffer->size)
-    {
-        buffer->size = buffer->size * 2;
-        buffer->data = (char*)realloc(buffer->data, buffer->size);
-    }
-    
-    buffer->data[buffer->used++] = value;
-}
-
-void character_buffer_reset(struct character_buffer* buffer)
-{
-    buffer->used = 0;
-}
-
-char* character_buffer_copy(const struct character_buffer* buffer)
-{
-    size_t size = buffer->used + 1;
-    char* dup = (char*)malloc(size);
-    memcpy(dup, buffer->data, buffer->used);
-    dup[buffer->used] = 0; // null terminate
-    return dup;
-}
-
-size_t character_buffer_length(const struct character_buffer* buffer)
-{
-    return buffer->used;
-}
-
-const char* character_buffer_data(const struct character_buffer* buffer)
-{
-    return buffer->data;
-}
+DECLARE_STACK_BUFFER(character, char);
+DECLARE_STACK_BUFFER(instruction, Instruction);
 
 struct Token
 {
@@ -3643,7 +3581,9 @@ Instruction make_instruction(int op_code, int operand)
 
 static void closure_init(Procedure* closure)
 {
-    stack_init(&closure->instructions);
+    closure->nparams            = 0;
+    closure->num_instructions   = 0;
+    closure->instructions       = 0;
     vector_init_empty(&closure->constants);
 }
 
@@ -3665,11 +3605,6 @@ const static char* instruction_names [] = {
     [INST_IF]               = "if",
 };
 
-static void emit(Procedure* closure, Instruction instruction)
-{
-    stack_push(&closure->instructions, instruction);
-}
-
 static int closure_add_constant(struct Procedure* closure, Cell* cell)
 {
     // TODO: Share constants
@@ -3681,20 +3616,20 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
     return vector_length(&closure->constants) - 1;
 }
 
-static void compile(Environment* env, Procedure* closure, Cell* cell);
+static void compile(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell);
 
-static int compile_reverse(Environment* env, Procedure* closure, Cell* list)
+static int compile_reverse(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* list)
 {
     if (list->type == TYPE_EMPTY_LIST) return 0;
-    int depth = compile_reverse(env, closure, cdr(list));
-    compile(env, closure, car(list));
+    int depth = compile_reverse(env, closure, instructions, cdr(list));
+    compile(env, closure, instructions, car(list));
     return 1 + depth;
 }
 
-static void compile_function_call(Environment* env, Procedure* closure, Cell* cell)
+static void compile_function_call(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
-    int num_params = compile_reverse(env, closure, cell) - 1;
-    emit(closure, make_instruction(INST_CALL, num_params));
+    int num_params = compile_reverse(env, closure, instructions, cell) - 1;
+    instruction_buffer_push(instructions, make_instruction(INST_CALL, num_params));
     printf("Function call with %d params\n", num_params);
 }
 
@@ -3704,19 +3639,22 @@ static void compile_function_call(Environment* env, Procedure* closure, Cell* ce
 // (quote <datum>) evaluates to <datum>. <Datum> may be any external
 // representation of a Scheme object (see section 3.3). This notation is
 // used to include literal constants in Scheme code.
-static void compile_quote(Environment* env, Procedure* closure, Cell* cell)
+static void compile_quote(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
     Cell* lambda = car(cell); cell = cdr(cell);
     Cell* datum  = car(cell); cell = cdr(cell);
     assert(cell->type == TYPE_EMPTY_LIST);
-    emit(closure, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
+    
+    instruction_buffer_push(instructions, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
 }
 
-static void compile_closure(Environment* env, Procedure* parent, Cell* formals, Cell* body)
+static void compile_closure(Environment* env, Procedure* parent, struct instruction_buffer* instructions, Cell* formals, Cell* body)
 {    
     // Make a new closure
     Procedure* child = (Procedure*)calloc(1, sizeof(Procedure));
     closure_init(child);
+    struct instruction_buffer child_instructions;
+    instruction_buffer_init(&child_instructions);
     
     printf("Compiling a new function.\n");
     
@@ -3727,17 +3665,22 @@ static void compile_closure(Environment* env, Procedure* parent, Cell* formals, 
     {
         type_check(env->cont, TYPE_SYMBOL, car(formal)->type);
         size_t constant = closure_add_constant(child, car(formal));
-        emit(child, make_instruction(INST_PUSH, constant));
+        
+        instruction_buffer_push(&child_instructions, make_instruction(INST_PUSH, constant));
         printf("Setting local variable\n");
-        emit(child, make_instruction(INST_DEFINE, 0));
+        instruction_buffer_push(&child_instructions, make_instruction(INST_DEFINE, 0));
+
+        child->nparams++;
     }
+
     
-    compile(env, child, body);
+    compile(env, child, &child_instructions, body);
     
     printf("Function compiled OK.\n");
     
     size_t c = closure_add_constant(parent, make_closure(env, child));
-    emit(parent, make_instruction(INST_PUSH, c));
+    
+    instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
 }
 
 
@@ -3753,7 +3696,7 @@ static void compile_closure(Environment* env, Procedure* parent, Cell* formals, 
 // <alternate> is evaluated and its value(s) is(are) returned.
 // If <test> yields a false value and no <alternate> is specified, then
 // the result of the expression is unspecified.
-static void compile_if(Environment* env, Procedure* closure, Cell* cell)
+static void compile_if(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
     //<test> <consequent> <alternate>
     Cell* symbol        = car(cell); cell = cdr(cell);
@@ -3763,30 +3706,30 @@ static void compile_if(Environment* env, Procedure* closure, Cell* cell)
 
     // Put the test code on the stack. This will compile down to a value
     // that will be true or false.
-    compile(env, closure, test);
+    compile(env, closure, instructions, test);
 
     // Push things in reserse order
-    compile_closure(env, closure, &cell_empty_list, consequent);
-    compile_closure(env, closure, &cell_empty_list, alternate);
+    compile_closure(env, closure, instructions, &cell_empty_list, consequent);
+    compile_closure(env, closure, instructions, &cell_empty_list, alternate);
     
     // TODO: use this operand to test for the presense of the else clause
-    emit(closure, make_instruction(INST_IF, 2));
-    emit(closure, make_instruction(INST_CALL, 0));
+    instruction_buffer_push(instructions, make_instruction(INST_IF, 2));
+    instruction_buffer_push(instructions, make_instruction(INST_CALL, 0));
 }
 
-static void compile_lambda(Environment* env, Procedure* closure, Cell* cell)
+static void compile_lambda(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
     Cell* lambda    = car(cell); cell = cdr(cell);
     Cell* formals   = car(cell); cell = cdr(cell);
     Cell* body      = car(cell); cell = cdr(cell);
     assert(cell->type == TYPE_EMPTY_LIST);
-    compile_closure(env, closure, formals, body);
+    compile_closure(env, closure, instructions, formals, body);
 }
 
 
 // http://exo.willdonnelly.net/blog/scheme-syntax-rules/
 
-static void compile_mutation(Environment* env, Procedure* closure, Cell* cell, int instruction)
+static void compile_mutation(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell, int instruction)
 {
     // TODO: Handle dotted syntax.
     // Maybe as macro?
@@ -3796,14 +3739,14 @@ static void compile_mutation(Environment* env, Procedure* closure, Cell* cell, i
     Cell* expression = car(cdr(cdr(cell)));
     
     // Push the expression
-    compile(env, closure, expression);
+    compile(env, closure, instructions, expression);
     
     // Push the symbol
     size_t c = closure_add_constant(closure, symbol);
-    emit(closure, make_instruction(INST_PUSH, c));
+    instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
     
     // Define (2)
-    emit(closure, make_instruction(instruction, 0));
+    instruction_buffer_push(instructions, make_instruction(instruction, 0));
 }
 
 static int equal(const char* a, const char* b)
@@ -3811,7 +3754,7 @@ static int equal(const char* a, const char* b)
     return strcmp(a, b) == 0;
 }
 
-static void compile(Environment* env, Procedure* closure, Cell* cell)
+static void compile(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
 {
     switch(cell->type)
     {
@@ -3834,29 +3777,29 @@ static void compile(Environment* env, Procedure* closure, Cell* cell)
                     
                     if (equal(symbol, "define"))
                     {
-                        compile_mutation(env, closure, cell, INST_DEFINE);
+                        compile_mutation(env, closure, instructions, cell, INST_DEFINE);
                         printf("define ^ 2\n");
                     }
                     else if (equal(symbol, "set!"))
                     {
-                        compile_mutation(env, closure, cell, INST_SET);
+                        compile_mutation(env, closure, instructions, cell, INST_SET);
                         printf("set! ^ 2\n");
                     }
                     else if (equal(symbol, "if"))
                     {
-                        compile_if(env, closure, cell);
+                        compile_if(env, closure, instructions, cell);
                     }
                     else if (equal(symbol, "lambda"))
                     {
-                        compile_lambda(env, closure, cell);
+                        compile_lambda(env, closure, instructions, cell);
                     }
                     else if (equal(symbol, "quote"))
                     {
-                        compile_quote(env, closure, cell);
+                        compile_quote(env, closure, instructions, cell);
                     }
                     else
                     {
-                        compile_function_call(env, closure, cell);
+                        compile_function_call(env, closure, instructions, cell);
                     }
                     break;
                 }
@@ -3874,17 +3817,22 @@ static void compile(Environment* env, Procedure* closure, Cell* cell)
         {
             // Load the symbol
             size_t c = closure_add_constant(closure, cell);
-            emit(closure, make_instruction(INST_PUSH, c));
-            emit(closure, make_instruction(INST_LOAD, 0));
+            instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
+            instruction_buffer_push(instructions, make_instruction(INST_LOAD, 0));
             break;
         }
 
 		default:
         {
-            emit(closure, make_instruction(INST_PUSH, closure_add_constant(closure, cell)));
+            instruction_buffer_push(instructions, make_instruction(INST_PUSH, closure_add_constant(closure, cell)));
             break;
         }
     }
+    
+    closure->num_instructions = instruction_buffer_length(instructions);
+    const size_t bytes = closure->num_instructions * sizeof(struct Instruction);
+    closure->instructions = (struct Instruction*)malloc(bytes);
+    memcpy(closure->instructions, instruction_buffer_data(instructions), bytes);;
 }
 
 void atom_api_load(Continuation* cont, const char* data, size_t length)
@@ -3918,9 +3866,14 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
             printf("Input was parsed as: ");
             print(stdout, cell, false);
             printf("Compiling top level function\n");
+            
             struct Procedure closure;
             closure_init(&closure);
-            compile(env, &closure, cell);
+            
+            struct instruction_buffer instructions;
+            instruction_buffer_init(&instructions);
+            
+            compile(env, &closure, &instructions, cell);
             eval(cont, &closure);
         }
         else break;
@@ -3967,7 +3920,7 @@ tailcall:
     size_t pc = 0;
     Environment* env = cont->env;
     
-    printf("eval: function %p\n", closure);
+    printf("eval: function %p %d params\n", closure, closure->nparams);
     
     for (int i=0; i<vector_length(&closure->constants); i++)
     {
@@ -3978,9 +3931,12 @@ tailcall:
     for (;;)
     {
         // End of input
-        if (pc == closure->instructions.num_elements) return;
+        if (pc == closure->num_instructions) return;
         
-        const Instruction instruction = stack_get(&closure->instructions, pc);
+        assert(pc >= 0);
+        assert(pc < closure->num_instructions);
+        
+        const Instruction instruction = closure->instructions[pc];
         pc++;
         
         printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
