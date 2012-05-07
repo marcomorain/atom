@@ -32,7 +32,8 @@ enum cell_type {
     TYPE_VECTOR,
     TYPE_SYMBOL,
     TYPE_BUILT_IN,
-    TYPE_CLOSURE,
+    TYPE_PROCEDURE,
+    TYPE_SYNTAX_RULES,
     TYPE_INPUT_PORT,
     TYPE_OUTPUT_PORT,
     TYPE_ENVIRONMENT,
@@ -40,19 +41,20 @@ enum cell_type {
 };
 
 const static char* typenames [] = {
-    [TYPE_BOOLEAN]     = "boolean",
-    [TYPE_CHARACTER]   = "character",
-	[TYPE_NUMBER]      = "number",
-	[TYPE_STRING]      = "string",
-    [TYPE_EMPTY_LIST]  = "empty list",
-	[TYPE_PAIR]        = "pair",
-	[TYPE_VECTOR]      = "vector",
-	[TYPE_SYMBOL]      = "symbol",
-	[TYPE_BUILT_IN]    = "procedure",
-    [TYPE_CLOSURE]     = "procedure",
-    [TYPE_INPUT_PORT]  = "input post",
-    [TYPE_OUTPUT_PORT] = "output port",
-    [TYPE_ENVIRONMENT] = "environment"
+    [TYPE_BOOLEAN]      = "boolean",
+    [TYPE_CHARACTER]    = "character",
+	[TYPE_NUMBER]       = "number",
+	[TYPE_STRING]       = "string",
+    [TYPE_EMPTY_LIST]   = "empty list",
+	[TYPE_PAIR]         = "pair",
+	[TYPE_VECTOR]       = "vector",
+	[TYPE_SYMBOL]       = "symbol",
+	[TYPE_BUILT_IN]     = "procedure",
+    [TYPE_PROCEDURE]    = "procedure",
+    [TYPE_SYNTAX_RULES] = "syntax rules",
+    [TYPE_INPUT_PORT]   = "input post",
+    [TYPE_OUTPUT_PORT]  = "output port",
+    [TYPE_ENVIRONMENT]  = "environment"
 };
 
 struct Environment;
@@ -497,7 +499,7 @@ static Cell* make_io_port(Environment* env, int type, FILE* port)
 
 static Cell* make_closure(Environment* env, Procedure* closure)
 {
-    Cell* cell = make_cell(env, TYPE_CLOSURE);
+    Cell* cell = make_cell(env, TYPE_PROCEDURE);
     cell->data.closure = closure;
     return cell;
 }
@@ -552,7 +554,7 @@ static void mark(Cell* cell, size_t marked[])
                 mark(vector_get(&cell->data.vector, i), marked);
 			break;
             
-		case TYPE_CLOSURE:
+		case TYPE_PROCEDURE:
             mark_closure(cell->data.closure, marked);
 			break;
             
@@ -3222,7 +3224,7 @@ static void atom_procedure_q(Environment* env, int params)
     assert(params == 1);
     Cell* obj = atom_pop_cell(env);
     // TODO: check these are the right types
-    atom_push_boolean(env, obj->type == TYPE_CLOSURE || obj->type == TYPE_BUILT_IN);
+    atom_push_boolean(env, obj->type == TYPE_PROCEDURE || obj->type == TYPE_BUILT_IN);
 }
 
 // (scheme-report-environment version)  procedure
@@ -3325,7 +3327,7 @@ static void atom_call_with_input_file(Environment* env, int params)
     Cell* proc   = atom_pop_cell(env);
     
     if (proc->type != TYPE_BUILT_IN ||
-        proc->type != TYPE_CLOSURE)
+        proc->type != TYPE_PROCEDURE)
     {
         signal_error(env->cont, "Expected a procedure, got a %s", typenames[proc->type]);
     }
@@ -3630,7 +3632,7 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
 {
     // TODO: Share constants
     int type = cell->type;
-    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN || type == TYPE_CLOSURE);
+    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN || type == TYPE_PROCEDURE);
     printf("Pushing constant: ");
     print(stdout, cell, false);
     vector_push(&closure->constants, cell);
@@ -3744,8 +3746,15 @@ static void compile_lambda(Environment* env, Procedure* closure, struct instruct
     compile_closure(env, closure, instructions, formals, body);
 }
 
-
 // http://exo.willdonnelly.net/blog/scheme-syntax-rules/
+static void compile_define_syntax(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
+{
+    Cell* keyword            = car(cell); cell = cdr(cell);
+    Cell* transformer        = car(cell);
+    assert(keyword->type     = TYPE_SYMBOL);
+    assert(transformer->type = TYPE_SYNTAX_RULES);
+    environment_define(env, keyword->data.symbol, transformer);
+}
 
 static void compile_mutation(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell, int instruction)
 {
@@ -3814,6 +3823,10 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
                     {
                         compile_quote(env, closure, instructions, cdr(cell));
                     }
+                    else if (equal(symbol, "define-syntax"))
+                    {
+                        compile_define_syntax(env, closure, instructions, cdr(cell));
+                    }
                     else
                     {
                         compile_function_call(env, closure, instructions, cell);
@@ -3854,6 +3867,7 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
 
 static Cell* apply_macros(Environment* env, Cell* cell)
 {
+    
     return cell;
 }
 
@@ -3976,8 +3990,8 @@ static void eval(Continuation* cont, struct Procedure* closure)
             // The next operations is call(0).
             case INST_IF:
             {
-                Cell* consequent    = atom_pop_a(env, TYPE_CLOSURE);
-                Cell* alternate     = atom_pop_a(env, TYPE_CLOSURE);
+                Cell* consequent    = atom_pop_a(env, TYPE_PROCEDURE);
+                Cell* alternate     = atom_pop_a(env, TYPE_PROCEDURE);
                 
                 Cell* result = is_truthy(atom_pop_cell(env)) ? consequent : alternate;
                 atom_push_cell(env, result);
@@ -4032,7 +4046,7 @@ static void eval(Continuation* cont, struct Procedure* closure)
                         function->data.built_in(env, num_params);
                         break;
                     }
-                    case TYPE_CLOSURE:
+                    case TYPE_PROCEDURE:
                     {
                         // TODO: Make environment better
                         Environment* child = create_environment(cont, env);
