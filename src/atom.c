@@ -3852,6 +3852,11 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
     memcpy(closure->instructions, instruction_buffer_data(instructions), bytes);;
 }
 
+static Cell* apply_macros(Environment* env, Cell* cell)
+{
+    return cell;
+}
+
 void atom_api_load(Continuation* cont, const char* data, size_t length)
 {	
     printf("Input String: %s\n", data);
@@ -3878,20 +3883,26 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
 	{
         Token next;
         read_token(&input, &next);
-        Cell* cell;
-		if ((cell = parse_datum(env, &input, &next)))
+        Cell* parsed;
+		if ((parsed = parse_datum(env, &input, &next)))
 		{
             printf("Input was parsed as: ");
-            print(stdout, cell, false);
-            printf("Compiling top level function\n");
+            print(stdout, parsed, false);
             
+            
+            Cell* after_macros = apply_macros(env, parsed);
+            
+            printf("After macros: ");
+            print(stdout, after_macros, false);
+            
+            printf("Compiling top level function\n");
             struct Procedure closure;
             closure_init(&closure);
             
             struct instruction_buffer instructions;
             instruction_buffer_init(&instructions);
             
-            compile(env, &closure, &instructions, cell);
+            compile(env, &closure, &instructions, after_macros);
             eval(cont, &closure);
         }
         else break;
