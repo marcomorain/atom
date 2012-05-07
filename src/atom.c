@@ -685,8 +685,9 @@ static Cell* make_vector(Environment* env, int length, Cell* fill)
 static Cell* make_empty_string(Environment* env, int length)
 {
     Cell* string = make_cell(env, TYPE_STRING);
-    string->data.string.length = length;
-    string->data.string.data   = (char*)calloc(length+1, sizeof(char));
+    string->data.string.mutable = true;
+    string->data.string.length  = length;
+    string->data.string.data    = (char*)calloc(length+1, sizeof(char));
         
     // Assert if the allocation fails.
     // TODO: handle this.
