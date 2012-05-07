@@ -163,7 +163,7 @@ struct Cell
 		const Symbol*   symbol;
 		struct Vector   vector;
         atom_builtin    built_in;
-        struct Closure* closure;
+        struct Procedure* closure;
 		FILE*           port;
         Environment*    env;
 	};
@@ -450,8 +450,10 @@ struct Instruction
     int operand;
 };
 
-struct Closure
+struct Procedure
 {
+    // The number of parameters that this function expects.
+    int nparams;
     stack<Instruction> instructions;
     Vector constants;
 };
@@ -534,7 +536,7 @@ static Cell* make_io_port(Environment* env, int type, FILE* port)
 	return cell;
 }
 
-static Cell* make_closure(Environment* env, Closure* closure)
+static Cell* make_closure(Environment* env, Procedure* closure)
 {
     Cell* cell = make_cell(env, TYPE_CLOSURE);
     cell->data.closure = closure;
@@ -565,7 +567,7 @@ static void mark_environment(Environment* env, size_t marked[])
 	}
 }
 
-static void mark_closure(Closure* closure, size_t marked[])
+static void mark_closure(Procedure* closure, size_t marked[])
 {
     for (int i=0; i < vector_length(&closure->constants); i++)
         mark(vector_get(&closure->constants, i), marked);
@@ -1620,7 +1622,7 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 	signal_error(env->cont, "No binding for %s in any scope.", symbol->name);
 }
 
-static void eval(Continuation* env, struct Closure* closure);
+static void eval(Continuation* env, struct Procedure* closure);
 
 static Cell* atom_pop_cell(Environment* env)
 {
@@ -3639,7 +3641,7 @@ Instruction make_instruction(int op_code, int operand)
     return instruction;
 }
 
-static void closure_init(Closure* closure)
+static void closure_init(Procedure* closure)
 {
     stack_init(&closure->instructions);
     vector_init_empty(&closure->constants);
@@ -3663,12 +3665,12 @@ const static char* instruction_names [] = {
     [INST_IF]               = "if",
 };
 
-static void emit(Closure* closure, Instruction instruction)
+static void emit(Procedure* closure, Instruction instruction)
 {
     stack_push(&closure->instructions, instruction);
 }
 
-static int closure_add_constant(struct Closure* closure, Cell* cell)
+static int closure_add_constant(struct Procedure* closure, Cell* cell)
 {
     // TODO: Share constants
     int type = cell->type;
@@ -3679,9 +3681,9 @@ static int closure_add_constant(struct Closure* closure, Cell* cell)
     return vector_length(&closure->constants) - 1;
 }
 
-static void compile(Environment* env, Closure* closure, Cell* cell);
+static void compile(Environment* env, Procedure* closure, Cell* cell);
 
-static int compile_reverse(Environment* env, Closure* closure, Cell* list)
+static int compile_reverse(Environment* env, Procedure* closure, Cell* list)
 {
     if (list->type == TYPE_EMPTY_LIST) return 0;
     int depth = compile_reverse(env, closure, cdr(list));
@@ -3689,7 +3691,7 @@ static int compile_reverse(Environment* env, Closure* closure, Cell* list)
     return 1 + depth;
 }
 
-static void compile_function_call(Environment* env, Closure* closure, Cell* cell)
+static void compile_function_call(Environment* env, Procedure* closure, Cell* cell)
 {
     int num_params = compile_reverse(env, closure, cell) - 1;
     emit(closure, make_instruction(INST_CALL, num_params));
@@ -3702,7 +3704,7 @@ static void compile_function_call(Environment* env, Closure* closure, Cell* cell
 // (quote <datum>) evaluates to <datum>. <Datum> may be any external
 // representation of a Scheme object (see section 3.3). This notation is
 // used to include literal constants in Scheme code.
-static void compile_quote(Environment* env, Closure* closure, Cell* cell)
+static void compile_quote(Environment* env, Procedure* closure, Cell* cell)
 {
     Cell* lambda = car(cell); cell = cdr(cell);
     Cell* datum  = car(cell); cell = cdr(cell);
@@ -3710,10 +3712,10 @@ static void compile_quote(Environment* env, Closure* closure, Cell* cell)
     emit(closure, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
 }
 
-static void compile_closure(Environment* env, Closure* parent, Cell* formals, Cell* body)
+static void compile_closure(Environment* env, Procedure* parent, Cell* formals, Cell* body)
 {    
     // Make a new closure
-    Closure* child = (Closure*)calloc(1, sizeof(Closure));
+    Procedure* child = (Procedure*)calloc(1, sizeof(Procedure));
     closure_init(child);
     
     printf("Compiling a new function.\n");
@@ -3751,7 +3753,7 @@ static void compile_closure(Environment* env, Closure* parent, Cell* formals, Ce
 // <alternate> is evaluated and its value(s) is(are) returned.
 // If <test> yields a false value and no <alternate> is specified, then
 // the result of the expression is unspecified.
-static void compile_if(Environment* env, Closure* closure, Cell* cell)
+static void compile_if(Environment* env, Procedure* closure, Cell* cell)
 {
     //<test> <consequent> <alternate>
     Cell* symbol        = car(cell); cell = cdr(cell);
@@ -3772,7 +3774,7 @@ static void compile_if(Environment* env, Closure* closure, Cell* cell)
     emit(closure, make_instruction(INST_CALL, 0));
 }
 
-static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
+static void compile_lambda(Environment* env, Procedure* closure, Cell* cell)
 {
     Cell* lambda    = car(cell); cell = cdr(cell);
     Cell* formals   = car(cell); cell = cdr(cell);
@@ -3782,9 +3784,9 @@ static void compile_lambda(Environment* env, Closure* closure, Cell* cell)
 }
 
 
-// http://exo.willdonnelly.net/old-blog/scheme-syntax-rules/
+// http://exo.willdonnelly.net/blog/scheme-syntax-rules/
 
-static void compile_mutation(Environment* env, Closure* closure, Cell* cell, int instruction)
+static void compile_mutation(Environment* env, Procedure* closure, Cell* cell, int instruction)
 {
     // TODO: Handle dotted syntax.
     // Maybe as macro?
@@ -3809,7 +3811,7 @@ static int equal(const char* a, const char* b)
     return strcmp(a, b) == 0;
 }
 
-static void compile(Environment* env, Closure* closure, Cell* cell)
+static void compile(Environment* env, Procedure* closure, Cell* cell)
 {
     switch(cell->type)
     {
@@ -3916,7 +3918,7 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
             printf("Input was parsed as: ");
             print(stdout, cell, false);
             printf("Compiling top level function\n");
-            struct Closure closure;
+            struct Procedure closure;
             closure_init(&closure);
             compile(env, &closure, cell);
             eval(cont, &closure);
@@ -3955,7 +3957,7 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	free(buffer);
 }
 
-static void eval(Continuation* cont, struct Closure* closure)
+static void eval(Continuation* cont, struct Procedure* closure)
 {
 tailcall:
     
