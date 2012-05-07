@@ -227,7 +227,8 @@ enum TokenType
 	TOKEN_BACKTICK,
 	TOKEN_COMMA,
 	TOKEN_COMMA_AT,
-	TOKEN_DOT
+	TOKEN_DOT,
+    TOKEN_ELLIPSIS
 };
 
 struct Symbol
@@ -655,7 +656,7 @@ static void collect_garbage(Continuation* cont)
     mark_continuation(cont, marked);
     sweep(cont, kept, freed);
     
-    print_type_table(marked, kept, freed);
+    //print_type_table(marked, kept, freed);
 }
 
 static Cell* make_boolean(bool value)
@@ -839,6 +840,7 @@ static void token_print(Token* token)
             PRINT_CASE(TOKEN_COMMA);
             PRINT_CASE(TOKEN_COMMA_AT);
             PRINT_CASE(TOKEN_DOT);
+            PRINT_CASE(TOKEN_ELLIPSIS);
 #undef PRINT_CASE
     }
 }

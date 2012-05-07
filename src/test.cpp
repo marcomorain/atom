@@ -139,7 +139,32 @@ static char* test_lambda()
     return 0;
 }
 
+static char* test_macros()
+{
+    struct Continuation* atom = atom_api_open();
+    atom_api_loads(atom,
+        "     (define-syntax and "
+        "         (syntax-rules () "
+        "            ((and) #t) "
+        "            ((and test) test) "
+        "            ((and test1 test2 ...) "
+        "             (if test1 (and test2 ...) #f)))) ");
+    
+    atom_api_loads(atom,    
+    " (define-syntax or "
+    " (syntax-rules () "
+    "  ((or) #f) "
+    "  ((or test) test) "
+    "  ((or test1 test2 ...) "
+    "   (let ((x test1)) "
+    "    (if x x (or test2 ...))))))");
+    
+    atom_api_close(atom);
+    return 0;
+}
+
 static char * all_tests() {
+    mu_run_test(test_macros);
     mu_run_test(test_quote);
     mu_run_test(test_comile);
     mu_run_test(test_lambda);
