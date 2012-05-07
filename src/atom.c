@@ -161,6 +161,7 @@ struct String
 {
     char* data;
     int   length;
+    bool  mutable;
 };
 
 union cell_data
@@ -3845,7 +3846,7 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
     }
     
     closure->num_instructions = instruction_buffer_length(instructions);
-    const size_t bytes = closure->num_instructions * sizeof(struct Instruction);
+    const size_t bytes = closure->num_instructions * sizeof(Instruction);
     closure->instructions = (struct Instruction*)malloc(bytes);
     memcpy(closure->instructions, instruction_buffer_data(instructions), bytes);;
 }
