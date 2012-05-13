@@ -3634,7 +3634,20 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
 {
     // TODO: Share constants
     int type = cell->type;
-    assert(type == TYPE_NUMBER || type == TYPE_STRING || type == TYPE_SYMBOL || type == TYPE_BOOLEAN || type == TYPE_PROCEDURE);
+    switch(type)
+    {
+        case TYPE_NUMBER:
+        case TYPE_STRING:
+        case TYPE_SYMBOL:
+        case TYPE_BOOLEAN:
+        case TYPE_PROCEDURE:
+        case TYPE_EMPTY_LIST:
+        case TYPE_PAIR:
+            break;
+        default:
+            assert(0);
+            break;
+    }
     printf("Pushing constant: ");
     print(stdout, cell, false);
     vector_push(&closure->constants, cell);
@@ -3920,6 +3933,14 @@ void atom_api_load(Continuation* cont, const char* data, size_t length)
             
             compile(env, &closure, &instructions, after_macros);
             eval(cont, &closure);
+            
+            int top = vector_length(&cont->stack);
+            if (top > 0)
+            {
+                Cell* result = vector_get(&cont->stack, top-1);
+                printf("> ");
+                print(stdout, result, true);
+            }
         }
         else break;
 	}
@@ -4053,6 +4074,11 @@ static void eval(Continuation* cont, struct Procedure* closure)
                         // TODO: Make environment better
                         Environment* child = create_environment(cont, env);
                         cont->env = child;
+                        
+                        if (num_params != function->data.closure->nparams)
+                        {
+                            signal_error(cont, "Error calling procedure: Expected %d params but was passed %d", function->data.closure->nparams, num_params);
+                        }
                         eval(cont, function->data.closure);
                         break;
                     }

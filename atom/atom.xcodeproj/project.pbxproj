@@ -222,7 +222,7 @@
 				8FB666A0135BCB15000DE583 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 		8FB666A1135BCB15000DE583 /* Build configuration list for PBXNativeTarget "atom" */ = {
 			isa = XCConfigurationList;
@@ -231,7 +231,7 @@
 				8FB666A3135BCB15000DE583 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
+			defaultConfigurationName = Debug;
 		};
 /* End XCConfigurationList section */
 	};
