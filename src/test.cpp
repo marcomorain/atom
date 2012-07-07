@@ -16,20 +16,20 @@ int bar = 5;
 
 static char * test_open_close() {
     
-    struct Continuation* c = atom_api_open();
+    struct atom_state* c = atom_state_new();
     mu_assert_msg(c != 0);
-    atom_api_close(c);
+    atom_state_free(c);
     
-    c = atom_api_open();
+    c = atom_state_new();
     mu_assert_msg(c != 0);
-    atom_api_close(c);
+    atom_state_free(c);
     
     return 0;
 }
 
 static char* test_comile() {
-    struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom, "1");
+    struct atom_state* atom = atom_state_new();
+    atom_state_load(atom, "1");
     double number = atom_api_to_number(atom, 1);
     mu_assert_msg(number == 1.0);
     mu_assert_msg(atom_api_get_top(atom) == 1);
@@ -37,21 +37,21 @@ static char* test_comile() {
     atom_api_clear(atom);
     mu_assert_msg(atom_api_get_top(atom) == 0);
     
-    atom_api_loads(atom, "\"foo\"");
+    atom_state_load(atom, "\"foo\"");
     mu_assert_msg(atom_api_get_top(atom) == 1);
 
     const char* str = atom_api_to_string(atom, 1);
     mu_assert_msg(strcmp(str, "foo") == 0);
     
-    atom_api_close(atom);
+    atom_state_free(atom);
 
     return 0;
 }
 
 
-static double do_numeric_operation(struct Continuation* atom, const char* op)
+static double do_numeric_operation(struct atom_state* atom, const char* op)
 {
-    atom_api_loads(atom, op);
+    atom_state_load(atom, op);
     double number = atom_api_to_number(atom, 1);
     atom_api_clear(atom);
     return number;
@@ -59,7 +59,7 @@ static double do_numeric_operation(struct Continuation* atom, const char* op)
 
 static char* test_plus() {
     
-    struct Continuation* atom = atom_api_open();
+    struct atom_state* atom = atom_state_new();
 
     mu_assert_msg(do_numeric_operation(atom, "(+)") == 0);
     mu_assert_msg(do_numeric_operation(atom, "(+ 7)") == 7);
@@ -74,75 +74,75 @@ static char* test_plus() {
     mu_assert_msg(do_numeric_operation(atom, "(- 2 5)") == -3);
     mu_assert_msg(do_numeric_operation(atom, "(abs 5)") == 5);
 
-    atom_api_close(atom);    
+    atom_state_free(atom);    
     return 0;
 }
 
 static char* test_state() {
-    struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom, "(define x 17)");
+    struct atom_state* atom = atom_state_new();
+    atom_state_load(atom, "(define x 17)");
     atom_api_clear(atom);
     mu_assert_msg(do_numeric_operation(atom, "x") == 17);
     
-    atom_api_loads(atom, "(set! x 9)");
+    atom_state_load(atom, "(set! x 9)");
     atom_api_clear(atom);
     mu_assert_msg(do_numeric_operation(atom, "x") == 9);
     
-    atom_api_close(atom);    
+    atom_state_free(atom);    
     return 0;
 }
 
-static bool do_boolean_operation(struct Continuation* atom, const char* op)
+static bool do_boolean_operation(struct atom_state* atom, const char* op)
 {
-    atom_api_loads(atom, op);
+    atom_state_load(atom, op);
     bool result = atom_api_to_boolean(atom, 1);
     atom_api_clear(atom);
     return result;
 }
 
 static char* test_equality() {
-    struct Continuation* atom = atom_api_open();
+    struct atom_state* atom = atom_state_new();
     mu_assert_msg( do_boolean_operation(atom, "(eq? 5 5)"));
     mu_assert_msg(!do_boolean_operation(atom, "(eq? 1 2)"));
     mu_assert_msg(!do_boolean_operation(atom, "(eq? \"foo\" \"bar\")"));
-    atom_api_close(atom);    
+    atom_state_free(atom);    
     return 0;
 }
 
 static char* test_quote()
 {
-    struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom, "(quote a)");
-    atom_api_loads(atom, "'a");
+    struct atom_state* atom = atom_state_new();
+    atom_state_load(atom, "(quote a)");
+    atom_state_load(atom, "'a");
     atom_api_clear(atom);
-    atom_api_close(atom);    
+    atom_state_free(atom);    
     return 0;    
 }
 
 static char* test_if()
 {
-    struct Continuation* atom = atom_api_open();
+    struct atom_state* atom = atom_state_new();
     mu_assert_msg( do_boolean_operation(atom, "(if 1 2 3)"));
-    atom_api_close(atom);    
+    atom_state_free(atom);    
     return 0;    
 }
 
 
 static char* test_lambda()
 {
-    struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom, "(define plus (lambda (x) (+ x 1)))");
+    struct atom_state* atom = atom_state_new();
+    atom_state_load(atom, "(define plus (lambda (x) (+ x 1)))");
     atom_api_clear(atom);
-    atom_api_loads(atom, "(plus 4)");
+    atom_state_load(atom, "(plus 4)");
     mu_assert_msg(atom_api_to_number(atom, 1) == 5);
-    atom_api_close(atom);    
+    atom_state_free(atom);    
     return 0;
 }
 
 static char* test_macros()
 {
-    struct Continuation* atom = atom_api_open();
-    atom_api_loads(atom,
+    struct atom_state* atom = atom_state_new();
+    atom_state_load(atom,
         "     (define-syntax and "
         "         (syntax-rules () "
         "            ((and) #t) "
@@ -150,7 +150,7 @@ static char* test_macros()
         "            ((and test1 test2 ...) "
         "             (if test1 (and test2 ...) #f)))) ");
     
-    atom_api_loads(atom,    
+    atom_state_load(atom,    
     " (define-syntax or "
     " (syntax-rules () "
     "  ((or) #f) "
@@ -159,7 +159,7 @@ static char* test_macros()
     "   (let ((x test1)) "
     "    (if x x (or test2 ...))))))");
     
-    atom_api_close(atom);
+    atom_state_free(atom);
     return 0;
 }
 

@@ -2,18 +2,17 @@
 #include <string.h>
 #include <stdbool.h>
 
-struct Continuation;
+// Create a new atom state.
+struct atom_state*  atom_state_new();
+void                atom_state_free(struct atom_state* state);
+void                atom_state_load(struct atom_state* state,
+                                           const char* data);
+void                atom_state_load_file(struct atom_state* state,
+                                         const char* filename);
+void                atom_state_repl(struct atom_state* state);
 
-struct Continuation* atom_api_open();
-void atom_api_close(struct Continuation* env);
-void atom_api_loadfile(struct Continuation* env, const char* filename);
-void atom_api_load(struct Continuation* cont, const char* data, size_t length);
-void atom_api_repl(struct Continuation* env);
-
-double atom_api_to_number(struct Continuation* cont, int n);
-bool atom_api_to_boolean(struct Continuation* cont, int n);
-const char* atom_api_to_string(struct Continuation* cont, int n);
-size_t atom_api_get_top(struct Continuation* cont);
-void atom_api_clear(struct Continuation* cont);
-
-#define atom_api_loads(cont, data) (atom_api_load((cont), (data), strlen(data)))
+double atom_api_to_number(struct atom_state* cont, int n);
+bool atom_api_to_boolean(struct atom_state* cont, int n);
+const char* atom_api_to_string(struct atom_state* cont, int n);
+size_t atom_api_get_top(struct atom_state* cont);
+void atom_api_clear(struct atom_state* cont);

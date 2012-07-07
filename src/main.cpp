@@ -18,7 +18,7 @@ static bool match(const char* input, const char* a, const char* b)
     strcmp(input, b) == 0;
 }
 
-static void do_repl(Continuation* cont)
+static void do_repl(atom_state* cont)
 {
     for (;;)
     {
@@ -32,7 +32,7 @@ static void do_repl(Continuation* cont)
         if (*line)
         {
             linenoiseHistoryAdd(line);
-            atom_api_load(cont, line, strlen(line));
+            atom_state_load(cont, line);
         }
         
         free(line);
@@ -52,7 +52,7 @@ int main (int argc, char** argv)
 //        return EXIT_SUCCESS;
     }
     
-    Continuation* atom = atom_api_open();
+    atom_state* atom = atom_state_new();
     
     bool repl = false;
     bool file = false;
@@ -84,7 +84,7 @@ int main (int argc, char** argv)
     
     printf("Loading input from %s\n", filename);
     
-    atom_api_loadfile(atom, filename);
+    atom_state_load_file(atom, filename);
     
     if (repl)
     {
@@ -98,7 +98,7 @@ int main (int argc, char** argv)
         printf("No REPL.\n");
     }
     
-    atom_api_close(atom);
+    atom_state_free(atom);
     
     printf("atom shutdwn ok\n");
     

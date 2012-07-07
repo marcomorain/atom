@@ -58,7 +58,7 @@ const static char* typenames [] = {
 };
 
 struct Environment;
-struct Continuation;
+struct atom_state;
 struct Cell;
 struct Symbol;
 
@@ -72,7 +72,7 @@ struct Vector
 typedef struct Vector Vector;
 typedef struct Cell Cell;
 typedef struct Environment Environment;
-typedef struct Continuation Continuation;
+typedef struct atom_state atom_state;
 typedef struct String String;
 typedef struct Pair Pair;
 typedef struct Symbol Symbol;
@@ -355,13 +355,13 @@ typedef struct symbol_node symbol_node;
 
 struct Environment
 {
-	Continuation*   cont;
+	atom_state*   cont;
 	Environment*    parent;
 	symbol_node**	data;
 	unsigned        mask;
 };
 
-void environment_init(Environment* env, Continuation* c, int size, Environment* parent_env)
+void environment_init(Environment* env, atom_state* c, int size, Environment* parent_env)
 {
     assert(power_of_two(size));
     env->mask = size-1;
@@ -378,7 +378,7 @@ struct jump_buffer
 };
 typedef struct jump_buffer jump_buffer;
 
-struct Continuation
+struct atom_state
 {
 	Environment*        env;
 	Cell*               cells;
@@ -422,7 +422,7 @@ struct Procedure
 
 // Maybe insert a new symbol into the Cont's symbol table.
 // Or return an existing one if the name is already in the table
-static Symbol* find_or_insert_symbol(Continuation* cont, const char* name)
+static Symbol* find_or_insert_symbol(atom_state* cont, const char* name)
 {
     // TODO: This function assumes that there are no embedded nulls in name
     
@@ -450,7 +450,7 @@ static Symbol* find_or_insert_symbol(Continuation* cont, const char* name)
     return new_symbol;
 }
 
-void signal_error(Continuation* cont, const char* message, ...)
+void signal_error(atom_state* cont, const char* message, ...)
 {
 	va_list args;
 	va_start(args, message);
@@ -461,7 +461,7 @@ void signal_error(Continuation* cont, const char* message, ...)
 	longjmp(cont->escape->buffer, 1);
 }
 
-static void type_check(Continuation* cont, int expected, int actual)
+static void type_check(atom_state* cont, int expected, int actual)
 {
 	if (actual != expected)
 	{
@@ -586,14 +586,14 @@ static void print_type_table(size_t marked[], size_t kept[], size_t freed[])
     puts("|=================================|\n");
 }
 
-static void mark_continuation(Continuation* cont, size_t marked[])
+static void mark_atom_state(atom_state* cont, size_t marked[])
 {
 	mark_environment(cont->env, marked);
     for (int i=0; i<vector_length(&cont->stack); i++)
         mark(vector_get(&cont->stack, i), marked);
 }
 
-static void sweep(Continuation* cont, size_t kept[], size_t freed[])
+static void sweep(atom_state* cont, size_t kept[], size_t freed[])
 {
 	Cell* remaining = NULL;
 	Cell* next = NULL;
@@ -647,13 +647,13 @@ static void sweep(Continuation* cont, size_t kept[], size_t freed[])
 	cont->cells = remaining;
 }
 
-static void collect_garbage(Continuation* cont)
+static void collect_garbage(atom_state* cont)
 {
     size_t marked[MAX_TYPES] = {};
     size_t kept  [MAX_TYPES] = {};
     size_t freed [MAX_TYPES] = {};
     
-    mark_continuation(cont, marked);
+    mark_atom_state(cont, marked);
     sweep(cont, kept, freed);
     
     //print_type_table(marked, kept, freed);
@@ -1581,7 +1581,7 @@ void environment_set(Environment* env, const Symbol* symbol, Cell* value)
 	signal_error(env->cont, "No binding for %s in any scope.", symbol->name);
 }
 
-static void eval(Continuation* env, struct Procedure* closure);
+static void eval(atom_state* env, struct Procedure* closure);
 
 static Cell* atom_pop_cell(Environment* env)
 {
@@ -1659,7 +1659,7 @@ static void type_q_helper(Environment* env, int params, int type)
     atom_push_boolean(env, atom_pop_cell(env)->type == type);
 }
 
-static Environment* create_environment(Continuation* cont, Environment* parent)
+static Environment* create_environment(atom_state* cont, Environment* parent)
 {
 	Environment* env = (Environment*)malloc(sizeof(Environment));
     environment_init(env, cont, 1, parent);
@@ -1992,6 +1992,12 @@ static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
 		}
 	}
 	return true;
+}
+
+static void atom_syntax_rules(Environment* env, int params)
+{
+    assert(params > 1);
+    Cell* keywords = atom_pop_list(env);
 }
 
 static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, bool recurse_compound)
@@ -3558,7 +3564,7 @@ static void atom_load(Environment* env, int params)
 {
     Cell* filename = atom_pop_cell(env);
     type_check(env->cont, TYPE_STRING, filename->type);
-	atom_api_loadfile(env->cont, filename->data.string.data);
+	atom_state_load_file(env->cont, filename->data.string.data);
     // TODO: return value here.
     atom_push_boolean(env, true);
 }
@@ -3886,8 +3892,9 @@ static Cell* apply_macros(Environment* env, Cell* cell)
     return cell;
 }
 
-void atom_api_load(Continuation* cont, const char* data, size_t length)
+void atom_state_load(atom_state* cont, const char* data)
 {	
+    // TODO: Can read off the end of data.
     printf("Input String: %s\n", data);
 	Environment* env = cont->env;
     
@@ -3953,7 +3960,7 @@ cleanup:
 	cont->escape = prev;
 }
 
-void atom_api_loadfile(Continuation* cont, const char* filename)
+void atom_state_load_file(atom_state* cont, const char* filename)
 {
 	FILE* file = fopen(filename, "r");
 	
@@ -3971,12 +3978,12 @@ void atom_api_loadfile(Continuation* cont, const char* filename)
 	buffer[read] = 0;
 	fclose (file);
 	
-	atom_api_load(cont, buffer, read);
+	atom_state_load(cont, buffer);
 	
 	free(buffer);
 }
 
-static void eval(Continuation* cont, struct Procedure* closure)
+static void eval(atom_state* cont, struct Procedure* closure)
 {
 	assert(cont);
     assert(closure);
@@ -4100,24 +4107,24 @@ static void eval(Continuation* cont, struct Procedure* closure)
 }
 
 
-static Cell* load_register(Continuation* cont, int n)
+static Cell* load_register(atom_state* cont, int n)
 {
     assert(n > 0);
     return vector_get(&cont->stack, n-1);
 }
 
-size_t atom_api_get_top(Continuation* cont)
+size_t atom_api_get_top(atom_state* cont)
 {
     return vector_length(&cont->stack);
 }
 
-void atom_api_clear(Continuation* cont)
+void atom_api_clear(atom_state* cont)
 {
     // todo: encapsulate
     cont->stack.length = 0;
 }
 
-double atom_api_to_number(Continuation* cont, int n)
+double atom_api_to_number(atom_state* cont, int n)
 {
     Cell* cell = load_register(cont, n);
     if (cell->type == TYPE_NUMBER)
@@ -4125,12 +4132,12 @@ double atom_api_to_number(Continuation* cont, int n)
     return 0;
 }
 
-bool atom_api_to_boolean(Continuation* cont, int n)
+bool atom_api_to_boolean(atom_state* cont, int n)
 {
     return is_truthy(load_register(cont, n));
 }
 
-const char* atom_api_to_string(Continuation* cont, int n)
+const char* atom_api_to_string(atom_state* cont, int n)
 {
     Cell* cell = load_register(cont, n);
     if (cell->type == TYPE_STRING)
@@ -4155,9 +4162,9 @@ struct Library
     atom_builtin func;
 };
  
-Continuation* atom_api_open()
+atom_state* atom_state_new()
 {
-	Continuation* cont	= (Continuation*)calloc(1, sizeof(Continuation));
+	atom_state* cont	= (atom_state*)calloc(1, sizeof(atom_state));
 	Environment* env    = create_environment(cont, NULL);
 	cont->env           = env;
 	cont->input     	= stdin;
@@ -4264,6 +4271,8 @@ Continuation* atom_api_open()
         // Proc must be a procedure and args must be a list. Calls proc with the
         // elements of the list (append (list arg1 ...) args) as the actual arguments.
         //{"apply",	   		atom_apply},
+        
+        {"syntax-rules",    atom_syntax_rules},
 
         {"eqv?",			atom_eqv_q},
         {"eq?",				atom_eq_q},
@@ -4455,7 +4464,7 @@ Continuation* atom_api_open()
     return cont;
 }
  
-void atom_api_close(Continuation* cont)
+void atom_state_free(atom_state* cont)
 {
     vector_delete(&cont->stack);
 
