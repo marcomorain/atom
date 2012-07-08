@@ -11,7 +11,9 @@ void                atom_state_load_file(struct atom_state* state,
                                          const char* filename);
 void                atom_state_repl(struct atom_state* state);
 
-double atom_api_to_number(struct atom_state* cont, int n);
+
+double atom_state_pop_number(struct atom_state* state);
+
 bool atom_api_to_boolean(struct atom_state* cont, int n);
 const char* atom_api_to_string(struct atom_state* cont, int n);
 size_t atom_api_get_top(struct atom_state* cont);

@@ -30,7 +30,7 @@ static char * test_open_close() {
 static char* test_comile() {
     struct atom_state* atom = atom_state_new();
     atom_state_load(atom, "1");
-    double number = atom_api_to_number(atom, 1);
+    double number = atom_state_pop_number(atom);
     mu_assert_msg(number == 1.0);
     mu_assert_msg(atom_api_get_top(atom) == 1);
     
@@ -52,9 +52,7 @@ static char* test_comile() {
 static double do_numeric_operation(struct atom_state* atom, const char* op)
 {
     atom_state_load(atom, op);
-    double number = atom_api_to_number(atom, 1);
-    atom_api_clear(atom);
-    return number;
+    return atom_state_pop_number(atom);
 }
 
 static char* test_plus() {
@@ -134,7 +132,7 @@ static char* test_lambda()
     atom_state_load(atom, "(define plus (lambda (x) (+ x 1)))");
     atom_api_clear(atom);
     atom_state_load(atom, "(plus 4)");
-    mu_assert_msg(atom_api_to_number(atom, 1) == 5);
+    mu_assert_msg(atom_state_pop_number(atom) == 5);
     atom_state_free(atom);    
     return 0;
 }

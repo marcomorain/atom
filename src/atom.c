@@ -4124,12 +4124,10 @@ void atom_api_clear(atom_state* cont)
     cont->stack.length = 0;
 }
 
-double atom_api_to_number(atom_state* cont, int n)
+double atom_state_pop_number(atom_state* cont)
 {
-    Cell* cell = load_register(cont, n);
-    if (cell->type == TYPE_NUMBER)
-        return cell->data.number;
-    return 0;
+    // TODO: Error checking
+    return atom_pop_number(cont->env);
 }
 
 bool atom_api_to_boolean(atom_state* cont, int n)
