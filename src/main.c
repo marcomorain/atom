@@ -1,11 +1,8 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-
 #include "linenoise.h"
 #include "atom.h"
-
-int test(int argc, char** argv);
 
 
 static bool match(const char* input, const char* a, const char* b)
