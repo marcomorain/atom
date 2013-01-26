@@ -1,3 +1,4 @@
+.DS_Store
 /build/scheme.build*
 /scheme.1
 /a.out

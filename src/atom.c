@@ -322,7 +322,7 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
             
             
         default:
-            fprintf(output, "#<%s %p>", typenames[cell->type], &cell->data.port);
+            fprintf(output, "#<%s %p>", typenames[cell->type], cell->data.port);
             break;
     }
 }
@@ -418,6 +418,7 @@ struct Procedure
     Instruction* instructions;
     int num_instructions;
     Vector constants;
+    Cell* source;
 };
 
 // Maybe insert a new symbol into the Cont's symbol table.
@@ -3610,11 +3611,12 @@ Instruction make_instruction(int op_code, int operand)
     return instruction;
 }
 
-static void closure_init(Procedure* closure)
+static void procedure_init(Procedure* closure, Cell* source)
 {
     closure->nparams            = 0;
     closure->num_instructions   = 0;
     closure->instructions       = 0;
+    closure->source             = source;
     vector_init_empty(&closure->constants);
 }
 
@@ -3654,8 +3656,8 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
             assert(0);
             break;
     }
-    printf("Pushing constant: ");
-    print(stdout, cell, false);
+    //printf("Pushing constant: ");
+    //print(stdout, cell, false);
     vector_push(&closure->constants, cell);
     return vector_length(&closure->constants) - 1;
 }
@@ -3674,7 +3676,7 @@ static void compile_function_call(Environment* env, Procedure* closure, struct i
 {
     int num_params = compile_reverse(env, closure, instructions, cell) - 1;
     instruction_buffer_push(instructions, make_instruction(INST_CALL, num_params));
-    printf("Function call with %d params\n", num_params);
+    //printf("Function call with %d params\n", num_params);
 }
 
 // 4.1.2
@@ -3691,15 +3693,33 @@ static void compile_quote(Environment* env, Procedure* closure, struct instructi
     instruction_buffer_push(instructions, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
 }
 
+static void print_procedure(const Procedure* p)
+{
+    printf("Procedure %p – expects %d params\n", p, p->nparams);
+    if (p->source) print(stdout, p->source, true);
+    printf("# Constants (%d):\n", p->constants.length);
+    
+    for(int i = 0; i < p->constants.length; i++) {
+        Cell* cell = p->constants.cell_data[i];
+        printf("# [%d] - ", i); print(stdout, cell, true);
+    }
+    
+    printf("# Instructions (%d)\n", p->num_instructions);
+    for (int i=0; i<p->num_instructions; i++) {
+        Instruction ins = p->instructions[i];
+        printf("#  - %s %d\n", instruction_names[ins.op_code], ins.operand);
+    }
+}
+
 static void compile_closure(Environment* env, Procedure* parent, struct instruction_buffer* instructions, Cell* formals, Cell* body)
 {    
     // Make a new closure
     Procedure* child = (Procedure*)calloc(1, sizeof(Procedure));
-    closure_init(child);
+    procedure_init(child, body);
     struct instruction_buffer child_instructions;
     instruction_buffer_init(&child_instructions);
     
-    printf("Compiling a new function.\n");
+    //printf("Compiling a new function.\n");
     
     // When a function is called there are N params on the stack. The top most
     // parameter is the first formal. The following loops emits a define instruction
@@ -3710,7 +3730,7 @@ static void compile_closure(Environment* env, Procedure* parent, struct instruct
         size_t constant = closure_add_constant(child, car(formal));
         
         instruction_buffer_push(&child_instructions, make_instruction(INST_PUSH, constant));
-        printf("Setting local variable\n");
+        //printf("Setting local variable\n");
         instruction_buffer_push(&child_instructions, make_instruction(INST_DEFINE, 0));
 
         child->nparams++;
@@ -3719,7 +3739,8 @@ static void compile_closure(Environment* env, Procedure* parent, struct instruct
     
     compile(env, child, &child_instructions, body);
     
-    printf("Function compiled OK.\n");
+    //printf("Function compiled OK.\n");
+    print_procedure(child);
     
     size_t c = closure_add_constant(parent, make_closure(env, child));
     
@@ -3825,12 +3846,12 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
                     if (equal(symbol, "define"))
                     {
                         compile_mutation(env, closure, instructions, cdr(cell), INST_DEFINE);
-                        printf("define ^ 2\n");
+                        //printf("define ^ 2\n");
                     }
                     else if (equal(symbol, "set!"))
                     {
                         compile_mutation(env, closure, instructions, cdr(cell), INST_SET);
-                        printf("set! ^ 2\n");
+                        //printf("set! ^ 2\n");
                     }
                     else if (equal(symbol, "if"))
                     {
@@ -3883,7 +3904,7 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
     closure->num_instructions = instruction_buffer_length(instructions);
     const size_t bytes = closure->num_instructions * sizeof(Instruction);
     closure->instructions = (struct Instruction*)malloc(bytes);
-    memcpy(closure->instructions, instruction_buffer_data(instructions), bytes);;
+    memcpy(closure->instructions, instruction_buffer_data(instructions), bytes);
 }
 
 static Cell* apply_macros(Environment* env, Cell* cell)
@@ -3922,23 +3943,23 @@ void atom_state_load(atom_state* cont, const char* data)
         Cell* parsed;
 		if ((parsed = parse_datum(env, &input, &next)))
 		{
-            printf("Input was parsed as: ");
-            print(stdout, parsed, false);
-            
+            //printf("Input was parsed as: ");
+            //print(stdout, parsed, false);
             
             Cell* after_macros = apply_macros(env, parsed);
             
-            printf("After macros: ");
-            print(stdout, after_macros, false);
+            //printf("After macros: ");
+            //print(stdout, after_macros, false);
             
-            printf("Compiling top level function\n");
+            //printf("Compiling top level function\n");
             struct Procedure closure;
-            closure_init(&closure);
+            procedure_init(&closure, after_macros);
             
             struct instruction_buffer instructions;
             instruction_buffer_init(&instructions);
             
             compile(env, &closure, &instructions, after_macros);
+            print_procedure(&closure);
             eval(cont, &closure);
             
             int top = vector_length(&cont->stack);
@@ -3991,12 +4012,12 @@ static void eval(atom_state* cont, struct Procedure* closure)
     size_t pc = 0;
     Environment* env = cont->env;
     
-    printf("eval: function %p %d params\n", closure, closure->nparams);
+    //printf("eval: function %p %d params\n", closure, closure->nparams);
     
     for (int i=0; i<vector_length(&closure->constants); i++)
     {
-        printf("Constant %d: ", i);
-        print(stdout, vector_get(&closure->constants, i), true);
+        //printf("Constant %d: ", i);
+        //print(stdout, vector_get(&closure->constants, i), true);
     }
 
     for (;;)
@@ -4010,18 +4031,18 @@ static void eval(atom_state* cont, struct Procedure* closure)
         const Instruction instruction = closure->instructions[pc];
         pc++;
         
-        printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
+        //printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
 
         switch (instruction.op_code)
         {
             // Pop 3 values – the test and the 2 blocks of code to call.
             // If the test is true,  push consequent
-            // If the test is false, push consequent
+            // If the test is false, push alternate
             // The next operations is call(0).
             case INST_IF:
             {
-                Cell* consequent    = atom_pop_a(env, TYPE_PROCEDURE);
                 Cell* alternate     = atom_pop_a(env, TYPE_PROCEDURE);
+                Cell* consequent    = atom_pop_a(env, TYPE_PROCEDURE);
                 
                 Cell* result = is_truthy(atom_pop_cell(env)) ? consequent : alternate;
                 atom_push_cell(env, result);
@@ -4450,7 +4471,6 @@ atom_state* atom_state_new()
         {"load",	atom_load},
         {"read",    atom_read},
         {"error",	atom_error},
-         
 
         {NULL, NULL}
     };
