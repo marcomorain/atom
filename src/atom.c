@@ -72,7 +72,6 @@ struct Vector
 typedef struct Vector Vector;
 typedef struct Cell Cell;
 typedef struct Environment Environment;
-typedef struct atom_state atom_state;
 typedef struct String String;
 typedef struct Pair Pair;
 typedef struct Symbol Symbol;
@@ -386,6 +385,7 @@ struct atom_state
 	int                 allocated;
 	FILE*               input;
     FILE*               output;
+    FILE*               log;
     Vector              stack;
     
     // The symbol table
@@ -568,22 +568,22 @@ static void mark(Cell* cell, size_t marked[])
 	}
 }
 
-static void print_type_table(size_t marked[], size_t kept[], size_t freed[])
+static void print_type_table(FILE* log, size_t marked[], size_t kept[], size_t freed[])
 {
     size_t total_marked = 0;
     size_t total_kept   = 0;
     size_t total_freed  = 0;
-    puts("|=================================|");
-    printf("|%-12s|%-6s|%-6s|%-6s|\n", "TYPE", "MARKED", "KEPT", "FREED");
+    fputs("|=================================|", log);
+    fprintf(log, "|%-12s|%-6s|%-6s|%-6s|\n", "TYPE", "MARKED", "KEPT", "FREED");
     for (int i=0; i<MAX_TYPES; i++)
     {
-        printf("|%-12s|%6ld|%6ld|%6ld|\n", typenames[i], marked[i], kept[i], freed[i]);
+        fprintf(log, "|%-12s|%6ld|%6ld|%6ld|\n", typenames[i], marked[i], kept[i], freed[i]);
         total_marked += marked[i];
         total_kept   += kept[i];
         total_freed  += freed[i];
     }
-    printf("|%-12s|%6ld|%6ld|%6ld|\n", "Total", total_marked, total_kept, total_freed);
-    puts("|=================================|\n");
+    fprintf(log, "|%-12s|%6ld|%6ld|%6ld|\n", "Total", total_marked, total_kept, total_freed);
+    fputs("|=================================|\n", log);
 }
 
 static void mark_atom_state(atom_state* cont, size_t marked[])
@@ -4167,6 +4167,7 @@ atom_state* atom_state_new()
 	cont->env           = env;
 	cont->input     	= stdin;
     cont->output        = stdout;
+    cont->log           = fopen(".atom_log", "w+");
     cont->symbol_mask   = 0xFF;
     cont->symbols       = (Symbol**)calloc(1+cont->symbol_mask, sizeof(Symbol*));
     

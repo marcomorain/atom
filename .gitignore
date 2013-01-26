@@ -7,9 +7,9 @@
 /src/a.out.dSYM/
 /src/atom
 /src/*.o
-
-/src/.atom_history
-atom/atom.xcodeproj/project.xcworkspace/xcuserdata/marcomorain.xcuserdatad/UserInterfaceState.xcuserstate
-atom/atom.xcodeproj/xcuserdata/marcomorain.xcuserdatad/xcdebugger/Breakpoints.xcbkptlist
-atom/atom.xcodeproj/xcuserdata/marcomorain.xcuserdatad/xcschemes/atom.xcscheme
+.atom_history
+xcuserdata
 atom/build/
+/bin/
+
+/.atom_log

@@ -1,7 +1,6 @@
 #include <stdio.h>
-extern "C" {
 #include "../src/atom.h"
-}
+
 
 /* file: minunit.h */
 static int tests_run = 0;
@@ -16,7 +15,7 @@ int bar = 5;
 
 static char * test_open_close() {
     
-    struct atom_state* c = atom_state_new();
+    atom_state* c = atom_state_new();
     mu_assert_msg(c != 0);
     atom_state_free(c);
     
@@ -162,7 +161,7 @@ static char* test_macros()
 }
 
 static char * all_tests() {
-    mu_run_test(test_macros);
+    //mu_run_test(test_macros);
     mu_run_test(test_quote);
     mu_run_test(test_comile);
     mu_run_test(test_lambda);
@@ -174,7 +173,7 @@ static char * all_tests() {
     return 0;
 }
 
-int test(int argc, char* *argv)
+int main(int argc, char* *argv)
 {
     char *result = all_tests();
     if (result != 0) {
