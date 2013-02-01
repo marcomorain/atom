@@ -3652,11 +3652,11 @@ enum {
 
 const static char* instruction_names [] = {
     [INST_PUSH]    = "push constant",
-    [INST_LOAD]             = "load",
-	[INST_CALL]             = "call",
-	[INST_DEFINE]           = "define",
-    [INST_SET]              = "set",
-    [INST_IF]               = "if",
+    [INST_LOAD]    = "load",
+	[INST_CALL]    = "call",
+	[INST_DEFINE]  = "define",
+    [INST_SET]     = "set",
+    [INST_IF]      = "if",
 };
 
 static int closure_add_constant(struct Procedure* closure, Cell* cell)
@@ -3677,8 +3677,17 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
             assert(0);
             break;
     }
+
     //printf("Pushing constant: ");
     //print(stdout, cell, false);
+
+    for (int i = 0; i < closure->constants.length; i++)
+    {
+        if (eq_helper(vector_get(&closure->constants, i), cell, true, true)){
+            return i;
+        }
+    }
+
     vector_push(&closure->constants, cell);
     return vector_length(&closure->constants) - 1;
 }

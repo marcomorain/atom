@@ -7,7 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		493DC93514096291009876BE /* linenoise.c in Sources */ = {isa = PBXBuildFile; fileRef = 493DC93314096291009876BE /* linenoise.c */; };
+		491ED6E616BC256000231CE5 /* linenoise.c in Sources */ = {isa = PBXBuildFile; fileRef = 491ED6E416BC256000231CE5 /* linenoise.c */; };
 		4989F1DA144DFE0300EA571B /* atom.c in Sources */ = {isa = PBXBuildFile; fileRef = 4989F1D9144DFE0300EA571B /* atom.c */; };
 		8F30E32D16B4175500AB947C /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8F30E32C16B4175500AB947C /* main.c */; };
 		8F30E33E16B41E0B00AB947C /* test.c in Sources */ = {isa = PBXBuildFile; fileRef = 8F30E32E16B4177800AB947C /* test.c */; };
@@ -36,8 +36,8 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		493DC93314096291009876BE /* linenoise.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linenoise.c; path = ../../linenoise/linenoise.c; sourceTree = "<group>"; };
-		493DC93414096291009876BE /* linenoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linenoise.h; path = ../../linenoise/linenoise.h; sourceTree = "<group>"; };
+		491ED6E416BC256000231CE5 /* linenoise.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linenoise.c; path = ../../src/linenoise/linenoise.c; sourceTree = "<group>"; };
+		491ED6E516BC256000231CE5 /* linenoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linenoise.h; path = ../../src/linenoise/linenoise.h; sourceTree = "<group>"; };
 		4989F1D9144DFE0300EA571B /* atom.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = atom.c; path = ../../src/atom.c; sourceTree = "<group>"; };
 		49B017381511B9CC009B5DAC /* minunit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = minunit.h; path = ../test/minunit.h; sourceTree = "<group>"; };
 		49C7F29D155025AA00F19780 /* r5rs.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = r5rs.txt; path = ../../doc/r5rs.txt; sourceTree = "<group>"; };
@@ -75,19 +75,9 @@
 			name = test;
 			sourceTree = "<group>";
 		};
-		49B0173C1511B9E0009B5DAC /* linenoise */ = {
-			isa = PBXGroup;
-			children = (
-				493DC93314096291009876BE /* linenoise.c */,
-				493DC93414096291009876BE /* linenoise.h */,
-			);
-			name = linenoise;
-			sourceTree = "<group>";
-		};
 		8FB6668D135BCB14000DE583 = {
 			isa = PBXGroup;
 			children = (
-				49B0173C1511B9E0009B5DAC /* linenoise */,
 				49B0173B1511B9D4009B5DAC /* test */,
 				8FB6669B135BCB15000DE583 /* atom */,
 				8FB66699135BCB15000DE583 /* Products */,
@@ -106,6 +96,8 @@
 		8FB6669B135BCB15000DE583 /* atom */ = {
 			isa = PBXGroup;
 			children = (
+				491ED6E416BC256000231CE5 /* linenoise.c */,
+				491ED6E516BC256000231CE5 /* linenoise.h */,
 				8F30E32E16B4177800AB947C /* test.c */,
 				8F30E32C16B4175500AB947C /* main.c */,
 				4989F1D9144DFE0300EA571B /* atom.c */,
@@ -194,9 +186,9 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				493DC93514096291009876BE /* linenoise.c in Sources */,
 				4989F1DA144DFE0300EA571B /* atom.c in Sources */,
 				8F30E32D16B4175500AB947C /* main.c in Sources */,
+				491ED6E616BC256000231CE5 /* linenoise.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -309,6 +301,7 @@
 				8F30E33D16B41DE200AB947C /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
 		};
 		8FB66692135BCB14000DE583 /* Build configuration list for PBXProject "atom" */ = {
 			isa = XCConfigurationList;
