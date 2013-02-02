@@ -4,13 +4,6 @@
 #include "linenoise/linenoise.h"
 #include "atom.h"
 
-
-static bool match(const char* input, const char* a, const char* b)
-{
-    return strcmp(input, a) == 0 ||
-    strcmp(input, b) == 0;
-}
-
 static void do_repl(atom_state* cont)
 {
     for (;;)

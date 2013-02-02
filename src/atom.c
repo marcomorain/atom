@@ -2019,7 +2019,7 @@ static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
 static void atom_syntax_rules(Environment* env, int params)
 {
     assert(params > 1);
-    Cell* keywords = atom_pop_list(env);
+    //Cell* keywords = atom_pop_list(env);
 }
 
 static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, bool recurse_compound)
