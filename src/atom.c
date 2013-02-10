@@ -22,7 +22,7 @@
 
 static unsigned int MurmurHash2 (const void * key, int len);
 
-enum cell_type {
+typedef enum {
     TYPE_BOOLEAN,
     TYPE_CHARACTER,
     TYPE_NUMBER,
@@ -38,7 +38,7 @@ enum cell_type {
     TYPE_OUTPUT_PORT,
     TYPE_ENVIRONMENT,
     MAX_TYPES
-};
+} cell_type;
 
 const static char* typenames [] = {
     [TYPE_BOOLEAN]      = "boolean",
@@ -182,7 +182,7 @@ union cell_data
 
 struct Cell
 {
-	enum  cell_type type;
+	cell_type       type;
 	union cell_data	data;
 	Cell*           next;
 	bool            mark;
@@ -354,7 +354,7 @@ typedef struct symbol_node symbol_node;
 
 struct Environment
 {
-	atom_state*   cont;
+	atom_state*     cont;
 	Environment*    parent;
 	symbol_node**	data;
 	unsigned        mask;
@@ -385,7 +385,7 @@ struct atom_state
 	int                 allocated;
 	FILE*               input;
     FILE*               output;
-    FILE*               log;
+    FILE*               log; // not really used right now
     Vector              stack;
 
     // The symbol table
@@ -2024,7 +2024,7 @@ static void atom_syntax_rules(Environment* env, int params)
 
 static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, bool recurse_compound)
 {
-	const int type = obj1->type;
+	const cell_type type = obj1->type;
 
 	if (type != obj2->type)
 	{
@@ -2033,6 +2033,24 @@ static bool eq_helper(const Cell* obj1, const Cell* obj2, bool recurse_strings, 
 
 	switch(type)
 	{
+        case TYPE_EMPTY_LIST:
+            return true;
+            
+        case TYPE_BUILT_IN:
+            return obj1->data.built_in == obj2->data.built_in;
+            
+        case TYPE_PROCEDURE:
+            return obj1->data.closure == obj2->data.closure;
+
+        case TYPE_INPUT_PORT:
+        case TYPE_OUTPUT_PORT:
+            return obj1->data.port == obj2->data.port;
+
+        case TYPE_SYNTAX_RULES:
+        case MAX_TYPES:
+            assert(false);
+            break;
+            
 		case TYPE_BOOLEAN:
             return obj1->data.boolean == obj2->data.boolean;
 
