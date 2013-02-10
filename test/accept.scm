@@ -6,4 +6,5 @@
                      errors
                      (set! errors (+ errors 1)))))
 (assert (eq? 2 (+ 1 1)))
-errors
+(display "Errors: ")
+(display errors)
