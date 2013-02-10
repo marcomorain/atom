@@ -1,3 +1,9 @@
-(if #t 1 2)
-; (define assert (lambda (test) (display test)))
-; (assert "working")
+(define errors 0)
+
+(define assert
+  (lambda (test) (if test
+                     
+                     errors
+                     (set! errors (+ errors 1)))))
+(assert (eq? 2 (+ 1 1)))
+errors

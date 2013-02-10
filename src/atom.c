@@ -1560,11 +1560,11 @@ void environment_define(Environment* env, const Symbol* symbol, Cell* value)
 	env->data[index]	= node;
 }
 
-void environment_set(Environment* env, const Symbol* symbol, Cell* value)
+static void environment_set(const Environment* env, const Symbol* symbol, Cell* value)
 {
 	const size_t hash = symbol->hash;
 
-    for (Environment* e = env; env; env = env->parent)
+    for (const Environment* e = env; e; e = e->parent)
 	{
 		unsigned index = hash & env->mask;
 
@@ -1788,17 +1788,21 @@ static void atom_env(Environment* env, int params) {
 }
 
 // not built in
+// custom function
 static void atom_error(Environment* env, int params)
 {
-	Cell* message = atom_pop_cell(env);
-
 	const char* str = "Error";
 
-	// todo: symantics here
-	if (message && message->type == TYPE_STRING)
-	{
-		str = message->data.string.data;
-	}
+    // TODO: define the symantics of error
+    if (params > 0) {
+        Cell* message = atom_pop_cell(env);
+
+        if (message->type == TYPE_STRING)
+        {
+            str = message->data.string.data;
+        }
+    }
+	
 	signal_error(env->cont, "%s", str);
 }
 
@@ -4341,11 +4345,11 @@ atom_state* atom_state_new()
         //{"apply",	   		atom_apply},
 
         {"syntax-rules",    atom_syntax_rules},
-
+        
         {"eqv?",			atom_eqv_q},
         {"eq?",				atom_eq_q},
         {"equal?",			atom_equal_q},
-
+        
         // numeric
         {"number?",    		atom_number_q},
         {"complex?",   		always_false},
