@@ -6,3 +6,6 @@ default: src/*.c src/*.h
 	cc ${CCFLAGS} -o bin/atom src/atom.c src/linenoise/linenoise.c src/main.c
 	@echo 'atom.c:' `cat src/atom.c | tr -dc ';' | wc -c` 'lines of code.'
 	bin/test
+
+clean :
+	rm -f bin/test bin/atom
