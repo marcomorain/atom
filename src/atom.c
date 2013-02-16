@@ -987,7 +987,7 @@ void skip_whitespace(Input* input)
 			case '\t':
                 continue;
 
-			case ';':
+			case ';': // skip comment to end of line
                 for (char d = input_next(input); d != '\n'; d = input_next(input))
                 {
                     if (!d) return;
@@ -998,7 +998,9 @@ void skip_whitespace(Input* input)
 		}
 	}
 }
-
+// TODO: Make a table of 8 bit values for each of the ASCII characters.
+// Use a single bit to indicate whitespace, special initialise, etc.
+// return (table[c] & SP_INIT_MASK);
 bool is_special_initial(char c)
 {
 	switch (c)
@@ -1124,6 +1126,10 @@ static double char_to_double(char c)
 void read_number(Input* input, Token* token)
 {
 	char c = input_get(input);
+    
+    switch (c) {
+            
+    }
 
 	double accum = char_to_double(c);
 
@@ -1133,13 +1139,31 @@ void read_number(Input* input, Token* token)
 
 		if (!isdigit(c))
 		{
-            token_number(token, accum);
-			return;
+			break;
 		}
 
 		accum *= 10;
 		accum += char_to_double(c);
 	}
+    
+    double magnitude = 0.1;
+    
+    if (c != '.') {
+        token_number(token, accum);
+        return;
+    } else {
+        for (;;) {
+            c = input_next(input);
+            
+            if (!isdigit(c)) {
+                token_number(token, accum);
+                return;
+            }
+            
+            accum += char_to_double(c) * magnitude;
+            magnitude *= 0.1;
+        }
+    }
 }
 
 void read_string(Input* input, Token* token)
