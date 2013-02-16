@@ -1830,6 +1830,10 @@ static void atom_error(Environment* env, int params)
 	signal_error(env->cont, "%s", str);
 }
 
+void atom_null_function(Environment* env, int params){
+    atom_push_boolean(env, &cell_false);
+}
+
 
 // 6.2.5 Numerical Operations
 
@@ -3718,6 +3722,7 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
         case TYPE_PROCEDURE:
         case TYPE_EMPTY_LIST:
         case TYPE_PAIR:
+        case TYPE_BUILT_IN:
             break;
         default:
             assert(0);
@@ -3841,7 +3846,11 @@ static void compile_if(Environment* env, Procedure* closure, struct instruction_
     //<test> <consequent> <alternate>
     Cell* test          = car(cell); cell = cdr(cell);
     Cell* consequent    = car(cell); cell = cdr(cell);
-    Cell* alternate     = car(cell);
+    Cell* alternate     = NULL;
+    
+    if (cell != &cell_empty_list) {
+        alternate = car(cell);
+    }
 
     // Put the test code on the stack. This will compile down to a value
     // that will be true or false.
@@ -3849,10 +3858,19 @@ static void compile_if(Environment* env, Procedure* closure, struct instruction_
 
     // Push things in reserse order
     compile_closure(env, closure, instructions, &cell_empty_list, consequent);
-    compile_closure(env, closure, instructions, &cell_empty_list, alternate);
+    
+    if (alternate) {
+        compile_closure(env, closure, instructions, &cell_empty_list, alternate);
+    } else {
+        // Add a dummy empty C function for the alternate case if one if not provided.
+        // TODO: Make this a macro maybe?
+        Cell* proc = make_cell(env, TYPE_BUILT_IN);
+        proc->data.built_in = atom_null_function;
+        size_t c = closure_add_constant(closure, proc);
+        instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
+    }
 
-    // TODO: use this operand to test for the presense of the else clause
-    instruction_buffer_push(instructions, make_instruction(INST_IF, 2));
+    instruction_buffer_push(instructions, make_instruction(INST_IF,   2));
     instruction_buffer_push(instructions, make_instruction(INST_CALL, 0));
 }
 
@@ -4117,7 +4135,7 @@ static void eval(atom_state* cont, struct Procedure* closure)
             // The next operations is call(0).
             case INST_IF:
             {
-                Cell* alternate     = atom_pop_a(env, TYPE_PROCEDURE);
+                Cell* alternate     = atom_pop_cell(env);
                 Cell* consequent    = atom_pop_a(env, TYPE_PROCEDURE);
 
                 Cell* result = is_truthy(atom_pop_cell(env)) ? consequent : alternate;
@@ -4246,8 +4264,8 @@ static void add_builtin(Environment* env, const char* name, atom_builtin functio
 	assert(name);
 	assert(function);
 
-	Cell* cell = make_cell(env, TYPE_BUILT_IN);
-	cell->data.built_in = function;
+    Cell* cell = make_cell(env, TYPE_BUILT_IN);
+    cell->data.built_in = function;
 	environment_define(env, find_or_insert_symbol(env->cont, name), cell);
 }
 

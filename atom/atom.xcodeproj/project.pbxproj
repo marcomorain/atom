@@ -42,7 +42,7 @@
 		49B017381511B9CC009B5DAC /* minunit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = minunit.h; path = ../test/minunit.h; sourceTree = "<group>"; };
 		49C7F29D155025AA00F19780 /* r5rs.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = r5rs.txt; path = ../../doc/r5rs.txt; sourceTree = "<group>"; };
 		8F30E32C16B4175500AB947C /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = main.c; path = ../../src/main.c; sourceTree = "<group>"; };
-		8F30E32E16B4177800AB947C /* test.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = test.c; path = ../../test/test.c; sourceTree = "<group>"; };
+		8F30E32E16B4177800AB947C /* test.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = test.c; path = ../test/test.c; sourceTree = "<group>"; };
 		8F30E33416B41DE200AB947C /* test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test; sourceTree = BUILT_PRODUCTS_DIR; };
 		8FB66698135BCB15000DE583 /* atom */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = atom; sourceTree = BUILT_PRODUCTS_DIR; };
 		8FB6669E135BCB15000DE583 /* atom.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = atom.1; sourceTree = "<group>"; };
@@ -71,6 +71,7 @@
 			isa = PBXGroup;
 			children = (
 				49B017381511B9CC009B5DAC /* minunit.h */,
+				8F30E32E16B4177800AB947C /* test.c */,
 			);
 			name = test;
 			sourceTree = "<group>";
@@ -98,7 +99,6 @@
 			children = (
 				491ED6E416BC256000231CE5 /* linenoise.c */,
 				491ED6E516BC256000231CE5 /* linenoise.h */,
-				8F30E32E16B4177800AB947C /* test.c */,
 				8F30E32C16B4175500AB947C /* main.c */,
 				4989F1D9144DFE0300EA571B /* atom.c */,
 				8FB666A5135BCBD4000DE583 /* atom.h */,

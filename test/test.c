@@ -1,7 +1,6 @@
 #include <stdio.h>
 #include "../src/atom.h"
 
-
 /* file: minunit.h */
 static int tests_run = 0;
 #define mu_assert(message, test) do { if (!(test)) return (char*)message; } while (0)
@@ -31,9 +30,6 @@ static char* test_comile() {
     atom_state_load(atom, "1");
     double number = atom_state_pop_number(atom);
     mu_assert_msg(number == 1.0);
-    mu_assert_msg(atom_api_get_top(atom) == 1);
-    
-    atom_api_clear(atom);
     mu_assert_msg(atom_api_get_top(atom) == 0);
     
     atom_state_load(atom, "\"foo\"");
