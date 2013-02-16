@@ -1,10 +1,25 @@
 ### TODO:
-* Macros
+
+#### Alpha 1
+* Implement define with varying number of paramters
+* Test suite should pass
+* Packages
+
+#### Alpha 2
+* Code coverage
+* Simple Macros
+* Full hygenic macros
+* Full number tower
+* Full number parsing
+* Fix all warnings
+* Call CC up only
+* Full call CC
 * Debug data on each Cell (file and line and column were it was created).
 * C API for user functions
 * Userdata / void* / C / C++ data types? (with gc callback)
 * add const flag to data if it is compile time created data.
 * Add proper tail recursion for if
+* Implement C library with the API
 
 ## Report
 ### Chapter 4: Expressions
