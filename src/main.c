@@ -32,6 +32,8 @@ int main (int argc, char** argv)
 {
     atom_state* atom = atom_state_new();
 
+    atom_load_libraries(atom);
+
     for (int i=1; i<argc; i++)
     {
         atom_state_load_file(atom, argv[i]);

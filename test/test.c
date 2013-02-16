@@ -54,6 +54,8 @@ static char* test_plus() {
     
     struct atom_state* atom = atom_state_new();
 
+    atom_load_libraries(atom);
+
     mu_assert_msg(do_numeric_operation(atom, "(+)") == 0);
     mu_assert_msg(do_numeric_operation(atom, "(+ 7)") == 7);
     mu_assert_msg(do_numeric_operation(atom, "(+ 1 2 3 4)") == 10);
@@ -124,6 +126,7 @@ static char* test_if()
 static char* test_lambda()
 {
     struct atom_state* atom = atom_state_new();
+    atom_load_libraries(atom);
     atom_state_load(atom, "(define plus (lambda (x) (+ x 1)))");
     atom_api_clear(atom);
     atom_state_load(atom, "(plus 4)");
