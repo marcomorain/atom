@@ -7,13 +7,12 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		491ED6E616BC256000231CE5 /* linenoise.c in Sources */ = {isa = PBXBuildFile; fileRef = 491ED6E416BC256000231CE5 /* linenoise.c */; };
-		4989F1DA144DFE0300EA571B /* atom.c in Sources */ = {isa = PBXBuildFile; fileRef = 4989F1D9144DFE0300EA571B /* atom.c */; };
-		8F30E32D16B4175500AB947C /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8F30E32C16B4175500AB947C /* main.c */; };
 		8F30E33E16B41E0B00AB947C /* test.c in Sources */ = {isa = PBXBuildFile; fileRef = 8F30E32E16B4177800AB947C /* test.c */; };
-		8F30E33F16B41E1000AB947C /* atom.c in Sources */ = {isa = PBXBuildFile; fileRef = 4989F1D9144DFE0300EA571B /* atom.c */; };
-		8FB3C55216CFA7D200445C75 /* atom_lib.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55116CFA7D200445C75 /* atom_lib.c */; };
-		8FB3C55516CFABAB00445C75 /* atom_lib.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55116CFA7D200445C75 /* atom_lib.c */; };
+		8FB3C56E16CFB37F00445C75 /* atom_internal.h in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55616CFB2BC00445C75 /* atom_internal.h */; };
+		8FB3C56F16CFB37F00445C75 /* atom_lib.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55716CFB2BC00445C75 /* atom_lib.c */; };
+		8FB3C57016CFB37F00445C75 /* atom.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55816CFB2BC00445C75 /* atom.c */; };
+		8FB3C57116CFB37F00445C75 /* atom.h in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55916CFB2BC00445C75 /* atom.h */; };
+		8FB3C57216CFB38500445C75 /* minunit.h in Sources */ = {isa = PBXBuildFile; fileRef = 49B017381511B9CC009B5DAC /* minunit.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -38,19 +37,17 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
-		491ED6E416BC256000231CE5 /* linenoise.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = linenoise.c; path = ../../src/linenoise/linenoise.c; sourceTree = "<group>"; };
-		491ED6E516BC256000231CE5 /* linenoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = linenoise.h; path = ../../src/linenoise/linenoise.h; sourceTree = "<group>"; };
-		4989F1D9144DFE0300EA571B /* atom.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = atom.c; path = ../../src/atom.c; sourceTree = "<group>"; };
 		49B017381511B9CC009B5DAC /* minunit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = minunit.h; path = ../test/minunit.h; sourceTree = "<group>"; };
-		49C7F29D155025AA00F19780 /* r5rs.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; name = r5rs.txt; path = ../../doc/r5rs.txt; sourceTree = "<group>"; };
-		8F30E32C16B4175500AB947C /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = main.c; path = ../../src/main.c; sourceTree = "<group>"; };
 		8F30E32E16B4177800AB947C /* test.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = test.c; path = ../test/test.c; sourceTree = "<group>"; };
 		8F30E33416B41DE200AB947C /* test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test; sourceTree = BUILT_PRODUCTS_DIR; };
-		8FB3C55116CFA7D200445C75 /* atom_lib.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = atom_lib.c; path = ../../src/atom_lib.c; sourceTree = "<group>"; };
-		8FB3C55416CFA83300445C75 /* atom_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atom_internal.h; path = ../../src/atom_internal.h; sourceTree = "<group>"; };
+		8FB3C55616CFB2BC00445C75 /* atom_internal.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atom_internal.h; path = ../src/atom_internal.h; sourceTree = "<group>"; };
+		8FB3C55716CFB2BC00445C75 /* atom_lib.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = atom_lib.c; path = ../src/atom_lib.c; sourceTree = "<group>"; };
+		8FB3C55816CFB2BC00445C75 /* atom.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = atom.c; path = ../src/atom.c; sourceTree = "<group>"; };
+		8FB3C55916CFB2BC00445C75 /* atom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atom.h; path = ../src/atom.h; sourceTree = "<group>"; };
+		8FB3C55D16CFB2BC00445C75 /* linenoise.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; path = linenoise.c; sourceTree = "<group>"; };
+		8FB3C55E16CFB2BC00445C75 /* linenoise.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; path = linenoise.h; sourceTree = "<group>"; };
+		8FB3C56116CFB2BC00445C75 /* main.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = main.c; path = ../src/main.c; sourceTree = "<group>"; };
 		8FB66698135BCB15000DE583 /* atom */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = atom; sourceTree = BUILT_PRODUCTS_DIR; };
-		8FB6669E135BCB15000DE583 /* atom.1 */ = {isa = PBXFileReference; lastKnownFileType = text.man; path = atom.1; sourceTree = "<group>"; };
-		8FB666A5135BCBD4000DE583 /* atom.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = atom.h; path = ../../src/atom.h; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -80,22 +77,26 @@
 			name = test;
 			sourceTree = "<group>";
 		};
-		8FB3C55316CFA7E000445C75 /* linenoise */ = {
+		8FB3C55A16CFB2BC00445C75 /* linenoise */ = {
 			isa = PBXGroup;
 			children = (
-				491ED6E416BC256000231CE5 /* linenoise.c */,
-				491ED6E516BC256000231CE5 /* linenoise.h */,
+				8FB3C55D16CFB2BC00445C75 /* linenoise.c */,
+				8FB3C55E16CFB2BC00445C75 /* linenoise.h */,
 			);
 			name = linenoise;
-			path = atom;
+			path = ../src/linenoise;
 			sourceTree = "<group>";
 		};
 		8FB6668D135BCB14000DE583 = {
 			isa = PBXGroup;
 			children = (
-				8FB3C55316CFA7E000445C75 /* linenoise */,
+				8FB3C55616CFB2BC00445C75 /* atom_internal.h */,
+				8FB3C55716CFB2BC00445C75 /* atom_lib.c */,
+				8FB3C55816CFB2BC00445C75 /* atom.c */,
+				8FB3C55916CFB2BC00445C75 /* atom.h */,
+				8FB3C55A16CFB2BC00445C75 /* linenoise */,
+				8FB3C56116CFB2BC00445C75 /* main.c */,
 				49B0173B1511B9D4009B5DAC /* test */,
-				8FB6669B135BCB15000DE583 /* atom */,
 				8FB66699135BCB15000DE583 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -107,20 +108,6 @@
 				8F30E33416B41DE200AB947C /* test */,
 			);
 			name = Products;
-			sourceTree = "<group>";
-		};
-		8FB6669B135BCB15000DE583 /* atom */ = {
-			isa = PBXGroup;
-			children = (
-				8F30E32C16B4175500AB947C /* main.c */,
-				8FB3C55116CFA7D200445C75 /* atom_lib.c */,
-				8FB3C55416CFA83300445C75 /* atom_internal.h */,
-				4989F1D9144DFE0300EA571B /* atom.c */,
-				8FB666A5135BCBD4000DE583 /* atom.h */,
-				49C7F29D155025AA00F19780 /* r5rs.txt */,
-				8FB6669E135BCB15000DE583 /* atom.1 */,
-			);
-			path = atom;
 			sourceTree = "<group>";
 		};
 /* End PBXGroup section */
@@ -192,8 +179,11 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8FB3C55516CFABAB00445C75 /* atom_lib.c in Sources */,
-				8F30E33F16B41E1000AB947C /* atom.c in Sources */,
+				8FB3C57216CFB38500445C75 /* minunit.h in Sources */,
+				8FB3C56E16CFB37F00445C75 /* atom_internal.h in Sources */,
+				8FB3C56F16CFB37F00445C75 /* atom_lib.c in Sources */,
+				8FB3C57016CFB37F00445C75 /* atom.c in Sources */,
+				8FB3C57116CFB37F00445C75 /* atom.h in Sources */,
 				8F30E33E16B41E0B00AB947C /* test.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -202,10 +192,6 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				4989F1DA144DFE0300EA571B /* atom.c in Sources */,
-				8F30E32D16B4175500AB947C /* main.c in Sources */,
-				491ED6E616BC256000231CE5 /* linenoise.c in Sources */,
-				8FB3C55216CFA7D200445C75 /* atom_lib.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
