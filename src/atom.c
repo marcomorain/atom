@@ -10,7 +10,7 @@
 #include <assert.h>
 #include <math.h>
 #include <ctype.h>
-
+#include "kvec.h"
 
 #define DEBUG_LEXER (0)
 
@@ -405,6 +405,12 @@ struct Instruction
 
 typedef struct Instruction Instruction;
 
+
+// Buffers
+typedef kvec_t(Instruction) instruction_buffer;
+typedef kvec_t(char)        character_buffer;
+
+
 struct Procedure
 {
     // The number of parameters that this function expects.
@@ -740,60 +746,6 @@ static Cell* cons(Environment* env, Cell* car, Cell* cdr)
 	return cell;
 }
 
-#define DECLARE_STACK_BUFFER(_name, _type) \
-struct _name ## _buffer \
-{ \
-    _type* data; \
-    size_t used; \
-    size_t size; \
-}; \
-typedef struct _name ## _buffer _name ## _buffer; \
-void _name ## _buffer_init(_name ## _buffer* buffer) \
-{ \
-    buffer->used = 0; \
-    buffer->size = 32; \
-    buffer->data = (_type*)malloc(buffer->size); \
-} \
-void _name ## _buffer_destory(_name ## _buffer* buffer) \
-{ \
-    free(buffer->data); \
-    buffer->used = 0; \
-    buffer->size = 0; \
-    buffer->data = NULL; \
-} \
-void _name ## _buffer_push(_name ## _buffer* buffer, _type value) \
-{ \
-    if (buffer->used == buffer->size) \
-    { \
-        buffer->size = buffer->size * 2; \
-        buffer->data = (_type*)realloc(buffer->data, buffer->size); \
-    } \
-    buffer->data[buffer->used++] = value; \
-} \
-void _name ## _buffer_reset(_name ## _buffer* buffer) \
-{ \
-    buffer->used = 0; \
-} \
-char*_name ## _buffer_copy(const _name ## _buffer* buffer) \
-{ \
-    size_t size = buffer->used + 1; \
-    char* dup = (char*)malloc(size); \
-    memcpy(dup, buffer->data, buffer->used); \
-    dup[buffer->used] = 0; \
-    return dup; \
-} \
-size_t _name ## _buffer_length(const _name ## _buffer* buffer) \
-{ \
-    return buffer->used; \
-} \
-const _type* _name ## _buffer_data(const _name ## _buffer* buffer) \
-{ \
-    return buffer->data; \
-}
-
-DECLARE_STACK_BUFFER(character, char);
-DECLARE_STACK_BUFFER(instruction, Instruction);
-
 struct Token
 {
 	union Data
@@ -907,20 +859,37 @@ static void token_boolean(Token* token, bool value)
     token_print(token);
 }
 
-static void token_identifier(Token* token, struct character_buffer* buffer)
+#define kv_last(type, v) kv_a(type, v, (kv_size(v) - 1))
+
+static void token_identifier(Token* token, character_buffer* buffer)
 {
+    // ensure valid, null terminated
+    assert(kv_a(char, *buffer, kv_size(*buffer)-1) == 0);
+    assert(strlen(buffer->a) == buffer->n-1);
+
     token->type = TOKEN_IDENTIFIER;
-    token->data.identifier = character_buffer_copy(buffer);
+    token->data.identifier = strdup(buffer->a);
     token_print(token);
-    character_buffer_reset(buffer);
+
+    // todo: single reset function
+    kv_destroy(*buffer);
+    kv_init(*buffer);
 }
 
-static void token_string(Token* token, struct character_buffer* buffer)
+static void token_string(Token* token, character_buffer* buffer)
 {
+    // ensure valid, null terminated
+    assert(kv_last(char, *buffer) == 0);
+    assert(strlen(buffer->a) == buffer->n-1);
+
     token->type = TOKEN_STRING;
-    token->data.identifier = character_buffer_copy(buffer);
+    token->data.identifier = strdup(buffer->a);
     token_print(token);
-    character_buffer_reset(buffer);
+
+    // todo: single reset function
+    kv_destroy(*buffer);
+    kv_init(*buffer);
+
 }
 
 struct Input
@@ -1162,8 +1131,8 @@ void read_number(Input* input, Token* token)
 
 void read_string(Input* input, Token* token)
 {
-    struct character_buffer buffer;
-    character_buffer_init(&buffer);
+    character_buffer buffer;
+    kv_init(buffer);
 
 	assert(input_get(input) == '"');
 
@@ -1173,8 +1142,9 @@ void read_string(Input* input, Token* token)
 
 		if (c == '"'){
 			input_next(input);
+            kv_push(char, buffer, 0); // null terminate
             token_string(token, &buffer);
-            character_buffer_destory(&buffer);
+            kv_destroy(buffer);
 			return;
 		}
 
@@ -1182,7 +1152,7 @@ void read_string(Input* input, Token* token)
 			c = input_next(input);
 			if (c == '"' || c == '\\')
 			{
-                character_buffer_push(&buffer, c);
+                kv_push(char, buffer, c);
 				continue;
 			}
 			syntax_error(input, "malformed string");
@@ -1190,7 +1160,7 @@ void read_string(Input* input, Token* token)
 
 		if (isprint(c))
 		{
-            character_buffer_push(&buffer, c);
+            kv_push(char, buffer, c);
 			continue;
 		}
 
@@ -1206,13 +1176,13 @@ bool is_peculiar_identifier(char c)
 
 void read_identifier(Input* input, Token* token)
 {
-    struct character_buffer buffer;
-    character_buffer_init(&buffer);
+    character_buffer buffer;
+    kv_init(buffer);
 
 	char c = input_get(input);
 	if (is_initial(c))
 	{
-        character_buffer_push(&buffer, c);
+        kv_push(char, buffer, c);
 
 		for (;;)
 		{
@@ -1222,12 +1192,12 @@ void read_identifier(Input* input, Token* token)
 			{
 				syntax_error(input, "malformed identifier");
 			}
-            character_buffer_push(&buffer, c);
+            kv_push(char, buffer, c);
 		}
 	}
 	else if (is_peculiar_identifier(c))
 	{
-        character_buffer_push(&buffer, c);
+        kv_push(char, buffer, c);
 		input_next(input);
 	}
 	else
@@ -1235,8 +1205,9 @@ void read_identifier(Input* input, Token* token)
 		syntax_error(input, "malformed identifier");
 	}
 
+    kv_push(char, buffer, 0);
     token_identifier(token, &buffer);
-    character_buffer_destory(&buffer);
+    kv_destroy(buffer);
 }
 
 void read_token(Input* input, Token* token)
@@ -2443,16 +2414,16 @@ static void atom_string(Environment* env, int params)
 {
     assert(params > 0);
 
-    character_buffer buffer;
-    character_buffer_init(&buffer);
+    kvec_t(char) buffer;
+    kv_init(buffer);
 
     for (int i=0; i<params; i++)
-        character_buffer_push(&buffer, atom_pop_character(env));
+        kv_push(char, buffer, atom_pop_character(env));
+    kv_push(char, buffer, 0); // null terminate
 
-    character_buffer_push(&buffer, 0);
+    atom_push_cell(env, make_string(env, params, buffer.a));
 
-    atom_push_cell(env, make_string(env, params, character_buffer_data(&buffer)));
-    character_buffer_destory(&buffer);
+    kv_destroy(buffer);
 }
 
 static int compare_strings(Environment* env, int params)
@@ -2583,27 +2554,28 @@ static void atom_substring(Environment* env, int params)
 // the given strings.
 static void atom_string_append(Environment* env, int params)
 {
-    character_buffer buffer;
-    character_buffer_init(&buffer);
-
+    kvec_t(char) buffer;
+    kv_init(buffer);
 
     for (int i=0; i<params; i++)
     {
         Cell* s = atom_pop_a(env, TYPE_STRING);
         for (int j=0; j<s->data.string.length; j++)
-            character_buffer_push(&buffer, s->data.string.data[j]);
+            kv_push(char, buffer, s->data.string.data[j]);
     }
 
-    int length = (int)character_buffer_length(&buffer);
+    int length = kv_size(buffer);
 
     Cell* result = make_empty_string(env, length);
 
     if (length > 0)
     {
-        strncpy(result->data.string.data, character_buffer_data(&buffer), length);
+        strncpy(result->data.string.data, buffer.a, length);
     }
 
     atom_push_cell(env, result);
+
+    kv_destroy(buffer);
 }
 
 // (string->list string) library procedure
@@ -3578,9 +3550,9 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
     return vector_length(&closure->constants) - 1;
 }
 
-static void compile(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell);
+static void compile(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell);
 
-static int compile_reverse(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* list)
+static int compile_reverse(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* list)
 {
     if (list->type == TYPE_EMPTY_LIST) return 0;
     int depth = compile_reverse(env, closure, instructions, cdr(list));
@@ -3588,10 +3560,10 @@ static int compile_reverse(Environment* env, Procedure* closure, struct instruct
     return 1 + depth;
 }
 
-static void compile_function_call(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
+static void compile_function_call(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell)
 {
     int num_params = compile_reverse(env, closure, instructions, cell) - 1;
-    instruction_buffer_push(instructions, make_instruction(INST_CALL, num_params));
+    kv_push(Instruction, *instructions, make_instruction(INST_CALL, num_params));
     //printf("Function call with %d params\n", num_params);
 }
 
@@ -3601,12 +3573,11 @@ static void compile_function_call(Environment* env, Procedure* closure, struct i
 // (quote <datum>) evaluates to <datum>. <Datum> may be any external
 // representation of a Scheme object (see section 3.3). This notation is
 // used to include literal constants in Scheme code.
-static void compile_quote(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
+static void compile_quote(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell)
 {
     Cell* datum  = car(cell); cell = cdr(cell);
     assert(cell->type == TYPE_EMPTY_LIST);
-
-    instruction_buffer_push(instructions, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
+    kv_push(Instruction, *instructions, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
 }
 
 static void print_procedure(const Procedure* p)
@@ -3627,13 +3598,14 @@ static void print_procedure(const Procedure* p)
     }
 }
 
-static void compile_closure(Environment* env, Procedure* parent, struct instruction_buffer* instructions, Cell* formals, Cell* body)
+static void compile_closure(Environment* env, Procedure* parent, instruction_buffer* instructions, Cell* formals, Cell* body)
 {
     // Make a new closure
     Procedure* child = (Procedure*)calloc(1, sizeof(Procedure));
     procedure_init(child, body);
-    struct instruction_buffer child_instructions;
-    instruction_buffer_init(&child_instructions);
+
+    instruction_buffer child_instructions;
+    kv_init(child_instructions);
 
     //printf("Compiling a new function.\n");
 
@@ -3645,9 +3617,9 @@ static void compile_closure(Environment* env, Procedure* parent, struct instruct
         type_check(env->cont, TYPE_SYMBOL, car(formal)->type);
         size_t constant = closure_add_constant(child, car(formal));
 
-        instruction_buffer_push(&child_instructions, make_instruction(INST_PUSH, constant));
+        kv_push(Instruction, child_instructions, make_instruction(INST_PUSH, constant));
         //printf("Setting local variable\n");
-        instruction_buffer_push(&child_instructions, make_instruction(INST_DEFINE, 0));
+        kv_push(Instruction, child_instructions, make_instruction(INST_DEFINE, 0));
 
         child->nparams++;
     }
@@ -3660,7 +3632,7 @@ static void compile_closure(Environment* env, Procedure* parent, struct instruct
 
     size_t c = closure_add_constant(parent, make_closure(env, child));
 
-    instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
+    kv_push(Instruction, *instructions, make_instruction(INST_PUSH, c));
 }
 
 
@@ -3676,7 +3648,7 @@ static void compile_closure(Environment* env, Procedure* parent, struct instruct
 // <alternate> is evaluated and its value(s) is(are) returned.
 // If <test> yields a false value and no <alternate> is specified, then
 // the result of the expression is unspecified.
-static void compile_if(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
+static void compile_if(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell)
 {
     //<test> <consequent> <alternate>
     Cell* test          = car(cell); cell = cdr(cell);
@@ -3702,14 +3674,14 @@ static void compile_if(Environment* env, Procedure* closure, struct instruction_
         Cell* proc = make_cell(env, TYPE_BUILT_IN);
         proc->data.built_in = atom_null_function;
         size_t c = closure_add_constant(closure, proc);
-        instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
+        kv_push(Instruction, *instructions, make_instruction(INST_PUSH, c));
     }
 
-    instruction_buffer_push(instructions, make_instruction(INST_IF,   2));
-    instruction_buffer_push(instructions, make_instruction(INST_CALL, 0));
+    kv_push(Instruction, *instructions, make_instruction(INST_IF,   2));
+    kv_push(Instruction, *instructions, make_instruction(INST_CALL, 0));
 }
 
-static void compile_lambda(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
+static void compile_lambda(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell)
 {
     Cell* formals   = car(cell); cell = cdr(cell);
     Cell* body      = car(cell); cell = cdr(cell);
@@ -3718,7 +3690,7 @@ static void compile_lambda(Environment* env, Procedure* closure, struct instruct
 }
 
 // http://exo.willdonnelly.net/blog/scheme-syntax-rules/
-static void compile_define_syntax(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
+static void compile_define_syntax(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell)
 {
     Cell* keyword            = car(cell); cell = cdr(cell);
     Cell* transformer        = car(cell);
@@ -3727,7 +3699,7 @@ static void compile_define_syntax(Environment* env, Procedure* closure, struct i
     environment_define(env, keyword->data.symbol, transformer);
 }
 
-static void compile_mutation(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell, int instruction)
+static void compile_mutation(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell, int instruction)
 {
     // TODO: Handle dotted syntax.
     // Maybe as macro?
@@ -3740,10 +3712,10 @@ static void compile_mutation(Environment* env, Procedure* closure, struct instru
 
     // Push the symbol
     size_t c = closure_add_constant(closure, symbol);
-    instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
+    kv_push(Instruction, *instructions, make_instruction(INST_PUSH, c));
 
     // Define (2)
-    instruction_buffer_push(instructions, make_instruction(instruction, 0));
+    kv_push(Instruction, *instructions, make_instruction(instruction, 0));
 }
 
 static int equal(const char* a, const char* b)
@@ -3751,7 +3723,7 @@ static int equal(const char* a, const char* b)
     return strcmp(a, b) == 0;
 }
 
-static void compile(Environment* env, Procedure* closure, struct instruction_buffer* instructions, Cell* cell)
+static void compile(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell)
 {
     switch(cell->type)
     {
@@ -3818,22 +3790,22 @@ static void compile(Environment* env, Procedure* closure, struct instruction_buf
         {
             // Load the symbol
             size_t c = closure_add_constant(closure, cell);
-            instruction_buffer_push(instructions, make_instruction(INST_PUSH, c));
-            instruction_buffer_push(instructions, make_instruction(INST_LOAD, 0));
+            kv_push(Instruction, *instructions, make_instruction(INST_PUSH, c));
+            kv_push(Instruction, *instructions, make_instruction(INST_LOAD, 0));
             break;
         }
 
 		default:
         {
-            instruction_buffer_push(instructions, make_instruction(INST_PUSH, closure_add_constant(closure, cell)));
+            kv_push(Instruction, *instructions, make_instruction(INST_PUSH, closure_add_constant(closure, cell)));
             break;
         }
     }
 
-    closure->num_instructions = instruction_buffer_length(instructions);
+    closure->num_instructions = kv_size(*instructions);
     const size_t bytes = closure->num_instructions * sizeof(Instruction);
     closure->instructions = (struct Instruction*)malloc(bytes);
-    memcpy(closure->instructions, instruction_buffer_data(instructions), bytes);
+    memcpy(closure->instructions, instructions->a, bytes);
 }
 
 static Cell* apply_macros(Environment* env, Cell* cell)
@@ -3884,8 +3856,8 @@ void atom_state_load(atom_state* cont, const char* data)
             struct Procedure closure;
             procedure_init(&closure, after_macros);
 
-            struct instruction_buffer instructions;
-            instruction_buffer_init(&instructions);
+            instruction_buffer instructions;
+            kv_init(instructions);
 
             compile(env, &closure, &instructions, after_macros);
             print_procedure(&closure);
@@ -3898,6 +3870,8 @@ void atom_state_load(atom_state* cont, const char* data)
                 printf("> ");
                 print(stdout, result, true);
             }
+
+            kv_destroy(instructions); // todo - is this delete ok?
         }
         else break;
 	}
