@@ -62,46 +62,36 @@ struct atom_state;
 struct Cell;
 struct Symbol;
 
-struct Vector
-{
-    struct Cell**  cell_data;
-    int     length;
-    int     capacity;
-};
-
-typedef struct Vector Vector;
 typedef struct Cell Cell;
 typedef struct String String;
 typedef struct Pair Pair;
 typedef struct Symbol Symbol;
 typedef struct Procedure Procedure;
 typedef struct Token Token;
+typedef kvec_t(Cell*) Vector;
 
 static struct Cell* vector_get(const Vector* vector, int n)
 {
     assert(n >= 0);
-    assert(n < vector->length);
-    return vector->cell_data[n];
+    assert(n < kv_size(*vector));
+    return kv_A(*vector, n);
 }
 
 static void vector_set(Vector* vector, int n, Cell* cell)
 {
     assert(n >= 0);
-    assert(n < vector->length);
-    vector->cell_data[n] = cell;
+    assert(n < kv_size(*vector));
+    kv_A(*vector, n) = cell;
 }
 
-static void vector_delete(Vector* vector)
+static int vector_length(Vector* vector)
 {
-    vector->length   = -1;
-    vector->capacity = -1;
-    free(vector->cell_data);
-    vector->cell_data = 0;
+    return (int)kv_size(*vector);
 }
 
 static void vector_fill(Vector* vector, Cell* fill)
 {
-	for (int i=0; i<vector->length; i++)
+	for (int i=0; i<vector_length(vector); i++)
 	{
         vector_set(vector, i, fill);
 	}
@@ -109,40 +99,29 @@ static void vector_fill(Vector* vector, Cell* fill)
 
 static void vector_init(Vector* vector, int length, Cell* fill)
 {
-    vector->capacity  = length;
-	vector->length    = length;
-	vector->cell_data = (Cell**)calloc(length, sizeof(Cell*));
-    vector_fill(vector, fill);
+    kv_init(*vector);
+    for (int i=0; i<length; i++) {
+        kv_push(Cell*, *vector, fill);
+    }
+    assert(kv_size(*vector) == length);
 }
 
+// todo: remove
 static void vector_init_empty(Vector* vector)
 {
-    vector_init(vector, 4, 0);
-    vector->length = 0;
+    kv_init(*vector);
 }
 
-
-static int vector_length(Vector* vector)
-{
-    return vector->length;
-}
-
+// todo: remove?
 static Cell* vector_pop(Vector* vector)
 {
     assert(vector_length(vector) > 0);
-    vector->length--;
-    return vector->cell_data[vector->length];
+    return kv_pop(*vector);
 }
 
 static void vector_push(Vector* vector, Cell* cell)
 {
-    if (vector->length == vector->capacity)
-    {
-        vector->capacity   = 2 * vector->capacity;
-        vector->cell_data  = (Cell**)realloc(vector->cell_data, vector->capacity * sizeof(Cell*));
-    }
-    vector->cell_data[vector->length] = cell;
-    vector->length++;
+    kv_push(Cell*, *vector, cell);
 }
 
 struct Pair
@@ -167,7 +146,7 @@ union cell_data
     String          string;
     Pair            pair;
     const Symbol*   symbol;
-    struct Vector   vector;
+    Vector          vector;
     atom_builtin    built_in;
     struct Procedure* closure;
     FILE*           port;
@@ -251,7 +230,7 @@ static void print_external_rep(FILE* file, char c)
     }
 }
 
-static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
+static void print_rec_impl(FILE* output, const Cell* cell, bool human, int is_car)
 {
     assert(cell);
 
@@ -290,14 +269,14 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
         case TYPE_PAIR:
         {
             if (is_car) fprintf(output, "(");
-            print_rec(output, cell->data.pair.car, human, 1);
+            print_rec_impl(output, cell->data.pair.car, human, 1);
 
             Cell* c = cdr(cell);
 
             if (c->type != TYPE_EMPTY_LIST)
             {
                 fprintf(output, " ");
-                print_rec(output, c, human, 0);
+                print_rec_impl(output, c, human, 0);
             }
 
             if (is_car) fprintf(output, ")");
@@ -306,10 +285,10 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
 
         case TYPE_VECTOR:
             fprintf(output, "#(");
-            for (int i=0; i<cell->data.vector.length; i++)
+            for (int i=0; i < cell->data.vector.n; i++)
             {
                 if (i>0) fprintf(output, " ");
-                print_rec(output, vector_get(&cell->data.vector, i), human, 0);
+                print_rec_impl(output, vector_get(&cell->data.vector, i), human, 0);
             }
             fprintf(output, ")");
             break;
@@ -321,9 +300,13 @@ static void print_rec(FILE* output, const Cell* cell, bool human, int is_car)
     }
 }
 
+static void print_rec(FILE* output, const Cell* cell, bool human) {
+    print_rec_impl(output, cell, human, 1);
+}
+
 static void print(FILE* output, const Cell* cell, bool human)
 {
-	print_rec(output, cell, human, 1);
+	print_rec(output, cell, human);
 	fprintf(output, "\n");
 }
 
@@ -552,7 +535,7 @@ static void mark(Cell* cell, size_t marked[])
 			break;
 
 		case TYPE_VECTOR:
-            for(int i=0; i<cell->data.vector.length; i++)
+            for(int i=0; i<cell->data.vector.n; i++)
                 mark(vector_get(&cell->data.vector, i), marked);
 			break;
 
@@ -634,7 +617,7 @@ static void sweep(atom_state* cont, size_t kept[], size_t freed[])
                     break;
 
                 case TYPE_VECTOR:
-                    vector_delete(&cell->data.vector);
+                    kv_destroy(cell->data.vector);
                     break;
 
                 default:
@@ -1836,10 +1819,10 @@ static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
 	if (obj1 == obj2) return true;
 	if (!recursive)   return false;
 
-	const int length = obj1->data.vector.length;
+	const int length = obj1->data.vector.n;
 
 	// if different lengths, return false
-	if (obj2->data.vector.length != length) return false;
+	if (obj2->data.vector.n != length) return false;
 
     const Vector* a = &obj1->data.vector;
     const Vector* b = &obj2->data.vector;
@@ -2993,13 +2976,13 @@ static void atom_vector(Environment* env, int params)
 static void atom_vector_length(Environment* env, int params)
 {
     assert(params == 1);
-    atom_push_number(env, atom_pop_a(env, TYPE_VECTOR)->data.vector.length);
+    atom_push_number(env, atom_pop_a(env, TYPE_VECTOR)->data.vector.n);
 }
 
 // Return true if k is a valid index into vector
 static bool valid_vector_index(Cell* vector, int k)
 {
-	return k >= 0 && k < vector->data.vector.length;
+	return k >= 0 && k < vector->data.vector.n;
 }
 
 // (vector-ref vector k) procedure
@@ -3058,7 +3041,7 @@ static void atom_vector_to_list(Environment* env, int params)
     Cell* list = NULL;
 
     // Build up the list backwards
-    for(int i=vector->data.vector.length-1; i > -1; i--)
+    for(int i=vector->data.vector.n-1; i > -1; i--)
     {
         list = cons(env, vector_get(&vector->data.vector, i), list);
     }
@@ -3539,7 +3522,7 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
     //printf("Pushing constant: ");
     //print(stdout, cell, false);
 
-    for (int i = 0; i < closure->constants.length; i++)
+    for (int i = 0; i < closure->constants.n; i++)
     {
         if (eq_helper(vector_get(&closure->constants, i), cell, true, true)){
             return i;
@@ -3548,6 +3531,16 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
 
     vector_push(&closure->constants, cell);
     return vector_length(&closure->constants) - 1;
+}
+
+
+static void stack_track(FILE* file, atom_state* a) {
+    printf("Stack Trace (% 2ld)\n============\n", kv_size(a->stack));
+    for (size_t i=0; i < kv_size(a->stack); i++) {
+        printf("% 2ld: ", i);
+        print_rec(file, kv_a(Cell*, a->stack, i), true);
+        puts("");
+    }
 }
 
 static void compile(Environment* env, Procedure* closure, instruction_buffer* instructions, Cell* cell);
@@ -3584,10 +3577,10 @@ static void print_procedure(const Procedure* p)
 {
     printf("Procedure %p – expects %d params\n", p, p->nparams);
     if (p->source) print(stdout, p->source, true);
-    printf("# Constants (%d):\n", p->constants.length);
+    printf("# Constants (%ld):\n", kv_size(p->constants));
 
-    for(int i = 0; i < p->constants.length; i++) {
-        Cell* cell = p->constants.cell_data[i];
+    for(int i = 0; i < p->constants.n; i++) {
+        Cell* cell = kv_A(p->constants, i);
         printf("# [%d] - ", i); print(stdout, cell, true);
     }
 
@@ -3612,13 +3605,14 @@ static void compile_closure(Environment* env, Procedure* parent, instruction_buf
     // When a function is called there are N params on the stack. The top most
     // parameter is the first formal. The following loops emits a define instruction
     // for each formal parameter to put them in the environment
-    for (Cell* formal = formals; is_pair(formal); formal = cdr(formals))
+    for (Cell* formal = formals; is_pair(formal); formal = cdr(formal))
     {
         type_check(env->cont, TYPE_SYMBOL, car(formal)->type);
         size_t constant = closure_add_constant(child, car(formal));
 
-        kv_push(Instruction, child_instructions, make_instruction(INST_PUSH, constant));
-        //printf("Setting local variable\n");
+        printf("Setting local variable: %s\n", car(formal)->data.symbol->name);
+
+        kv_push(Instruction, child_instructions, make_instruction(INST_PUSH, (int)constant));
         kv_push(Instruction, child_instructions, make_instruction(INST_DEFINE, 0));
 
         child->nparams++;
@@ -3632,7 +3626,7 @@ static void compile_closure(Environment* env, Procedure* parent, instruction_buf
 
     size_t c = closure_add_constant(parent, make_closure(env, child));
 
-    kv_push(Instruction, *instructions, make_instruction(INST_PUSH, c));
+    kv_push(Instruction, *instructions, make_instruction(INST_PUSH, (int)c));
 }
 
 
@@ -3707,12 +3701,35 @@ static void compile_mutation(Environment* env, Procedure* closure, instruction_b
     Cell* symbol = car(cell); cell = cdr(cell);
     Cell* expression = car(cell);
 
+    if (symbol->type == TYPE_PAIR && instruction == INST_DEFINE) {
+        Cell* signature =  symbol;
+        Cell* name      = car(symbol);
+
+        // Short function
+        Cell* formals   = cdr(signature);
+        Cell* body      = expression;
+        type_check(env->cont, TYPE_SYMBOL, name->type);
+        type_check(env->cont, TYPE_PAIR,   body->type);
+
+        printf("Compiling short function %s\nFormals:", name->data.symbol->name);
+
+        print_rec(stdout, formals, true);
+        puts("");
+
+        compile_closure(env, closure, instructions, formals, body);
+        // Push the name
+        size_t c = closure_add_constant(closure, name);
+        kv_push(Instruction, *instructions, make_instruction(INST_PUSH, (int)c));
+        kv_push(Instruction, *instructions, make_instruction(INST_DEFINE, 0));
+        return;
+    }
+
     // Push the expression
     compile(env, closure, instructions, expression);
 
     // Push the symbol
     size_t c = closure_add_constant(closure, symbol);
-    kv_push(Instruction, *instructions, make_instruction(INST_PUSH, c));
+    kv_push(Instruction, *instructions, make_instruction(INST_PUSH, (int)c));
 
     // Define (2)
     kv_push(Instruction, *instructions, make_instruction(instruction, 0));
@@ -4016,6 +4033,7 @@ static void eval(atom_state* cont, struct Procedure* closure)
 
                     default:
                     {
+                        stack_track(stdout, env->cont);
                         assert(0);
                         break;
                     }
@@ -4045,7 +4063,7 @@ size_t atom_api_get_top(atom_state* cont)
 void atom_api_clear(atom_state* cont)
 {
     // todo: encapsulate
-    cont->stack.length = 0;
+    cont->stack.n = 0;
 }
 
 double atom_state_pop_number(atom_state* cont)
@@ -4366,7 +4384,7 @@ atom_state* atom_state_new()
 
 void atom_state_free(atom_state* cont)
 {
-    vector_delete(&cont->stack);
+    kv_destroy(cont->stack);
 
     for (size_t i=0; i <= cont->symbol_mask; i++)
     {

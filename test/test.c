@@ -131,7 +131,20 @@ static char* test_lambda()
     atom_api_clear(atom);
     atom_state_load(atom, "(plus 4)");
     mu_assert_msg(atom_state_pop_number(atom) == 5);
-    atom_state_free(atom);    
+    atom_state_free(atom);
+    return 0;
+}
+
+static char* test_define_short() {
+    struct atom_state* atom = atom_state_new();
+    atom_load_libraries(atom);
+    atom_state_load(atom, "(define (square x) (* x x))");
+    atom_api_clear(atom);
+    atom_state_load(atom, "(square 2)");
+    mu_assert_msg(atom_state_pop_number(atom) == 4);
+    atom_state_load(atom, "(square 3)");
+    mu_assert_msg(atom_state_pop_number(atom) == 9);
+    atom_state_free(atom);
     return 0;
 }
 
@@ -161,6 +174,7 @@ static char* test_macros()
 
 static char * all_tests() {
     //mu_run_test(test_macros);
+    mu_run_test(test_define_short);
     mu_run_test(test_quote);
     mu_run_test(test_comile);
     mu_run_test(test_lambda);
