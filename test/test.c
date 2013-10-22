@@ -12,6 +12,15 @@ static int tests_run = 0;
 int foo = 7;
 int bar = 5;
 
+
+static atom_state* atom_with_code(const char* code)
+{
+    struct atom_state* atom = atom_state_new();
+    atom_load_libraries(atom);
+    atom_state_load(atom, code);
+    return atom;
+}
+
 static char * test_open_close() {
     
     atom_state* c = atom_state_new();
@@ -122,12 +131,17 @@ static char* test_if()
     return 0;    
 }
 
+static char* test_list()
+{
+    struct atom_state* atom = atom_with_code("(list 1 2 3)");
+    int type = atom_type(atom, 0);
+    mu_assert_msg(type == 6);
+    return 0;
+}
 
 static char* test_lambda()
 {
-    struct atom_state* atom = atom_state_new();
-    atom_load_libraries(atom);
-    atom_state_load(atom, "(define plus (lambda (x) (+ x 1)))");
+    struct atom_state* atom = atom_with_code("(define plus (lambda (x) (+ x 1)))");
     atom_api_clear(atom);
     atom_state_load(atom, "(plus 4)");
     mu_assert_msg(atom_state_pop_number(atom) == 5);
@@ -175,6 +189,7 @@ static char* test_macros()
 static char * all_tests() {
     //mu_run_test(test_macros);
     mu_run_test(test_define_short);
+    mu_run_test(test_list);
     mu_run_test(test_quote);
     mu_run_test(test_comile);
     mu_run_test(test_lambda);

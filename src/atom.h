@@ -39,3 +39,5 @@ struct Library
 double atom_pop_number(Environment* env);
 void atom_push_number(Environment* env, double x);
 void atom_add_builtin(atom_state* state, const char* name, atom_builtin function);
+
+int atom_type(atom_state* state, int n);

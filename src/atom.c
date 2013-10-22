@@ -70,9 +70,8 @@ typedef struct Procedure Procedure;
 typedef struct Token Token;
 typedef kvec_t(Cell*) Vector;
 
-static struct Cell* vector_get(const Vector* vector, int n)
+static struct Cell* vector_get(const Vector* vector, size_t n)
 {
-    assert(n >= 0);
     assert(n < kv_size(*vector));
     return kv_A(*vector, n);
 }
@@ -106,12 +105,6 @@ static void vector_init(Vector* vector, int length, Cell* fill)
     assert(kv_size(*vector) == length);
 }
 
-// todo: remove
-static void vector_init_empty(Vector* vector)
-{
-    kv_init(*vector);
-}
-
 // todo: remove?
 static Cell* vector_pop(Vector* vector)
 {
@@ -133,9 +126,9 @@ struct Pair
 // todo: add a const string type? or a flag?
 struct String
 {
-    char* data;
-    int   length;
-    bool  mutable;
+    char*  data;
+    size_t length;
+    bool   mutable;
 };
 
 union cell_data
@@ -363,6 +356,7 @@ struct atom_state
 	FILE*               input;
     FILE*               output;
     FILE*               log; // not really used right now
+
     Vector              stack;
 
     // The symbol table
@@ -382,8 +376,8 @@ struct atom_state
 
 struct Instruction
 {
-    int op_code;
-    int operand;
+    size_t op_code;
+    size_t operand;
 };
 
 typedef struct Instruction Instruction;
@@ -398,8 +392,7 @@ struct Procedure
 {
     // The number of parameters that this function expects.
     int nparams;
-    Instruction* instructions;
-    int num_instructions;
+    kvec_t(Instruction) instructions;
     Vector constants;
     Cell* source;
 };
@@ -669,7 +662,7 @@ static Cell* make_vector(Environment* env, int length, Cell* fill)
 	return vec;
 }
 
-static Cell* make_empty_string(Environment* env, int length)
+static Cell* make_empty_string(Environment* env, size_t length)
 {
     Cell* string = make_cell(env, TYPE_STRING);
     string->data.string.mutable = true;
@@ -683,7 +676,7 @@ static Cell* make_empty_string(Environment* env, int length)
     return string;
 }
 
-static Cell* fill_string(Cell* str, int length, const char* data)
+static Cell* fill_string(Cell* str, size_t length, const char* data)
 {
     assert(str->type == TYPE_STRING);
     strncpy(str->data.string.data, data, length);
@@ -1819,7 +1812,7 @@ static bool vector_equal(const Cell* obj1, const Cell* obj2, bool recursive)
 	if (obj1 == obj2) return true;
 	if (!recursive)   return false;
 
-	const int length = obj1->data.vector.n;
+	const size_t length = obj1->data.vector.n;
 
 	// if different lengths, return false
 	if (obj2->data.vector.n != length) return false;
@@ -2547,7 +2540,7 @@ static void atom_string_append(Environment* env, int params)
             kv_push(char, buffer, s->data.string.data[j]);
     }
 
-    int length = kv_size(buffer);
+    size_t length = kv_size(buffer);
 
     Cell* result = make_empty_string(env, length);
 
@@ -2572,12 +2565,13 @@ static void atom_string_to_list(Environment* env, int params)
     assert(params == 1);
     Cell* string = atom_pop_a(env, TYPE_STRING);
 
-    const int length = string->data.string.length;
+    const size_t length = string->data.string.length;
 
     Cell* result = NULL;
 
-    for (int i=length-1; i >= 0; i--){
-        result = cons(env, make_character(env, string->data.string.data[i]), result);
+    for (size_t i=length; i > 0; i--){
+        assert(i <= string->data.string.length);
+        result = cons(env, make_character(env, string->data.string.data[i-1]), result);
     }
 
     atom_push_cell(env, result);
@@ -2619,7 +2613,7 @@ static void atom_string_copy(Environment* env, int params)
 {
     assert(params == 1);
     Cell* string = atom_pop_a(env, TYPE_STRING);
-    const int length = string->data.string.length;
+    const size_t length = string->data.string.length;
     atom_push_cell(env, fill_string(make_empty_string(env, length),
                                     length,
                                     string->data.string.data));
@@ -3041,9 +3035,8 @@ static void atom_vector_to_list(Environment* env, int params)
     Cell* list = NULL;
 
     // Build up the list backwards
-    for(int i=vector->data.vector.n-1; i > -1; i--)
-    {
-        list = cons(env, vector_get(&vector->data.vector, i), list);
+    for(size_t i = vector->data.vector.n; i > 0; i--) {
+        list = cons(env, vector_get(&vector->data.vector, i-1), list);
     }
 
     atom_push_cell(env, list);
@@ -3464,7 +3457,7 @@ static void always_false(Environment* env, int params)
     atom_push_boolean(env, false);
 }
 
-Instruction make_instruction(int op_code, int operand)
+Instruction make_instruction(int op_code, size_t operand)
 {
     Instruction instruction;
     instruction.op_code = op_code;
@@ -3475,10 +3468,9 @@ Instruction make_instruction(int op_code, int operand)
 static void procedure_init(Procedure* closure, Cell* source)
 {
     closure->nparams            = 0;
-    closure->num_instructions   = 0;
-    closure->instructions       = 0;
     closure->source             = source;
-    vector_init_empty(&closure->constants);
+    kv_init(closure->constants);
+    kv_init(closure->instructions);
 }
 
 enum {
@@ -3584,10 +3576,10 @@ static void print_procedure(const Procedure* p)
         printf("# [%d] - ", i); print(stdout, cell, true);
     }
 
-    printf("# Instructions (%d)\n", p->num_instructions);
-    for (int i=0; i<p->num_instructions; i++) {
-        Instruction ins = p->instructions[i];
-        printf("#  - %s %d\n", instruction_names[ins.op_code], ins.operand);
+    printf("# Instructions (%zu)\n", kv_size(p->instructions));
+    for (int i=0; i<kv_size(p->instructions); i++) {
+        Instruction ins = kv_A(p->instructions, i);
+        printf("#  - %s %zu\n", instruction_names[ins.op_code], ins.operand);
     }
 }
 
@@ -3819,10 +3811,7 @@ static void compile(Environment* env, Procedure* closure, instruction_buffer* in
         }
     }
 
-    closure->num_instructions = kv_size(*instructions);
-    const size_t bytes = closure->num_instructions * sizeof(Instruction);
-    closure->instructions = (struct Instruction*)malloc(bytes);
-    memcpy(closure->instructions, instructions->a, bytes);
+    kv_copy(Instruction, closure->instructions, *instructions);
 }
 
 static Cell* apply_macros(Environment* env, Cell* cell)
@@ -3943,15 +3932,14 @@ static void eval(atom_state* cont, struct Procedure* closure)
     for (;;)
     {
         // End of input
-        if (pc == closure->num_instructions) return;
+        if (pc == kv_size(closure->instructions)) return;
 
-        assert(pc >= 0);
-        assert(pc < closure->num_instructions);
+        assert(pc < kv_size(closure->instructions));
 
-        const Instruction instruction = closure->instructions[pc];
+        const Instruction instruction = kv_A(closure->instructions, pc);
         pc++;
 
-        //printf("operation: %s %d\n", instruction_names[instruction.op_code], instruction.operand);
+        stack_track(stdout, cont);
 
         switch (instruction.op_code)
         {
@@ -4005,8 +3993,7 @@ static void eval(atom_state* cont, struct Procedure* closure)
 
             case INST_CALL:
             {
-                int num_params = instruction.operand;
-                assert(num_params >= 0);
+                size_t num_params = instruction.operand;
 
                 Cell* function = atom_pop_cell(env);
 
@@ -4014,7 +4001,8 @@ static void eval(atom_state* cont, struct Procedure* closure)
                 {
                     case TYPE_BUILT_IN:
                     {
-                        function->data.built_in(env, num_params);
+                        // TODO: This cast is nasty.
+                        function->data.built_in(env, (int)num_params);
                         break;
                     }
                     case TYPE_PROCEDURE:
@@ -4034,6 +4022,7 @@ static void eval(atom_state* cont, struct Procedure* closure)
                     default:
                     {
                         stack_track(stdout, env->cont);
+                        type_check(env, TYPE_PROCEDURE, function->type);
                         assert(0);
                         break;
                     }
@@ -4106,8 +4095,7 @@ atom_state* atom_state_new()
     state->log           = fopen(".atom_log", "w+");
     state->symbol_mask   = 0xFF;
     state->symbols       = (Symbol**)calloc(1+state->symbol_mask, sizeof(Symbol*));
-
-    vector_init_empty(&state->stack);
+    kv_init(state->stack);
 
     const struct Library libs [] = {
 
@@ -4380,6 +4368,11 @@ atom_state* atom_state_new()
     }
 
     return state;
+}
+
+int atom_type(atom_state* state, int n)
+{
+    return vector_get(&state->stack, n)->type;
 }
 
 void atom_state_free(atom_state* cont)
