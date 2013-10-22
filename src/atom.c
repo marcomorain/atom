@@ -3939,6 +3939,9 @@ static void eval(atom_state* cont, struct Procedure* closure)
         const Instruction instruction = kv_A(closure->instructions, pc);
         pc++;
 
+        const char* name = instruction_names[instruction.op_code];
+        fprintf(stdout, "Executing %s %zd\n", name, instruction.operand);
+
         stack_track(stdout, cont);
 
         switch (instruction.op_code)

@@ -5,36 +5,48 @@
 	<key>IDESourceControlProjectFavoriteDictionaryKey</key>
 	<false/>
 	<key>IDESourceControlProjectIdentifier</key>
-	<string>56632614-5061-46EC-8F51-585F73BEF3D6</string>
+	<string>FCBAF219-D66E-486B-8DF2-B8CDDF0A9C58</string>
 	<key>IDESourceControlProjectName</key>
 	<string>atom</string>
 	<key>IDESourceControlProjectOriginsDictionary</key>
 	<dict>
-		<key>435BEC10-549E-4FE2-B8BA-71F0C240570B</key>
-		<string>ssh://github.com/marcomorain/atom</string>
+		<key>3987C701-78D9-4BC2-BB2E-8A4C34981B13</key>
+		<string>git://github.com/antirez/linenoise.git</string>
+		<key>E7B182A2-B11D-485A-AA94-B8DC759591FF</key>
+		<string>ssh://github.com/marcomorain/atom.git</string>
 	</dict>
 	<key>IDESourceControlProjectPath</key>
 	<string>atom/atom.xcodeproj/project.xcworkspace</string>
 	<key>IDESourceControlProjectRelativeInstallPathDictionary</key>
 	<dict>
-		<key>435BEC10-549E-4FE2-B8BA-71F0C240570B</key>
+		<key>3987C701-78D9-4BC2-BB2E-8A4C34981B13</key>
+		<string>../../../src/linenoise</string>
+		<key>E7B182A2-B11D-485A-AA94-B8DC759591FF</key>
 		<string>../../..</string>
 	</dict>
 	<key>IDESourceControlProjectURL</key>
-	<string>ssh://github.com/marcomorain/atom</string>
+	<string>ssh://github.com/marcomorain/atom.git</string>
 	<key>IDESourceControlProjectVersion</key>
 	<integer>110</integer>
 	<key>IDESourceControlProjectWCCIdentifier</key>
-	<string>435BEC10-549E-4FE2-B8BA-71F0C240570B</string>
+	<string>E7B182A2-B11D-485A-AA94-B8DC759591FF</string>
 	<key>IDESourceControlProjectWCConfigurations</key>
 	<array>
 		<dict>
 			<key>IDESourceControlRepositoryExtensionIdentifierKey</key>
 			<string>public.vcs.git</string>
 			<key>IDESourceControlWCCIdentifierKey</key>
-			<string>435BEC10-549E-4FE2-B8BA-71F0C240570B</string>
+			<string>E7B182A2-B11D-485A-AA94-B8DC759591FF</string>
 			<key>IDESourceControlWCCName</key>
 			<string>atom</string>
+		</dict>
+		<dict>
+			<key>IDESourceControlRepositoryExtensionIdentifierKey</key>
+			<string>public.vcs.git</string>
+			<key>IDESourceControlWCCIdentifierKey</key>
+			<string>3987C701-78D9-4BC2-BB2E-8A4C34981B13</string>
+			<key>IDESourceControlWCCName</key>
+			<string>linenoise</string>
 		</dict>
 	</array>
 </dict>
