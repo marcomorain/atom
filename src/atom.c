@@ -835,12 +835,12 @@ static void token_boolean(Token* token, bool value)
     token_print(token);
 }
 
-#define kv_last(type, v) kv_a(type, v, (kv_size(v) - 1))
+#define kv_last(v) kv_A(v, (kv_size(v) - 1))
 
 static void token_identifier(Token* token, character_buffer* buffer)
 {
     // ensure valid, null terminated
-    assert(kv_a(char, *buffer, kv_size(*buffer)-1) == 0);
+    assert(kv_last(*buffer) == 0);
     assert(strlen(buffer->a) == buffer->n-1);
 
     token->type = TOKEN_IDENTIFIER;
@@ -855,7 +855,7 @@ static void token_identifier(Token* token, character_buffer* buffer)
 static void token_string(Token* token, character_buffer* buffer)
 {
     // ensure valid, null terminated
-    assert(kv_last(char, *buffer) == 0);
+    assert(kv_last(*buffer) == 0);
     assert(strlen(buffer->a) == buffer->n-1);
 
     token->type = TOKEN_STRING;
@@ -3526,11 +3526,11 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
 }
 
 
-static void stack_track(FILE* file, atom_state* a) {
+static void stack_track(FILE* file, const atom_state* a) {
     printf("Stack Trace (% 2ld)\n============\n", kv_size(a->stack));
     for (size_t i=0; i < kv_size(a->stack); i++) {
         printf("% 2ld: ", i);
-        print_rec(file, kv_a(Cell*, a->stack, i), true);
+        print_rec(file, kv_A(a->stack, i), false);
         puts("");
     }
 }
@@ -3822,6 +3822,7 @@ static Cell* apply_macros(Environment* env, Cell* cell)
 
 void atom_state_load(atom_state* cont, const char* data)
 {
+    assert(kv_size(cont->stack) == 0);
     // TODO: Can read off the end of data.
     printf("Input String: %s\n", data);
 	Environment* env = cont->env;
@@ -3855,10 +3856,10 @@ void atom_state_load(atom_state* cont, const char* data)
 
             Cell* after_macros = apply_macros(env, parsed);
 
-            //printf("After macros: ");
-            //print(stdout, after_macros, false);
+            printf("After macros: ");
+            print(stdout, after_macros, false);
 
-            //printf("Compiling top level function\n");
+            printf("Compiling top level function\n");
             struct Procedure closure;
             procedure_init(&closure, after_macros);
 
@@ -3888,6 +3889,8 @@ cleanup:
 
 	// restore the old jump buffer
 	cont->escape = prev;
+
+    assert(kv_size(cont->stack) <= 1);
 }
 
 void atom_state_load_file(atom_state* cont, const char* filename)
@@ -3921,16 +3924,18 @@ static void eval(atom_state* cont, struct Procedure* closure)
     size_t pc = 0;
     Environment* env = cont->env;
 
-    //printf("eval: function %p %d params\n", closure, closure->nparams);
+    printf("eval: function %p %d params\n", closure, closure->nparams);
 
     for (int i=0; i<vector_length(&closure->constants); i++)
     {
-        //printf("Constant %d: ", i);
-        //print(stdout, vector_get(&closure->constants, i), true);
+        printf("Constant %d: ", i);
+        print(stdout, vector_get(&closure->constants, i), true);
     }
 
     for (;;)
     {
+        stack_track(stdout, cont);
+
         // End of input
         if (pc == kv_size(closure->instructions)) return;
 
@@ -3940,9 +3945,8 @@ static void eval(atom_state* cont, struct Procedure* closure)
         pc++;
 
         const char* name = instruction_names[instruction.op_code];
-        fprintf(stdout, "Executing %s %zd\n", name, instruction.operand);
 
-        stack_track(stdout, cont);
+        fprintf(stdout, "Executing %s %zd\n", name, instruction.operand);
 
         switch (instruction.op_code)
         {
@@ -4018,14 +4022,20 @@ static void eval(atom_state* cont, struct Procedure* closure)
                         {
                             signal_error(cont, "Error calling procedure: Expected %d params but was passed %d", function->data.closure->nparams, num_params);
                         }
+                        fprintf(stdout, "Calling ");
+                        print_rec(stdout, function, true);
+                        puts("");
                         eval(cont, function->data.closure);
+
+                        cont->env = env;
+                        puts("done calling.");
                         break;
                     }
 
                     default:
                     {
                         stack_track(stdout, env->cont);
-                        type_check(env, TYPE_PROCEDURE, function->type);
+                        type_check(env->cont, TYPE_PROCEDURE, function->type);
                         assert(0);
                         break;
                     }
@@ -4371,6 +4381,10 @@ atom_state* atom_state_new()
     }
 
     return state;
+}
+
+void atom_dump(atom_state* state, FILE* output) {
+    stack_track(output, state);
 }
 
 int atom_type(atom_state* state, int n)

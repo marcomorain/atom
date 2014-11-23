@@ -12,11 +12,8 @@
 		8F8544B8180AF5F3000E5CF1 /* linenoise.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55D16CFB2BC00445C75 /* linenoise.c */; };
 		8F8544B9180AF5F3000E5CF1 /* main.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C56116CFB2BC00445C75 /* main.c */; };
 		8F8544BD180AF603000E5CF1 /* atom.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55816CFB2BC00445C75 /* atom.c */; };
-		8FB3C56E16CFB37F00445C75 /* atom_internal.h in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55616CFB2BC00445C75 /* atom_internal.h */; };
 		8FB3C56F16CFB37F00445C75 /* atom_lib.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55716CFB2BC00445C75 /* atom_lib.c */; };
 		8FB3C57016CFB37F00445C75 /* atom.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55816CFB2BC00445C75 /* atom.c */; };
-		8FB3C57116CFB37F00445C75 /* atom.h in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55916CFB2BC00445C75 /* atom.h */; };
-		8FB3C57216CFB38500445C75 /* minunit.h in Sources */ = {isa = PBXBuildFile; fileRef = 49B017381511B9CC009B5DAC /* minunit.h */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -185,11 +182,8 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				8FB3C57216CFB38500445C75 /* minunit.h in Sources */,
-				8FB3C56E16CFB37F00445C75 /* atom_internal.h in Sources */,
 				8FB3C56F16CFB37F00445C75 /* atom_lib.c in Sources */,
 				8FB3C57016CFB37F00445C75 /* atom.c in Sources */,
-				8FB3C57116CFB37F00445C75 /* atom.h in Sources */,
 				8F30E33E16B41E0B00AB947C /* test.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

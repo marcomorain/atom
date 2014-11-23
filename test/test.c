@@ -90,6 +90,7 @@ static char* test_state() {
     
     atom_state_load(atom, "(set! x 9)");
     atom_api_clear(atom);
+
     mu_assert_msg(do_numeric_operation(atom, "x") == 9);
     
     atom_state_free(atom);    
@@ -117,6 +118,7 @@ static char* test_quote()
 {
     struct atom_state* atom = atom_state_new();
     atom_state_load(atom, "(quote a)");
+    atom_api_clear(atom);
     atom_state_load(atom, "'a");
     atom_api_clear(atom);
     atom_state_free(atom);    
@@ -135,7 +137,7 @@ static char* test_list()
 {
     struct atom_state* atom = atom_with_code("(list 1 2 3)");
     int type = atom_type(atom, 0);
-    mu_assert_msg(type == 6);
+    mu_assert_msg(type == 5);
     return 0;
 }
 
