@@ -1,0 +1,1 @@
+Input String: (define (fact-helper x res)

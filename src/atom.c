@@ -15,7 +15,7 @@
 #define DEBUG_LEXER (0)
 
 #if (DEBUG_LEXER)
-#define LEXER_TRACE(format, ...) printf(format, __VA_ARGS__)
+#define LEXER_TRACE(format, ...) fprintf(stderr, format, __VA_ARGS__)
 #else
 #define LEXER_TRACE(format, ...)
 #endif
@@ -123,7 +123,7 @@ struct Pair
     Cell* cdr;
 };
 
-// todo: add a const string type? or a flag?
+// todo: add an immutable string type? or a flag?
 struct String
 {
     char*  data;
@@ -297,7 +297,7 @@ static void print_rec(FILE* output, const Cell* cell, bool human) {
     print_rec_impl(output, cell, human, 1);
 }
 
-static void print(FILE* output, const Cell* cell, bool human)
+static void println(FILE* output, const Cell* cell, bool human)
 {
 	print_rec(output, cell, human);
 	fprintf(output, "\n");
@@ -1370,7 +1370,7 @@ Cell* parse_vector(Environment* env, Input* input, Token* token)
     {
         vector_set(&vector->data.vector, i++, car(c));
         //printf("Vector [%d] = ", i);
-        //print(stdout, car(c), true);
+        //println(stdout, car(c), true);
     }
 	return vector;
 }
@@ -1745,7 +1745,7 @@ static void atom_env(Environment* env, int params) {
             for (symbol_node* node = env->data[i]; node; node = node->next)
             {
                 if (strspn(node->symbol->name, root) == strlen(root)) {
-                    puts(node->symbol->name);
+                    fputs(node->symbol->name, env->cont->log);
                 }
             }
         }
@@ -3305,7 +3305,7 @@ static void atom_write(Environment* env, int params)
     assert(params < 3);
     Cell* cell = atom_pop_cell(env);
     FILE* port = get_output_port_param(env, params == 2);
-	print(port, cell, false);
+    print_rec(port, cell, false);
     atom_push_boolean(env, false);
 }
 
@@ -3383,7 +3383,7 @@ static void atom_display(Environment* env, int params)
 {
     Cell* obj = atom_pop_cell(env);
     FILE* port = get_output_port_param(env, params == 2);
-	print(port, obj, true);
+    print_rec(port, obj, true);
     atom_push_cell(env, make_boolean(false));
 }
 
@@ -3527,11 +3527,11 @@ static int closure_add_constant(struct Procedure* closure, Cell* cell)
 
 
 static void stack_track(FILE* file, const atom_state* a) {
-    printf("Stack Trace (% 2ld)\n============\n", kv_size(a->stack));
+    fprintf(file, "Stack Trace (% 2ld)\n============\n", kv_size(a->stack));
     for (size_t i=0; i < kv_size(a->stack); i++) {
-        printf("% 2ld: ", i);
+        fprintf(file, "% 2ld: ", i);
         print_rec(file, kv_A(a->stack, i), false);
-        puts("");
+        fputs("", file);
     }
 }
 
@@ -3565,21 +3565,22 @@ static void compile_quote(Environment* env, Procedure* closure, instruction_buff
     kv_push(Instruction, *instructions, make_instruction(INST_PUSH, closure_add_constant(closure, datum)));
 }
 
-static void print_procedure(const Procedure* p)
+static void print_procedure(const Procedure* p, FILE* log)
 {
-    printf("Procedure %p – expects %d params\n", p, p->nparams);
-    if (p->source) print(stdout, p->source, true);
-    printf("# Constants (%ld):\n", kv_size(p->constants));
+    fprintf(log, "Procedure %p – expects %d params\n", p, p->nparams);
+    if (p->source) println(log, p->source, true);
+    fprintf(log, "# Constants (%ld):\n", kv_size(p->constants));
 
     for(int i = 0; i < p->constants.n; i++) {
         Cell* cell = kv_A(p->constants, i);
-        printf("# [%d] - ", i); print(stdout, cell, true);
+        fprintf(log, "# [%d] - ", i);
+        println(log, cell, true);
     }
 
-    printf("# Instructions (%zu)\n", kv_size(p->instructions));
+    fprintf(log, "# Instructions (%zu)\n", kv_size(p->instructions));
     for (int i=0; i<kv_size(p->instructions); i++) {
         Instruction ins = kv_A(p->instructions, i);
-        printf("#  - %s %zu\n", instruction_names[ins.op_code], ins.operand);
+        fprintf(log, "#  - %s %zu\n", instruction_names[ins.op_code], ins.operand);
     }
 }
 
@@ -3602,7 +3603,7 @@ static void compile_closure(Environment* env, Procedure* parent, instruction_buf
         type_check(env->cont, TYPE_SYMBOL, car(formal)->type);
         size_t constant = closure_add_constant(child, car(formal));
 
-        printf("Setting local variable: %s\n", car(formal)->data.symbol->name);
+        fprintf(env->cont->log, "Setting local variable: %s\n", car(formal)->data.symbol->name);
 
         kv_push(Instruction, child_instructions, make_instruction(INST_PUSH, (int)constant));
         kv_push(Instruction, child_instructions, make_instruction(INST_DEFINE, 0));
@@ -3614,7 +3615,7 @@ static void compile_closure(Environment* env, Procedure* parent, instruction_buf
     compile(env, child, &child_instructions, body);
 
     //printf("Function compiled OK.\n");
-    print_procedure(child);
+    print_procedure(child, env->cont->log);
 
     size_t c = closure_add_constant(parent, make_closure(env, child));
 
@@ -3703,10 +3704,10 @@ static void compile_mutation(Environment* env, Procedure* closure, instruction_b
         type_check(env->cont, TYPE_SYMBOL, name->type);
         type_check(env->cont, TYPE_PAIR,   body->type);
 
-        printf("Compiling short function %s\nFormals:", name->data.symbol->name);
-
-        print_rec(stdout, formals, true);
-        puts("");
+        fprintf(env->cont->log, "Compiling short function %s\nFormals:", name->data.symbol->name);
+        
+        print_rec(env->cont->log, formals, true);
+        fputs("", env->cont->log);
 
         compile_closure(env, closure, instructions, formals, body);
         // Push the name
@@ -3745,7 +3746,7 @@ static void compile(Environment* env, Procedure* closure, instruction_buffer* in
                 case TYPE_EMPTY_LIST:
                 {
                     fprintf(stderr, "Syntax error: A function call must contain a list of at least 1 element.\nGot:");
-                    print(stderr, head, true);
+                    println(stderr, head, true);
                     break;
                 }
 
@@ -3788,7 +3789,7 @@ static void compile(Environment* env, Procedure* closure, instruction_buffer* in
                 default:
                 {
                     fprintf(stderr, "Compile error: Expected symbol.\nGot:");
-                    print(stderr, head, true);
+                    println(stderr, head, true);
                     break;
                 }
             }
@@ -3824,7 +3825,7 @@ void atom_state_load(atom_state* cont, const char* data)
 {
     assert(kv_size(cont->stack) == 0);
     // TODO: Can read off the end of data.
-    printf("Input String: %s\n", data);
+    fprintf(cont->log, "Input String: %s\n", data);
 	Environment* env = cont->env;
 
 	jump_buffer* prev = cont->escape;
@@ -3834,7 +3835,7 @@ void atom_state_load(atom_state* cont, const char* data)
 
 	if (error)
 	{
-		printf("Recovering from an error\n");
+		fprintf(cont->log, "Recovering from an error\n");
 		goto cleanup;
 	}
 
@@ -3852,14 +3853,14 @@ void atom_state_load(atom_state* cont, const char* data)
 		if ((parsed = parse_datum(env, &input, &next)))
 		{
             //printf("Input was parsed as: ");
-            //print(stdout, parsed, false);
+            //println(stdout, parsed, false);
 
             Cell* after_macros = apply_macros(env, parsed);
 
-            printf("After macros: ");
-            print(stdout, after_macros, false);
+            fprintf(cont->log, "After macros: ");
+            println(cont->log, after_macros, false);
 
-            printf("Compiling top level function\n");
+            fprintf(cont->log, "Compiling top level function\n");
             struct Procedure closure;
             procedure_init(&closure, after_macros);
 
@@ -3867,15 +3868,15 @@ void atom_state_load(atom_state* cont, const char* data)
             kv_init(instructions);
 
             compile(env, &closure, &instructions, after_macros);
-            print_procedure(&closure);
+            print_procedure(&closure, env->cont->log);
             eval(cont, &closure);
 
             int top = vector_length(&cont->stack);
             if (top > 0)
             {
                 Cell* result = vector_get(&cont->stack, top-1);
-                printf("> ");
-                print(stdout, result, true);
+                fprintf(cont->log, "> ");
+                println(cont->log, result, true);
             }
 
             kv_destroy(instructions); // todo - is this delete ok?
@@ -3889,30 +3890,41 @@ cleanup:
 
 	// restore the old jump buffer
 	cont->escape = prev;
+    
 
-    assert(kv_size(cont->stack) <= 1);
+    //assert(kv_size(cont->stack) <= 1);
+}
+
+static char* slurp(const char* filename)
+{
+    FILE* file = fopen(filename, "r");
+    
+    if (!file)
+    {
+        return NULL;
+    }
+    fseek (file, 0, SEEK_END);
+    size_t size = ftell (file);
+    rewind(file);
+    char* buffer = (char*) malloc(size+1);
+    if (buffer)
+    {
+        size_t read = fread(buffer, 1, size, file);
+        buffer[read] = 0;
+    }
+    fclose (file);
+    return buffer;
 }
 
 void atom_state_load_file(atom_state* cont, const char* filename)
 {
-	FILE* file = fopen(filename, "r");
-
-	if (!file)
+    char* buffer = slurp(filename);
+	if (!buffer)
 	{
         fprintf(stderr, "Error opening file %s\n", filename);
 		return;
 	}
-
-	fseek (file, 0, SEEK_END);
-	size_t size = ftell (file);
-	rewind(file);
-	char* buffer = (char*) malloc(size+1);
-	size_t read = fread(buffer, 1, size, file);
-	buffer[read] = 0;
-	fclose (file);
-
 	atom_state_load(cont, buffer);
-
 	free(buffer);
 }
 
@@ -3924,17 +3936,17 @@ static void eval(atom_state* cont, struct Procedure* closure)
     size_t pc = 0;
     Environment* env = cont->env;
 
-    printf("eval: function %p %d params\n", closure, closure->nparams);
+    fprintf(cont->log, "eval: function %p %d params\n", closure, closure->nparams);
 
     for (int i=0; i<vector_length(&closure->constants); i++)
     {
-        printf("Constant %d: ", i);
-        print(stdout, vector_get(&closure->constants, i), true);
+        fprintf(cont->log, "Constant %d: ", i);
+        println(cont->log, vector_get(&closure->constants, i), true);
     }
 
     for (;;)
     {
-        stack_track(stdout, cont);
+        stack_track(cont->log, cont);
 
         // End of input
         if (pc == kv_size(closure->instructions)) return;
@@ -3946,7 +3958,7 @@ static void eval(atom_state* cont, struct Procedure* closure)
 
         const char* name = instruction_names[instruction.op_code];
 
-        fprintf(stdout, "Executing %s %zd\n", name, instruction.operand);
+        fprintf(cont->log, "Executing %s %zd\n", name, instruction.operand);
 
         switch (instruction.op_code)
         {
@@ -4022,19 +4034,19 @@ static void eval(atom_state* cont, struct Procedure* closure)
                         {
                             signal_error(cont, "Error calling procedure: Expected %d params but was passed %d", function->data.closure->nparams, num_params);
                         }
-                        fprintf(stdout, "Calling ");
-                        print_rec(stdout, function, true);
-                        puts("");
+                        fprintf(cont->log, "Calling ");
+                        print_rec(cont->log, function, true);
+                        fputs("", cont->log);
                         eval(cont, function->data.closure);
 
                         cont->env = env;
-                        puts("done calling.");
+                        fputs("done calling.", cont->log);
                         break;
                     }
 
                     default:
                     {
-                        stack_track(stdout, env->cont);
+                        stack_track(env->cont->log, env->cont);
                         type_check(env->cont, TYPE_PROCEDURE, function->type);
                         assert(0);
                         break;
@@ -4383,8 +4395,8 @@ atom_state* atom_state_new()
     return state;
 }
 
-void atom_dump(atom_state* state, FILE* output) {
-    stack_track(output, state);
+void atom_dump(atom_state* state, FILE* file) {
+    stack_track(file, state);
 }
 
 int atom_type(atom_state* state, int n)

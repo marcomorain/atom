@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		49D03BDD1A4AF4DD00B2D932 /* vector.c in Sources */ = {isa = PBXBuildFile; fileRef = 49D03BDB1A4AF4DD00B2D932 /* vector.c */; };
 		8F30E33E16B41E0B00AB947C /* test.c in Sources */ = {isa = PBXBuildFile; fileRef = 8F30E32E16B4177800AB947C /* test.c */; };
 		8F8544B7180AF5F3000E5CF1 /* atom_lib.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55716CFB2BC00445C75 /* atom_lib.c */; };
 		8F8544B8180AF5F3000E5CF1 /* linenoise.c in Sources */ = {isa = PBXBuildFile; fileRef = 8FB3C55D16CFB2BC00445C75 /* linenoise.c */; };
@@ -39,6 +40,8 @@
 
 /* Begin PBXFileReference section */
 		49B017381511B9CC009B5DAC /* minunit.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = minunit.h; path = ../test/minunit.h; sourceTree = "<group>"; };
+		49D03BDB1A4AF4DD00B2D932 /* vector.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = vector.c; path = ../src/vector.c; sourceTree = "<group>"; };
+		49D03BDC1A4AF4DD00B2D932 /* vector.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = vector.h; path = ../src/vector.h; sourceTree = "<group>"; };
 		8F30E32E16B4177800AB947C /* test.c */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.c; name = test.c; path = ../test/test.c; sourceTree = "<group>"; };
 		8F30E33416B41DE200AB947C /* test */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = test; sourceTree = BUILT_PRODUCTS_DIR; };
 		8F8544B6180AF567000E5CF1 /* kvec.h */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.c.h; name = kvec.h; path = ../src/kvec.h; sourceTree = "<group>"; };
@@ -92,6 +95,8 @@
 		8FB6668D135BCB14000DE583 = {
 			isa = PBXGroup;
 			children = (
+				49D03BDB1A4AF4DD00B2D932 /* vector.c */,
+				49D03BDC1A4AF4DD00B2D932 /* vector.h */,
 				8F8544B6180AF567000E5CF1 /* kvec.h */,
 				8FB3C55616CFB2BC00445C75 /* atom_internal.h */,
 				8FB3C55716CFB2BC00445C75 /* atom_lib.c */,
@@ -195,6 +200,7 @@
 				8F8544BD180AF603000E5CF1 /* atom.c in Sources */,
 				8F8544B7180AF5F3000E5CF1 /* atom_lib.c in Sources */,
 				8F8544B8180AF5F3000E5CF1 /* linenoise.c in Sources */,
+				49D03BDD1A4AF4DD00B2D932 /* vector.c in Sources */,
 				8F8544B9180AF5F3000E5CF1 /* main.c in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
